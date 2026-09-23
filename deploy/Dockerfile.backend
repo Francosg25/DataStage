@@ -1,0 +1,28 @@
+FROM python:3.13-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+# Microsoft repository follows the official Debian 12 ODBC 18 installation.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl unixodbc libgssapi-krb5-2 clamav \
+    && curl -fsSL https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -o /tmp/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
+    && rm -f /tmp/packages-microsoft-prod.deb \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 datastage \
+    && useradd --uid 10001 --gid 10001 --no-create-home datastage
+WORKDIR /app/backend
+COPY backend/requirements.lock ./
+# Freeze runtime and validation dependencies to the tested environment.
+RUN python -m pip install --no-deps -r requirements.lock && python -m pip check
+COPY backend/pyproject.toml ./
+COPY backend/app ./app
+COPY backend/alembic.ini ./
+COPY backend/migrations ./migrations
+RUN mkdir -p /var/lib/datastage/documents \
+    && chown -R 10001:10001 /var/lib/datastage /app/backend
+ENV DATASTAGE_DOCUMENT_ROOT=/var/lib/datastage/documents
+USER 10001:10001
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

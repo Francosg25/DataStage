@@ -1,0 +1,72 @@
+name: datastage-integration
+x-backend: &backend
+  image: datastage-backend:local
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile.backend
+  env_file: ${DATASTAGE_COMPOSE_ENV:-compose.env}
+  environment:
+    DATASTAGE_ENVIRONMENT: development
+    DATASTAGE_AUTH_MODE: entra
+    DATASTAGE_DOCUMENT_ROOT: /var/lib/datastage/documents
+  volumes:
+    - documents:/var/lib/datastage/documents
+  restart: unless-stopped
+
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in deploy/compose.env}
+    ports: ["127.0.0.1:1433:1433"]
+    volumes: ["sql-data:/var/opt/mssql"]
+    healthcheck:
+      test: ["CMD-SHELL", "SQLCMDPASSWORD=\"$$MSSQL_SA_PASSWORD\" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+  database-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      SQLCMDPASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in deploy/compose.env}
+    command: ["/opt/mssql-tools18/bin/sqlcmd", "-S", "sql", "-U", "sa", "-C", "-b", "-Q", "IF DB_ID('DataStage') IS NULL CREATE DATABASE [DataStage]"]
+    depends_on:
+      sql: {condition: service_healthy}
+    restart: "no"
+  migrate:
+    <<: *backend
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    depends_on:
+      database-init: {condition: service_completed_successfully}
+    restart: "no"
+  api:
+    <<: *backend
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    ports: ["127.0.0.1:4200:8080"]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+
+volumes:
+  documents:
+  sql-data:

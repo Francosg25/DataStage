@@ -1,0 +1,108 @@
+import { Injectable, inject } from "@angular/core";
+import { HttpClient, HttpParams } from "@angular/common/http";
+import { Observable } from "rxjs";
+import {
+  AppConfig,
+  Identity,
+  Page,
+  Run,
+  Period,
+  Overview,
+  CatalogTable,
+  DataPage,
+  DataRow,
+} from "./models";
+@Injectable({ providedIn: "root" })
+export class Api {
+  private readonly http = inject(HttpClient);
+  readonly base = "/api/v1";
+  config() {
+    return this.http.get<AppConfig>(`${this.base}/config`);
+  }
+  me() {
+    return this.http.get<Identity>(`${this.base}/me`);
+  }
+  periods() {
+    return this.http.get<Period[]>(`${this.base}/periods`);
+  }
+  runs(offset = 0, limit = 20) {
+    return this.http.get<Page<Run>>(`${this.base}/runs`, {
+      params: { offset, limit },
+    });
+  }
+  run(id: string) {
+    return this.http.get<Run>(`${this.base}/runs/${encodeURIComponent(id)}`);
+  }
+  section(id: string, section: string, offset = 0, limit = 50) {
+    return this.http.get<Page<DataRow>>(
+      `${this.base}/runs/${encodeURIComponent(id)}/${section}`,
+      { params: { limit, offset } },
+    );
+  }
+  overview() {
+    return this.http.get<Overview>(`${this.base}/reports/overview`);
+  }
+  catalog() {
+    return this.http.get<CatalogTable[]>(`${this.base}/catalog/tables`);
+  }
+  monthly(period: string, zip: File, key: string) {
+    const body = new FormData();
+    body.append("periodo", period);
+    body.append("zip", zip);
+    return this.http.post<Run>(`${this.base}/monthly-runs`, body, {
+      headers: { "Idempotency-Key": key },
+    });
+  }
+  annual(year: number, range: string, key: string) {
+    return this.http.post<Run>(
+      `${this.base}/annual-runs`,
+      { anio: year, rangoNombre: range },
+      { headers: { "Idempotency-Key": key } },
+    );
+  }
+  reprocess(id: string, reason: string, expectedVersion: number, key: string) {
+    return this.http.post<Run>(
+      `${this.base}/runs/${encodeURIComponent(id)}/reprocess`,
+      { reason, expectedVersion },
+      { headers: { "Idempotency-Key": key } },
+    );
+  }
+  export(id: string, key: string) {
+    return this.http.post<Run>(
+      `${this.base}/runs/${encodeURIComponent(id)}/exports`,
+      {},
+      { headers: { "Idempotency-Key": key } },
+    );
+  }
+  download(id: string) {
+    return this.http.get(
+      `${this.base}/documents/${encodeURIComponent(id)}/download`,
+      { responseType: "blob", observe: "response" },
+    );
+  }
+  data(code: string, period: string, offset = 0, limit = 50) {
+    let params = new HttpParams().set("offset", offset).set("limit", limit);
+    if (period) params = params.set("period", period);
+    return this.http.get<DataPage>(
+      `${this.base}/data/${encodeURIComponent(code)}`,
+      { params },
+    );
+  }
+  audit(offset = 0) {
+    return this.http.get<Page<DataRow>>(`${this.base}/audit`, {
+      params: { offset, limit: 50 },
+    });
+  }
+  conversation() {
+    return this.http.post<{ id: string }>(
+      `${this.base}/agent/conversations`,
+      {},
+    );
+  }
+  message(id: string, message: string, allowActions = false) {
+    return this.http.post<{ message: string; evidence: DataRow[] }>(
+      `${this.base}/agent/conversations/${encodeURIComponent(id)}/messages`,
+      { message, allowActions },
+    );
+  }
+}

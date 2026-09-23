@@ -1,0 +1,13 @@
+# Dockerfile-specific allowlist; no documents, local environments or secrets.
+**
+!backend/
+!backend/app/
+!backend/app/**
+!backend/pyproject.toml
+!backend/requirements.lock
+!backend/alembic.ini
+!backend/migrations/
+!backend/migrations/**
+**/__pycache__/
+**/*.pyc
+**/.env

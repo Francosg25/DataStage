@@ -1,0 +1,216 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${NAMESPACE}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datastage-config
+  namespace: ${NAMESPACE}
+data:
+  DATASTAGE_ENVIRONMENT: production
+  DATASTAGE_AUTH_MODE: entra
+  DATASTAGE_SCOPE_ID: ${SCOPE_ID}
+  DATASTAGE_DOCUMENT_ROOT: /var/lib/datastage/documents
+  DATASTAGE_CORS_ORIGINS: ${CORS_ORIGINS}
+  DATASTAGE_ANTIVIRUS_COMMAND: '["clamscan","--no-summary","--database=/var/lib/clamav"]'
+  DATASTAGE_FOUNDRY_ENABLED: "false"
+  DATASTAGE_ALLOW_AGENT_COMMANDS: "false"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: datastage-documents
+  namespace: ${NAMESPACE}
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: ${STORAGE_CLASS}
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datastage-api
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: datastage-api}
+  template:
+    metadata:
+      labels: {app: datastage-api}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: ${BACKEND_IMAGE}
+          ports: [{name: http, containerPort: 8000}]
+          envFrom:
+            - configMapRef: {name: datastage-config}
+            - secretRef: {name: datastage-secrets}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: documents, mountPath: /var/lib/datastage/documents}
+            - {name: antivirus, mountPath: /var/lib/clamav, readOnly: true}
+            - {name: temporary, mountPath: /tmp}
+          startupProbe:
+            httpGet: {path: /health/ready, port: http}
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 20
+      volumes:
+        - name: documents
+          persistentVolumeClaim: {claimName: datastage-documents}
+        - name: antivirus
+          persistentVolumeClaim: {claimName: datastage-antivirus-signatures}
+        - name: temporary
+          emptyDir: {sizeLimit: 2Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datastage-worker
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: datastage-worker}
+  template:
+    metadata:
+      labels: {app: datastage-worker}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: worker
+          image: ${BACKEND_IMAGE}
+          command: [python, -m, app.worker]
+          envFrom:
+            - configMapRef: {name: datastage-config}
+            - secretRef: {name: datastage-secrets}
+          resources:
+            requests: {cpu: "1", memory: 1Gi}
+            limits: {cpu: "4", memory: 4Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: documents, mountPath: /var/lib/datastage/documents}
+            - {name: antivirus, mountPath: /var/lib/clamav, readOnly: true}
+            - {name: temporary, mountPath: /tmp}
+      volumes:
+        - name: documents
+          persistentVolumeClaim: {claimName: datastage-documents}
+        - name: antivirus
+          persistentVolumeClaim: {claimName: datastage-antivirus-signatures}
+        - name: temporary
+          emptyDir: {sizeLimit: 4Gi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datastage-web
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: datastage-web}
+  template:
+    metadata:
+      labels: {app: datastage-web}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: web
+          image: ${FRONTEND_IMAGE}
+          ports: [{name: http, containerPort: 8080}]
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: temporary, mountPath: /tmp}
+          readinessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 20
+      volumes:
+        - name: temporary
+          emptyDir: {sizeLimit: 64Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: ${NAMESPACE}
+spec:
+  selector: {app: datastage-api}
+  ports: [{name: http, port: 8000, targetPort: http}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: ${NAMESPACE}
+spec:
+  selector: {app: datastage-web}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: datastage
+  namespace: ${NAMESPACE}
+spec:
+  ingressClassName: ${INGRESS_CLASS}
+  tls:
+    - hosts: [${PUBLIC_HOST}]
+      secretName: datastage-tls
+  rules:
+    - host: ${PUBLIC_HOST}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port: {name: http}
