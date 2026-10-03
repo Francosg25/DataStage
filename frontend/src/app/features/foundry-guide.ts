@@ -17,8 +17,8 @@ import { Icon } from "../shared/ui";
         <p>
           {{
             t(
-              "Del proyecto de Azure a las respuestas y tareas de DataStage.",
-              "From your Azure project to DataStage answers and actions."
+              "Guía para cuentas corporativas, con una ruta sin Azure CLI en tu laptop.",
+              "For corporate accounts, with a path that needs no Azure CLI on your laptop."
             )
           }}
         </p>
@@ -56,12 +56,12 @@ import { Icon } from "../shared/ui";
       </nav>
       <div class="guide-content">
         <section id="step-1">
-          <h2>1. {{ t("Proyecto y modelo", "Project and model") }}</h2>
+          <h2>1. {{ t("Entrar a Foundry", "Open Foundry") }}</h2>
           <p>
             {{
               t(
-                "Abre Microsoft Foundry, selecciona tu directorio corporativo y entra a tu proyecto. Despliega un modelo compatible con agentes y llamadas a funciones. Anota el nombre exacto del despliegue y el endpoint del proyecto.",
-                "Open Microsoft Foundry, select your corporate directory and open your project. Deploy a model that supports agents and function calling. Record the exact deployment name and project endpoint."
+                "Desde el navegador corporativo, abre Microsoft Foundry, selecciona tu directorio y entra al proyecto autorizado. Comprueba que hay un modelo desplegado compatible con agentes y llamadas a funciones. Anota el nombre exacto del despliegue y el endpoint del proyecto. Si no puedes crear el proyecto o desplegar el modelo, solicítalo a TI.",
+                "In your corporate browser, open Microsoft Foundry, select your directory and open the approved project. Check that a model supporting agents and function calling is deployed. Record its exact deployment name and project endpoint. Ask IT if you cannot create the project or deploy the model."
               )
             }}
           </p>
@@ -82,14 +82,12 @@ import { Icon } from "../shared/ui";
           >
         </section>
         <section id="step-2">
-          <h2>
-            2. {{ t("Identidad y permisos", "Identity and permissions") }}
-          </h2>
+          <h2>2. {{ t("Qué pedir a TI", "What to request from IT") }}</h2>
           <p>
             {{
               t(
-                "El desarrollador necesita permisos para crear versiones del agente, por ejemplo Foundry User en el proyecto. Para el backend que sólo invoca agentes, revisa Foundry Agent Consumer. Tu administrador debe verificar los permisos y el ámbito.",
-                "The developer needs permission to create agent versions, such as Foundry User at project scope. For a backend that only invokes agents, review Foundry Agent Consumer. Your administrator should verify permissions and scope."
+                "Pide a TI el proyecto y endpoint de Foundry, el despliegue del modelo, la región y un entorno autorizado con Python, acceso al repositorio y red hacia Foundry. La identidad que registra versiones necesita permiso de creación, por ejemplo Foundry User; para la identidad del backend que sólo invoca el agente, revisa Foundry Agent Consumer. TI define el ámbito y prepara las identidades.",
+                "Ask IT for the Foundry project and endpoint, model deployment, region, and an approved environment with Python, repository access and network access to Foundry. The version registration identity needs creation rights, such as Foundry User; for the backend identity that only invokes the agent, review Foundry Agent Consumer. IT sets the scope and identities."
               )
             }}
           </p>
@@ -106,34 +104,27 @@ import { Icon } from "../shared/ui";
           <p>
             {{
               t(
-                "En desarrollo, autentícate con Azure CLI. En Azure, usa una identidad administrada para el backend. La identidad de Azure y los roles del usuario de DataStage son controles distintos.",
-                "In development, authenticate with Azure CLI. In Azure, use a managed identity for the backend. The Azure identity and DataStage user roles are separate controls."
+                "No necesitas instalar Azure CLI en tu laptop para preparar el proyecto. Iniciar sesión en el portal no autentica automáticamente al proceso Python. La identidad de Azure y los roles del usuario de DataStage son controles distintos.",
+                "You do not need Azure CLI on your laptop to prepare the project. Signing in to the portal does not automatically authenticate the Python process. Azure identity and DataStage user roles are separate controls."
               )
             }}
           </p>
-          <div class="command">
-            <button
-              (click)="copy('login')"
-              [attr.aria-label]="
-                t('Copiar comandos de acceso', 'Copy sign-in commands')
-              "
-            >
-              {{
-                copied() === "login"
-                  ? t("Copiado", "Copied")
-                  : t("Copiar", "Copy")
-              }}
-            </button>
-            <pre>{{ commands.login }}</pre>
-          </div>
         </section>
         <section id="step-3">
-          <h2>3. {{ t("Variables del entorno", "Environment variables") }}</h2>
+          <h2>3. {{ t("Ruta sin Azure CLI", "Path without Azure CLI") }}</h2>
           <p>
             {{
               t(
-                "Desde PowerShell, en la raíz de DataStage, sustituye los marcadores por tus valores. Mantén esta terminal abierta para que los procesos hereden la configuración.",
-                "In PowerShell, at the DataStage root, replace the placeholders with your values. Keep this terminal open so the processes inherit the configuration."
+                "Puedes revisar el proyecto y probar un agente básico en el portal. Para añadir las funciones de DataStage, el script Python debe ejecutarse en un entorno corporativo aprobado, por ejemplo una VM de Azure con identidad administrada o un proceso de integración con identidad federada. El portal no permite editar definiciones de funciones personalizadas.",
+                "You can inspect the project and test a basic agent in the portal. To add DataStage functions, run the Python script in an approved corporate environment, such as an Azure VM with a managed identity or a build job with federated identity. The portal cannot edit custom function definitions."
+              )
+            }}
+          </p>
+          <p>
+            {{
+              t(
+                "Configura estos valores en el entorno autorizado. Para registrar, deja desactivadas la invocación y las acciones hasta obtener la versión del agente.",
+                "Set these values in the approved environment. Keep invocation and actions disabled until you have registered an agent version."
               )
             }}
           </p>
@@ -163,8 +154,29 @@ import { Icon } from "../shared/ui";
           <p>
             {{
               t(
-                "Primero revisa la definición sin conectarte a Azure. Después ejecuta --apply para crear una versión con las herramientas de esta aplicación. Guarda el nombre y la versión que devuelve.",
-                "First preview the definition without connecting to Azure. Then run --apply to create a version with this application’s tools. Record the returned name and version."
+                "Puedes revisar la definición en tu laptop sin conectarte a Azure. Ejecuta --apply sólo en el entorno autorizado con identidad y acceso a Foundry: crea una versión con las herramientas de DataStage. Guarda el nombre y la versión que devuelve.",
+                "You can preview the definition on your laptop without connecting to Azure. Run --apply only in the approved environment with an identity and Foundry access: it creates a version with DataStage tools. Save the returned name and version."
+              )
+            }}
+          </p>
+          <div class="command">
+            <button
+              (click)="copy('preview')"
+              [attr.aria-label]="t('Copiar vista previa', 'Copy preview')"
+            >
+              {{
+                copied() === "preview"
+                  ? t("Copiado", "Copied")
+                  : t("Copiar", "Copy")
+              }}
+            </button>
+            <pre>{{ commands.preview }}</pre>
+          </div>
+          <p>
+            {{
+              t(
+                "Cuando TI confirme el entorno y los permisos, ejecuta este comando allí para crear la versión:",
+                "After IT confirms the environment and permissions, run this command there to create the version:"
               )
             }}
           </p>
@@ -186,14 +198,22 @@ import { Icon } from "../shared/ui";
           <p>
             {{
               t(
-                "Cada --apply crea una nueva versión. Las funciones se ejecutan en el backend DataStage con los permisos del usuario.",
-                "Each --apply creates a new version. Functions run in the DataStage backend with the user’s permissions."
+                "Cada --apply crea una nueva versión. Las funciones se ejecutan en el backend DataStage con los permisos del usuario; el portal por sí solo no las ejecuta.",
+                "Each --apply creates a new version. Functions run in the DataStage backend with the user’s permissions; the portal alone cannot execute them."
               )
             }}
           </p>
         </section>
         <section id="step-5">
           <h2>5. {{ t("Activar y verificar", "Enable and verify") }}</h2>
+          <p>
+            {{
+              t(
+                "Pon la versión devuelta en la configuración del backend y reinicia el proceso API. Ese proceso necesita una identidad con permiso para invocar el agente y acceso de red al endpoint del proyecto.",
+                "Set the returned version in the backend configuration and restart the API process. That process needs an identity allowed to invoke the agent and network access to the project endpoint."
+              )
+            }}
+          </p>
           <div class="command">
             <button
               (click)="copy('enable')"
@@ -210,8 +230,8 @@ import { Icon } from "../shared/ui";
           <p>
             {{
               t(
-                "Abre el asistente y compara julio con agosto de 2026 usando la referencia Excel. Verifica que los resultados y las fuentes coincidan con el dashboard. get_analytics comparte exactamente los cálculos de las gráficas.",
-                "Open the assistant and compare July with August 2026 using the reference workbook. Verify that results and sources match the dashboard. get_analytics uses exactly the same calculations as the charts."
+                "Abre el asistente en el entorno conectado. Si allí se configuró la referencia Excel privada, compara julio y agosto de 2026; si no, consulta los periodos publicados. Verifica las cifras contra el dashboard. get_analytics comparte sus cálculos.",
+                "Open the assistant in the connected environment. If the private Excel reference is configured there, compare July and August 2026; otherwise query published periods. Check the figures against the dashboard. get_analytics shares its calculations."
               )
             }}
           </p>
@@ -266,8 +286,8 @@ import { Icon } from "../shared/ui";
           <p>
             {{
               t(
-                "Las acciones conservan idempotencia y auditoría. La guía descargable contiene las nueve herramientas, diagnóstico de errores y preparación para Azure.",
-                "Actions retain idempotency and audit logs. The downloadable guide includes all nine tools, troubleshooting and Azure deployment preparation."
+                "Las acciones conservan idempotencia y auditoría. La guía descargable incluye la ruta corporativa completa, la alternativa con Azure CLI autorizada por TI, las nueve herramientas y diagnóstico.",
+                "Actions retain idempotency and audit logs. The downloadable guide covers the full corporate path, an IT-approved Azure CLI alternative, all nine tools and troubleshooting."
               )
             }}
           </p>
@@ -456,23 +476,23 @@ export class FoundryGuide {
   }
   steps = [
     { number: 1, es: "Proyecto y modelo", en: "Project and model" },
-    { number: 2, es: "Identidad y permisos", en: "Identity and permissions" },
-    { number: 3, es: "Variables del entorno", en: "Environment variables" },
+    { number: 2, es: "Solicitud a TI", en: "Request to IT" },
+    { number: 3, es: "Sin Azure CLI", en: "Without Azure CLI" },
     { number: 4, es: "Registrar el agente", en: "Register the agent" },
     { number: 5, es: "Activar y verificar", en: "Enable and verify" },
     { number: 6, es: "Habilitar tareas", en: "Enable actions" },
   ];
   commands = {
-    login:
-      "winget install --exact --id Microsoft.AzureCLI\n# Reopen PowerShell after installing Azure CLI\naz login --tenant '<TENANT_ID>'\naz account set --subscription '<SUBSCRIPTION_ID>'",
     environment:
       "$env:DATASTAGE_FOUNDRY_PROJECT_ENDPOINT = 'https://<RESOURCE>.services.ai.azure.com/api/projects/<PROJECT>'\n$env:DATASTAGE_FOUNDRY_MODEL = '<DEPLOYMENT_NAME>'\n$env:DATASTAGE_FOUNDRY_AGENT_NAME = 'datastage-assistant'\n$env:DATASTAGE_FOUNDRY_ENABLED = 'false'\n$env:DATASTAGE_ALLOW_AGENT_COMMANDS = 'false'",
+    preview:
+      "Push-Location backend\n..\\.venv\\Scripts\\python.exe -m app.modules.foundry.setup\nPop-Location",
     register:
-      "Push-Location backend\n..\\.venv\\Scripts\\python.exe -m app.modules.foundry.setup\n..\\.venv\\Scripts\\python.exe -m app.modules.foundry.setup --apply\nPop-Location",
+      "Push-Location backend\n..\\.venv\\Scripts\\python.exe -m app.modules.foundry.setup --apply\nPop-Location",
     enable:
-      "$env:DATASTAGE_FOUNDRY_AGENT_VERSION = '<RETURNED_VERSION>'\n$env:DATASTAGE_FOUNDRY_ENABLED = 'true'\n.\\scripts\\stop-dev.ps1\n.\\scripts\\start-dev.ps1 -SkipInstall",
+      "$env:DATASTAGE_FOUNDRY_AGENT_VERSION = '<RETURNED_VERSION>'\n$env:DATASTAGE_FOUNDRY_ENABLED = 'true'",
   };
-  async copy(key: "login" | "environment" | "register" | "enable") {
+  async copy(key: "environment" | "preview" | "register" | "enable") {
     try {
       await navigator.clipboard.writeText(this.commands[key]);
       this.copied.set(key);
