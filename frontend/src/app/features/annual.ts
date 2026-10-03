@@ -1,3 +1,4 @@
+import { TranslatePipe } from "../core/i18n";
 import { Component, DestroyRef, inject, signal } from "@angular/core";
 import { ReactiveFormsModule, FormBuilder, Validators } from "@angular/forms";
 import { Router } from "@angular/router";
@@ -14,6 +15,7 @@ import { MONTHS } from "./monthly";
 @Component({
   selector: "ds-annual",
   imports: [
+    TranslatePipe,
     ReactiveFormsModule,
     MatButtonModule,
     MatFormFieldModule,
@@ -26,22 +28,29 @@ import { MONTHS } from "./monthly";
   ],
   template: `<div class="page-heading">
       <div>
-        <span class="eyebrow">VISIÓN ACUMULADA</span>
-        <h1>Consolidado anual</h1>
-        <p>Reúne tus versiones mensuales publicadas en un único resultado.</p>
+        <span class="eyebrow"> {{ "VISIÓN ACUMULADA" | t }} </span>
+        <h1>{{ "Consolidado anual" | t }}</h1>
+        <p>
+          {{
+            "Reúne tus versiones mensuales publicadas en un único resultado."
+              | t
+          }}
+        </p>
       </div>
     </div>
     <div class="form-columns">
       <section class="panel form-panel">
-        <h2>Configura tu consolidado</h2>
+        <h2>{{ "Configura tu consolidado" | t }}</h2>
         <p class="muted">
-          Se incluirán los periodos disponibles desde enero hasta el mes
-          seleccionado.
+          {{
+            "Se incluirán los periodos disponibles desde enero hasta el mes seleccionado."
+              | t
+          }}
         </p>
         <form [formGroup]="form" (ngSubmit)="submit()">
           <div class="field-row">
             <mat-form-field appearance="outline"
-              ><mat-label>Año</mat-label
+              ><mat-label> {{ "Año" | t }} </mat-label
               ><input
                 matInput
                 type="number"
@@ -49,10 +58,10 @@ import { MONTHS } from "./monthly";
                 max="2100"
                 formControlName="year" /></mat-form-field
             ><mat-form-field appearance="outline"
-              ><mat-label>Hasta el mes</mat-label
+              ><mat-label> {{ "Hasta el mes" | t }} </mat-label
               ><mat-select formControlName="month">
                 @for (month of months; track month; let i = $index) {
-                  <mat-option [value]="i">{{ month }}</mat-option>
+                  <mat-option [value]="i">{{ month | t }}</mat-option>
                 }
               </mat-select></mat-form-field
             >
@@ -60,76 +69,88 @@ import { MONTHS } from "./monthly";
           <div class="annual-summary">
             <ds-icon name="calendar" />
             <div>
-              <strong
-                >Enero — {{ months[form.controls.month.value] }}
-                {{ form.controls.year.value }}</strong
+              <strong>
+                {{ "Enero —" | t }} {{ months[form.controls.month.value] | t }}
+                {{ form.controls.year.value | t }}</strong
               >
               <p>
-                {{ sources().length }} periodos con versión publicada
-                disponibles
+                {{ sources().length | t }}
+                {{ "periodos con versión publicada disponibles" | t }}
               </p>
             </div>
           </div>
           @if (error()) {
-            <div class="error-message" role="alert">{{ error() }}</div>
+            <div class="error-message" role="alert">{{ error() | t }}</div>
           }
           @if (busy()) {
             <mat-progress-bar
               mode="indeterminate"
-              aria-label="Creando consolidado"
+              [attr.aria-label]="'Creando consolidado' | t"
             />
           }
           <div class="form-actions">
-            <span>Las fuentes se fijan al crear la ejecución.</span
+            <span>
+              {{ "Las fuentes se fijan al crear la ejecución." | t }} </span
             ><button
               mat-flat-button
               type="submit"
               [disabled]="busy() || form.invalid || !sources().length"
             >
-              Crear consolidado <ds-icon name="arrow" />
+              {{ "Crear consolidado" | t }} <ds-icon name="arrow" />
             </button>
           </div>
         </form>
       </section>
       <aside class="panel info-panel">
-        <span class="eyebrow">VERSIONES REPRODUCIBLES</span>
-        <h2>Un resultado con historia.</h2>
+        <span class="eyebrow"> {{ "VERSIONES REPRODUCIBLES" | t }} </span>
+        <h2>{{ "Un resultado con historia." | t }}</h2>
         <p>
-          Cada consolidado conserva las versiones mensuales exactas que lo
-          componen.
+          {{
+            "Cada consolidado conserva las versiones mensuales exactas que lo componen."
+              | t
+          }}
         </p>
         <div class="note">
-          Si corriges un mes, crea un nuevo consolidado para incluir esa
-          versión. Los resultados anteriores seguirán disponibles.
+          {{
+            "Si corriges un mes, crea un nuevo consolidado para incluir esa versión. Los resultados anteriores seguirán disponibles."
+              | t
+          }}
         </div>
       </aside>
     </div>
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <h2>Fuentes del periodo</h2>
-          <p>Versiones mensuales que estarán disponibles para consolidar</p>
+          <h2>{{ "Fuentes del periodo" | t }}</h2>
+          <p>
+            {{
+              "Versiones mensuales que estarán disponibles para consolidar" | t
+            }}
+          </p>
         </div>
       </div>
       @if (loading()) {
-        <mat-progress-bar mode="indeterminate" aria-label="Cargando periodos" />
+        <mat-progress-bar
+          mode="indeterminate"
+          [attr.aria-label]="'Cargando periodos' | t"
+        />
       }
       @if (sources().length) {
         <div class="period-grid">
           @for (period of sources(); track period.id) {
             <article class="period-tile">
               <ds-icon name="calendar" /><strong>{{
-                period.name.replace("_", " ")
+                period.name.replace("_", " ") | t
               }}</strong
-              ><span>Versión {{ period.version }}</span
+              ><span> {{ "Versión" | t }} {{ period.version | t }}</span
               ><ds-status value="PUBLISHED" />
             </article>
           }
         </div>
       } @else {
         <ds-empty
-          title="No hay fuentes publicadas en este rango"
-          message="Procesa una carga mensual o selecciona otro año."
+          [title]="'No hay fuentes publicadas en este rango' | t"
+          [message]="'Procesa una carga mensual o selecciona otro año.' | t"
           icon="calendar"
         />
       }

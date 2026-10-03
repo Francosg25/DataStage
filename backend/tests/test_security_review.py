@@ -133,7 +133,7 @@ def test_agent_callback_uses_authenticated_scope_even_for_remote_tool_call(local
         session.flush()
         conversation_id = conversation.id
 
-    def injected_model_response(self, history, execute_tool):
+    def injected_model_response(self, history, execute_tool, language='es'):
         return execute_tool("get_run", {"runId": foreign_id, "scope_id": "foreign"}, "call-test")
 
     monkeypatch.setattr("app.modules.foundry.FoundryAgent.respond", injected_model_response)

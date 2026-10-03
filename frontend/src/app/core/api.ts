@@ -2,6 +2,12 @@ import { Injectable, inject } from "@angular/core";
 import { HttpClient, HttpParams } from "@angular/common/http";
 import { Observable } from "rxjs";
 import {
+  AnalyticsFilters,
+  AnalyticsOptions,
+  AnalyticsReport,
+} from "./analytics";
+import { I18n } from "./i18n";
+import {
   AppConfig,
   Identity,
   Page,
@@ -15,6 +21,7 @@ import {
 @Injectable({ providedIn: "root" })
 export class Api {
   private readonly http = inject(HttpClient);
+  private readonly i18n = inject(I18n);
   readonly base = "/api/v1";
   config() {
     return this.http.get<AppConfig>(`${this.base}/config`);
@@ -41,6 +48,16 @@ export class Api {
   }
   overview() {
     return this.http.get<Overview>(`${this.base}/reports/overview`);
+  }
+  analyticsOptions() {
+    return this.http.get<AnalyticsOptions>(
+      `${this.base}/reports/analytics/options`,
+    );
+  }
+  analytics(filters: AnalyticsFilters) {
+    return this.http.get<AnalyticsReport>(`${this.base}/reports/analytics`, {
+      params: { ...filters },
+    });
   }
   catalog() {
     return this.http.get<CatalogTable[]>(`${this.base}/catalog/tables`);
@@ -102,7 +119,7 @@ export class Api {
   message(id: string, message: string, allowActions = false) {
     return this.http.post<{ message: string; evidence: DataRow[] }>(
       `${this.base}/agent/conversations/${encodeURIComponent(id)}/messages`,
-      { message, allowActions },
+      { message, allowActions, language: this.i18n.language() },
     );
   }
 }

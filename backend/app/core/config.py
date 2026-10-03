@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     job_lease_seconds: int = Field(default=120, ge=10)
     max_job_attempts: int = Field(default=4, ge=1, le=10)
     auto_annual: bool = True
+    analytics_reference_file: Path | None = None
     foundry_enabled: bool = False
     foundry_project_endpoint: str = ""
     foundry_agent_name: str = "datastage-assistant"

@@ -1,3 +1,4 @@
+import { TranslatePipe } from "../core/i18n";
 import { Component, DestroyRef, inject, signal } from "@angular/core";
 import { ReactiveFormsModule, FormBuilder } from "@angular/forms";
 import { MatFormFieldModule } from "@angular/material/form-field";
@@ -13,6 +14,7 @@ import { DataTable, Icon } from "../shared/ui";
 @Component({
   selector: "ds-data",
   imports: [
+    TranslatePipe,
     ReactiveFormsModule,
     MatFormFieldModule,
     MatSelectModule,
@@ -24,29 +26,31 @@ import { DataTable, Icon } from "../shared/ui";
   ],
   template: `<div class="page-heading">
       <div>
-        <span class="eyebrow">INFORMACIÓN PUBLICADA</span>
-        <h1>Consulta de datos</h1>
-        <p>Explora los registros de las versiones mensuales vigentes.</p>
+        <span class="eyebrow"> {{ "INFORMACIÓN PUBLICADA" | t }} </span>
+        <h1>{{ "Consulta de datos" | t }}</h1>
+        <p>
+          {{ "Explora los registros de las versiones mensuales vigentes." | t }}
+        </p>
       </div>
     </div>
     <section class="panel filter-panel">
       <form [formGroup]="form" (ngSubmit)="search()">
         <mat-form-field appearance="outline"
-          ><mat-label>Tabla</mat-label
+          ><mat-label> {{ "Tabla" | t }} </mat-label
           ><mat-select formControlName="table">
             @for (table of catalog(); track table.code) {
               <mat-option [value]="table.code"
-                >{{ table.code }} · {{ table.name }}</mat-option
+                >{{ table.code | t }} · {{ table.name | t }}</mat-option
               >
             }
           </mat-select></mat-form-field
         ><mat-form-field appearance="outline"
-          ><mat-label>Periodo</mat-label
+          ><mat-label> {{ "Periodo" | t }} </mat-label
           ><mat-select formControlName="period"
-            ><mat-option value="">Todos los periodos</mat-option>
+            ><mat-option value=""> {{ "Todos los periodos" | t }} </mat-option>
             @for (period of periods(); track period.id) {
               <mat-option [value]="period.name">{{
-                period.name.replace("_", " ")
+                period.name.replace("_", " ") | t
               }}</mat-option>
             }
           </mat-select></mat-form-field
@@ -55,28 +59,31 @@ import { DataTable, Icon } from "../shared/ui";
           type="submit"
           [disabled]="loading() || !form.controls.table.value"
         >
-          <ds-icon name="search" /> Consultar
+          <ds-icon name="search" /> {{ "Consultar" | t }}
         </button>
       </form>
     </section>
     @if (error()) {
-      <div class="error-message" role="alert">{{ error() }}</div>
+      <div class="error-message" role="alert">{{ error() | t }}</div>
     }
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <h2>{{ selectedName() }}</h2>
-          <p>{{ data().total }} registros encontrados</p>
+          <h2>{{ selectedName() | t }}</h2>
+          <p>{{ data().total | t }} {{ "registros encontrados" | t }}</p>
         </div>
-        <span class="subtle-tag">Solo lectura</span>
+        <span class="subtle-tag"> {{ "Solo lectura" | t }} </span>
       </div>
       @if (loading()) {
-        <mat-progress-bar mode="indeterminate" aria-label="Consultando datos" />
+        <mat-progress-bar
+          mode="indeterminate"
+          [attr.aria-label]="'Consultando datos' | t"
+        />
       }
       <ds-data-table
         [rows]="data().items"
         [headers]="data().headers"
-        emptyTitle="No hay datos para esta consulta"
+        [emptyTitle]="'No hay datos para esta consulta' | t"
       /><mat-paginator
         [length]="data().total"
         [pageSize]="50"
@@ -84,7 +91,7 @@ import { DataTable, Icon } from "../shared/ui";
         [hidePageSize]="true"
         [disabled]="loading()"
         (page)="change($event)"
-        aria-label="Paginación de datos"
+        [attr.aria-label]="'Paginación de datos' | t"
       />
     </section>`,
 })

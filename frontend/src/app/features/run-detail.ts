@@ -1,6 +1,10 @@
+import {
+  TranslatePipe,
+  LocalizedNumberPipe,
+  LocalizedDatePipe,
+} from "../core/i18n";
 import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
 import { Component, DestroyRef, inject, signal } from "@angular/core";
-import { DatePipe, DecimalPipe } from "@angular/common";
 import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { ReactiveFormsModule, FormControl, Validators } from "@angular/forms";
 import { MatButtonModule } from "@angular/material/button";
@@ -17,8 +21,9 @@ import { Icon, Status, DataTable } from "../shared/ui";
 @Component({
   selector: "ds-run-detail",
   imports: [
-    DatePipe,
-    DecimalPipe,
+    TranslatePipe,
+    LocalizedDatePipe,
+    LocalizedNumberPipe,
     RouterLink,
     ReactiveFormsModule,
     MatButtonModule,
@@ -32,90 +37,104 @@ import { Icon, Status, DataTable } from "../shared/ui";
     DataTable,
   ],
   template: `
-    <a routerLink="/runs" class="back-link">← Volver al historial</a>
+    <a routerLink="/runs" class="back-link">
+      {{ "← Volver al historial" | t }}
+    </a>
     @if (run(); as r) {
       <div class="page-heading">
         <div>
           <span class="eyebrow">{{
-            r.kind.toUpperCase() === "ANNUAL"
+            (r.kind.toUpperCase() === "ANNUAL"
               ? "CONSOLIDACIÓN ANUAL"
               : "PROCESAMIENTO MENSUAL"
+            ) | t
           }}</span>
-          <h1>{{ label(r) }}</h1>
+          <h1>{{ label(r) | t }}</h1>
           <p>
-            Creado el {{ r.createdAt | date: "dd/MM/yyyy HH:mm" }} ·
-            <span class="mono">{{ r.id }}</span>
+            {{ "Creado el" | t }}
+            {{ r.createdAt | dsDate: "dd/MM/yyyy HH:mm" | t }} ·
+            <span class="mono">{{ r.id | t }}</span>
           </p>
         </div>
         <div class="heading-actions">
           <ds-status [value]="r.functionalResult || r.status" />
           @if (r.exportDocumentId) {
             <button mat-flat-button (click)="download()" [disabled]="busy()">
-              <ds-icon name="download" /> Descargar Excel
+              <ds-icon name="download" /> {{ "Descargar Excel" | t }}
             </button>
           } @else if (terminal(r)) {
             <button mat-stroked-button (click)="export()" [disabled]="busy()">
-              Generar Excel
+              {{ "Generar Excel" | t }}
             </button>
           }
         </div>
       </div>
       @if (error()) {
         <div class="error-message" role="alert">
-          {{ error() }}
-          <button mat-button (click)="reload()">Actualizar</button>
+          {{ error() | t }}
+          <button mat-button (click)="reload()">{{ "Actualizar" | t }}</button>
         </div>
       }
       @if (r.errorMessage) {
-        <div class="error-message" role="alert">{{ r.errorMessage }}</div>
+        <div class="error-message" role="alert">{{ r.errorMessage | t }}</div>
       }
       <section class="panel progress-panel">
         <div class="progress-heading">
           <div>
             <h2>
               {{
-                terminal(r) ? "Resultado del proceso" : "Procesamiento en curso"
+                (terminal(r)
+                  ? "Resultado del proceso"
+                  : "Procesamiento en curso"
+                ) | t
               }}
             </h2>
-            <p>{{ phase(r.phase) }}</p>
+            <p>{{ phase(r.phase) | t }}</p>
           </div>
-          <strong>{{ r.progress | number: "1.0-0" }}%</strong>
+          <strong>{{ r.progress | dsNumber: "1.0-0" | t }}%</strong>
         </div>
         <mat-progress-bar
           mode="determinate"
           [value]="r.progress"
-          aria-label="Avance del procesamiento"
+          [attr.aria-label]="'Avance del procesamiento' | t"
         />
         <div class="progress-meta">
-          <span>Publicación: <ds-status [value]="r.publicationStatus" /></span
-          ><span>Exportación: <ds-status [value]="r.exportStatus" /></span>
+          <span>
+            {{ "Publicación:" | t }}
+            <ds-status [value]="r.publicationStatus" /></span
+          ><span>
+            {{ "Exportación:" | t }} <ds-status [value]="r.exportStatus"
+          /></span>
         </div>
       </section>
       <div class="stats-grid compact-stats">
         <article class="stat-card">
-          <span>Archivos recibidos</span
-          ><strong>{{ r.counts.receivedFiles | number }}</strong
+          <span> {{ "Archivos recibidos" | t }} </span
+          ><strong>{{ r.counts.receivedFiles | dsNumber | t }}</strong
           ><small
-            >{{ r.counts.processedFiles }} procesados ·
-            {{ r.counts.skippedFiles }} omitidos</small
-          >
+            >{{ r.counts.processedFiles | t }} {{ "procesados ·" | t }}
+            {{ r.counts.skippedFiles | t }} {{ "omitidos" | t }}
+          </small>
         </article>
         <article class="stat-card">
-          <span>Tablas procesadas</span
-          ><strong>{{ r.counts.processedTables | number }}</strong
-          ><small>Agrupadas por código</small>
+          <span> {{ "Tablas procesadas" | t }} </span
+          ><strong>{{ r.counts.processedTables | dsNumber | t }}</strong
+          ><small> {{ "Agrupadas por código" | t }} </small>
         </article>
         <article class="stat-card">
-          <span>Registros</span><strong>{{ r.counts.rows | number }}</strong
-          ><small>Filas de datos procesadas</small>
+          <span> {{ "Registros" | t }} </span
+          ><strong>{{ r.counts.rows | dsNumber | t }}</strong
+          ><small> {{ "Filas de datos procesadas" | t }} </small>
         </article>
         <article class="stat-card">
-          <span>Incidencias</span
-          ><strong>{{ r.counts.errors + r.counts.warnings | number }}</strong
+          <span> {{ "Incidencias" | t }} </span
+          ><strong>{{
+            r.counts.errors + r.counts.warnings | dsNumber | t
+          }}</strong
           ><small
-            >{{ r.counts.errors }} errores ·
-            {{ r.counts.warnings }} advertencias</small
-          >
+            >{{ r.counts.errors | t }} {{ "errores ·" | t }}
+            {{ r.counts.warnings | t }} {{ "advertencias" | t }}
+          </small>
         </article>
       </div>
       <section class="panel">
@@ -124,26 +143,27 @@ import { Icon, Status, DataTable } from "../shared/ui";
           animationDuration="0ms"
         >
           @for (tab of tabs; track tab.key) {
-            <mat-tab [label]="tab.label"
+            <mat-tab [label]="tab.label | t"
               ><div class="tab-content">
                 @if (sectionLoading()) {
                   <mat-progress-bar
                     mode="indeterminate"
-                    aria-label="Cargando detalle"
+                    [attr.aria-label]="'Cargando detalle' | t"
                   />
                 }
                 @if (sectionError()) {
                   <div class="error-message" role="alert">
-                    {{ sectionError() }}
+                    {{ sectionError() | t }}
                   </div>
                 }
                 <ds-data-table
                   [rows]="rows()"
                   [headers]="sectionHeaders()"
                   [emptyTitle]="
-                    tab.key === 'issues'
+                    (tab.key === 'issues'
                       ? 'Sin incidencias registradas'
                       : 'Sin registros disponibles'
+                    ) | t
                   "
                 />
                 @if (sectionTotal() > 50) {
@@ -154,7 +174,7 @@ import { Icon, Status, DataTable } from "../shared/ui";
                     [hidePageSize]="true"
                     [disabled]="sectionLoading()"
                     (page)="changePage($event)"
-                    aria-label="Paginación del detalle"
+                    [attr.aria-label]="'Paginación del detalle' | t"
                   />
                 }</div
             ></mat-tab>
@@ -164,38 +184,46 @@ import { Icon, Status, DataTable } from "../shared/ui";
       @if (terminal(r) && canReprocess()) {
         <section class="panel reprocess-panel">
           <div>
-            <h2>Crear una nueva versión</h2>
+            <h2>{{ "Crear una nueva versión" | t }}</h2>
             <p>
-              El reproceso conserva la ejecución original y registra el motivo
-              en la auditoría.
+              {{
+                "El reproceso conserva la ejecución original y registra el motivo en la auditoría."
+                  | t
+              }}
             </p>
           </div>
           <form (ngSubmit)="reprocess()">
             <mat-form-field appearance="outline"
-              ><mat-label>Motivo del reproceso</mat-label
+              ><mat-label> {{ "Motivo del reproceso" | t }} </mat-label
               ><textarea
                 matInput
                 [formControl]="reason"
                 rows="2"
                 maxlength="1000"
               ></textarea
-              ><mat-hint>Mínimo 5 caracteres</mat-hint></mat-form-field
+              ><mat-hint>
+                {{ "Mínimo 5 caracteres" | t }}
+              </mat-hint></mat-form-field
             ><button
               mat-stroked-button
               type="submit"
               [disabled]="busy() || reason.invalid"
             >
-              Solicitar reproceso
+              {{ "Solicitar reproceso" | t }}
             </button>
           </form>
         </section>
       }
     } @else if (error()) {
       <div class="error-message" role="alert">
-        {{ error() }} <button mat-button (click)="reload()">Reintentar</button>
+        {{ error() | t }}
+        <button mat-button (click)="reload()">{{ "Reintentar" | t }}</button>
       </div>
     } @else {
-      <mat-progress-bar mode="indeterminate" aria-label="Cargando ejecución" />
+      <mat-progress-bar
+        mode="indeterminate"
+        [attr.aria-label]="'Cargando ejecución' | t"
+      />
     }
   `,
 })

@@ -8,6 +8,7 @@
 **/*.egg-info/
 frontend/node_modules/
 frontend/dist/
+frontend/public/guides/
 frontend/.angular/
 frontend/test-results/
 frontend/playwright-report/

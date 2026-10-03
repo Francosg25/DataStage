@@ -23,7 +23,7 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError
 from app.core.errors import ApplicationError
 from .tools import tool_definitions, validate_tool_arguments
 
-INSTRUCTIONS = """Eres el asistente corporativo DataStage. Responde en español con precisión.
+INSTRUCTIONS = """Eres el asistente corporativo DataStage. Responde con precisión en el idioma indicado por la aplicación.
 Obtén evidencia mediante las herramientas antes de afirmar datos operativos o documentación.
 Nunca inventes ejecuciones, fechas, conteos, errores, enlaces ni resultados; una muestra no es el total.
 Incluye los identificadores de ejecución, versión o documento que respalden los hechos.
@@ -34,6 +34,12 @@ El backend determina usuario, ámbito, permisos y autorización de acciones. No 
 Sólo solicita start_annual o reprocess_run ante una petición explícita del usuario; nunca repitas
 una acción para verificar su éxito: consulta su ejecución. Si una herramienta devuelve error,
 comunica el límite sin afirmar que la acción tuvo éxito. Si falta evidencia, indícalo.
+Para preguntas de tendencias, importes y comparaciones comerciales utiliza get_analytics.
+Respeta la fuente (published o reference), rango y filtros solicitados. Mantén USD y MXN separados.
+Las tablas 510, 557 y 702 son niveles distintos y no se suman. 505 y 551 no se suman.
+Un mes sin fuente no vale cero. Una variación de cero a un importe positivo no tiene porcentaje definido.
+No atribuyas causalidad a una correlación. INCI C es reconocimiento correcto, no una incidencia.
+Advierte de cobertura parcial y diferencias de conciliación que afecten tu respuesta.
 """
 MAX_CALLS_PER_ROUND = 8
 MAX_CALLS_PER_TURN = 24
@@ -125,7 +131,7 @@ class FoundryAgent:
                 self._sleep(min(2.0, 0.25 * (2**attempt)) + random.uniform(0, 0.1))
         raise AssertionError("Retry budget exhausted")
 
-    def respond(self, history: list[dict], execute_tool: Callable[[str, dict, str], dict]) -> dict:
+    def respond(self, history: list[dict], execute_tool: Callable[[str, dict, str], dict], language: str = 'es') -> dict:
         self._validate_configuration()
         if not history or len(history) > 100:
             raise ApplicationError(400, "agent_history_invalid", "La conversación debe contener entre 1 y 100 mensajes.")
@@ -149,7 +155,7 @@ class FoundryAgent:
         }
         request = {
             "input": input_messages,
-            "instructions": INSTRUCTIONS,
+            "instructions": INSTRUCTIONS + ('\nRespond in English.' if language == 'en' else '\nResponde en español.'),
             "tools": tool_definitions(self.settings.allow_agent_commands),
             "tool_choice": "required",
             "parallel_tool_calls": False,
@@ -167,7 +173,7 @@ class FoundryAgent:
                     calls = [item for item in output if _get(item, "type") == "function_call"]
                     if not calls:
                         if not successful_tools:
-                            return {"message": "No hay evidencia verificada para responder esta consulta. Consulta una ejecución, un periodo o la documentación disponible.", "evidence": evidence}
+                            return {"message": "No verified evidence is available for this question. Query a run, period or available documentation." if language == 'en' else "No hay evidencia verificada para responder esta consulta. Consulta una ejecución, un periodo o la documentación disponible.", "evidence": evidence}
                         message = _get(response, "output_text", "")
                         if not isinstance(message, str) or not message.strip():
                             raise ApplicationError(502, "foundry_empty_response", "Foundry no devolvió una respuesta textual válida.")

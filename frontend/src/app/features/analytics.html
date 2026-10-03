@@ -1,0 +1,791 @@
+<header class="analytics-heading">
+  <div>
+    <div class="report-kicker">
+      DATASTAGE <span>/</span> {{ t('INTELIGENCIA DE COMERCIO EXTERIOR','TRADE
+      INTELLIGENCE') }}
+    </div>
+    <h1>{{ t('Análisis de operaciones','Operations analytics') }}</h1>
+    <p>
+      {{ t('Evolución, composición y control de tus operaciones
+      aduaneras.','Trends, composition and control of your customs operations.')
+      }}
+    </p>
+  </div>
+  <div class="heading-actions">
+    <button
+      type="button"
+      (click)="retry()"
+      [disabled]="loading()"
+      [title]="t('Actualizar','Refresh')"
+      [attr.aria-label]="t('Actualizar análisis','Refresh analytics')"
+    >
+      <ds-icon name="history" /></button
+    ><button
+      type="button"
+      (click)="print()"
+      [disabled]="!report() || loading()"
+      [title]="t('Imprimir informe','Print report')"
+      [attr.aria-label]="t('Imprimir informe','Print report')"
+    >
+      <ds-icon name="file" /></button
+    ><button
+      type="button"
+      class="export-button"
+      (click)="downloadCsv()"
+      [disabled]="!report() || loading()"
+    >
+      <ds-icon name="download" />{{ t('Exportar CSV','Export CSV') }}
+    </button>
+  </div>
+</header>
+<div
+  class="filterbar"
+  [attr.aria-label]="t('Filtros del informe','Report filters')"
+>
+  <label class="source-filter"
+    >{{ t('Fuente','Source') }}<select
+      [(ngModel)]="filters.source"
+      (ngModelChange)="sourceChanged()"
+      [disabled]="!options()"
+    >
+      @for (source of options()?.sources || []; track source.id) {
+      <option [value]="source.id">
+        {{ source.id === 'reference' ? t('Excel de referencia','Reference
+        workbook') : t('Cargas publicadas','Published runs') }}
+      </option>
+      }
+    </select></label
+  >
+  <label
+    >{{ t('Año','Year') }}<select
+      [(ngModel)]="filters.year"
+      (ngModelChange)="load()"
+    >
+      @for (source of options()?.sources || []; track source.id) {@if (source.id
+      === filters.source) {@for (year of source.years; track year) {
+      <option [ngValue]="year">{{ year }}</option>
+      } @empty {
+      <option [ngValue]="filters.year">{{ filters.year }}</option>
+      }}}
+    </select></label
+  >
+  <label
+    >{{ t('Desde','From') }}<select
+      [(ngModel)]="filters.startMonth"
+      (ngModelChange)="load()"
+    >
+      @for (m of months; track m) {
+      <option [ngValue]="m">{{ i18n.month(m) }}</option>
+      }
+    </select></label
+  >
+  <label
+    >{{ t('Hasta','Through') }}<select
+      [(ngModel)]="filters.endMonth"
+      (ngModelChange)="load()"
+    >
+      @for (m of months; track m) {
+      <option [ngValue]="m" [disabled]="m < filters.startMonth">
+        {{ i18n.month(m) }}
+      </option>
+      }
+    </select></label
+  >
+  <label
+    >{{ t('Operación','Operation') }}<select
+      [(ngModel)]="filters.operation"
+      (ngModelChange)="load()"
+    >
+      <option value="">{{ t('Todas','All') }}</option>
+      <option value="1">{{ t('Importación','Import') }}</option>
+      <option value="2">{{ t('Exportación','Export') }}</option>
+    </select></label
+  >
+  <label
+    >{{ t('Aduana','Customs office') }}<select
+      [(ngModel)]="filters.customs"
+      (ngModelChange)="load()"
+    >
+      <option value="">{{ t('Todas','All') }}</option>
+      @for (v of report()?.filters?.customs || []; track v) {
+      <option [value]="v">{{ v }}</option>
+      }
+    </select></label
+  >
+  <label
+    >{{ t('Documento','Document') }}<select
+      [(ngModel)]="filters.document"
+      (ngModelChange)="load()"
+    >
+      <option value="">{{ t('Todos','All') }}</option>
+      @for (v of report()?.filters?.documents || []; track v) {
+      <option [value]="v">{{ v }}</option>
+      }
+    </select></label
+  >
+  <button type="button" class="reset-button" (click)="reset()">
+    {{ t('Restablecer','Reset') }}
+  </button>
+</div>
+@if (error()) {
+<div class="error-message" role="alert">
+  {{ i18n.t(error()) }}
+  <button (click)="retry()">{{ t('Reintentar','Retry') }}</button>
+</div>
+} @if (loading()) {
+<div class="loading-bar" role="status">
+  {{ t('Actualizando indicadores…','Updating metrics…') }}
+</div>
+} @if (report(); as r) {
+<div class="report-status">
+  <span
+    ><i></i>{{ r.source === 'reference' ? t('Datos reales · Referencia
+    Excel','Actual data · Excel reference') : t('Versiones mensuales
+    vigentes','Current monthly versions') }}
+    <span class="status-separator">|</span> {{ r.coverage.availableMonths.length
+    }}/{{ r.coverage.requestedMonths }} {{ t('meses disponibles','months
+    available') }}</span
+  ><span
+    >{{ t('Último periodo:','Latest period:') }}
+    <b
+      >{{ r.latestMonth ? i18n.month(r.latestMonth) + ' ' + r.year : '—' }}</b
+    ></span
+  >
+</div>
+<nav
+  class="report-tabs"
+  [attr.aria-label]="t('Vistas de análisis','Analytics views')"
+>
+  @for (item of tabs; track item.id) {<button
+    type="button"
+    [class.active]="tab() === item.id"
+    [attr.aria-current]="tab() === item.id ? 'page' : null"
+    (click)="tab.set(item.id)"
+  >
+    {{ t(item.es,item.en) }}</button
+  >}
+</nav>
+@if (r.reconciliation && !r.reconciliation.matched && tab() !== 'definitions') {
+<div class="reference-notice">
+  <ds-icon name="alert" /><span
+    >{{ r.reconciliation.differences.length }} {{ t('tablas con diferencias
+    entre el consolidado y el Excel mensual.','tables differ between the
+    consolidated and monthly workbooks.') }}</span
+  ><button (click)="tab.set('definitions')">
+    {{ t('Revisar fuentes','Review sources') }}
+  </button>
+</div>
+}
+<div [class.is-loading]="loading()" [attr.aria-busy]="loading()">
+  @if (!r.coverage.availableMonths.length) {
+  <section class="analytics-empty">
+    <ds-icon name="calendar" />
+    <h2>{{ t('No hay periodos disponibles','No periods available') }}</h2>
+    <p>
+      {{ t('No se encontraron datos para el año y la fuente seleccionados.','No
+      data was found for the selected year and source.') }}
+    </p>
+    <a routerLink="/monthly"
+      >{{ t('Ir a cargas mensuales','Go to monthly uploads') }}</a
+    >
+  </section>
+  } @else { @if (tab() !== 'definitions') {
+  <div class="kpi-grid">
+    @for (metric of metricDefinitions; track metric.key) {
+    <article class="kpi" [style.--metric-color]="metric.color">
+      <div class="kpi-label">
+        {{ t(metric.es,metric.en) }}<span>{{ metric.unit }}</span>
+      </div>
+      <div class="kpi-value" [title]="format(r.totals[metric.key],metric.unit)">
+        {{ format(r.totals[metric.key],metric.unit,!!metric.unit) }}
+      </div>
+      <div class="kpi-bottom">
+        <span
+          class="kpi-change"
+          [class.increase]="(r.deltas[metric.key] || 0) > 0"
+          [class.decrease]="(r.deltas[metric.key] || 0) < 0"
+          >{{ delta(r.deltas[metric.key]) }}</span
+        ><span class="spark" aria-hidden="true"
+          >@for (height of spark(metric.key); track $index) {<i
+            [style.height.px]="height"
+          ></i
+          >}</span
+        >
+      </div>
+      <div class="kpi-note">
+        {{ t('Tabla','Table') }} {{ metric.source }} · {{ t('Último mes vs.
+        anterior','Latest vs. previous month') }}
+      </div>
+    </article>
+    }
+  </div>
+  } @if (tab() === 'overview') {
+  <div class="section-heading">
+    <h2>{{ t('Evolución mensual','Monthly trends') }}</h2>
+    <div class="metric-switch">
+      <select
+        [ngModel]="trendMetric()"
+        (ngModelChange)="trendMetric.set($event)"
+        [attr.aria-label]="t('Indicador de tendencia','Trend metric')"
+      >
+        @for (m of metricDefinitions; track m.key) {
+        <option [value]="m.key">{{ t(m.es,m.en) }} {{ m.unit }}</option>
+        }
+      </select>
+    </div>
+  </div>
+  <div class="chart-grid main-charts">
+    <ds-analytics-chart
+      [title]="t('Tendencia del periodo','Period trend')"
+      [subtitle]="t(trendName()!.es,trendName()!.en) + ' · ' + trendName()!.unit"
+      type="line"
+      [labels]="labels()"
+      [series]="series(trendMetric(),t(trendName()!.es,trendName()!.en),'#11998b')"
+      [footnote]="t('Los meses sin fuente se muestran como huecos.','Months without a source appear as gaps.')"
+      (selected)="selectMonth($event)"
+    />
+    <ds-analytics-chart
+      [title]="t('Importación y exportación','Imports and exports')"
+      [subtitle]="t('Pedimentos por mes · Tabla 501','Declarations by month · Table 501')"
+      [labels]="labels()"
+      [series]="pairSeries('imports','exports',[t('Importación','Import'),t('Exportación','Export')])"
+      [stacked]="true"
+      [footnote]="t('Conteo distinto por periodo y llave de pedimento.','Distinct count by period and declaration key.')"
+      (selected)="selectMonth($event)"
+    />
+  </div>
+  <section class="insights">
+    <div class="insight-label">
+      <ds-icon name="search" /><strong
+        >{{ t('Lectura del periodo','Period insights') }}</strong
+      ><span>{{ t('Cálculo verificable','Verified calculation') }}</span>
+    </div>
+    <div>
+      <small>{{ t('VARIACIÓN DE VALOR','VALUE CHANGE') }}</small
+      ><strong>{{ delta(r.deltas['tradeUsd']) }}</strong>
+      <p>
+        {{ r.latestMonth ? i18n.month(r.latestMonth) : '—' }} {{ t('frente al
+        mes anterior','against the previous month') }} · USD
+      </p>
+    </div>
+    <div>
+      <small>{{ t('PARTICIPACIÓN IMPORTADORA','IMPORT SHARE') }}</small
+      ><strong>{{ format(share(),'%') }}</strong>
+      <p>
+        {{ t('Del valor de mercancías del periodo','Of the period’s trade
+        value') }}
+      </p>
+    </div>
+    <div>
+      <small
+        >{{ t('PRINCIPAL ORIGEN / DESTINO','LEADING ORIGIN / DESTINATION')
+        }}</small
+      ><strong>{{ rankLabels('countries')[0] || '—' }}</strong>
+      <p>{{ format(ranking('countries')[0]?.value,'USD',true) }} USD</p>
+    </div>
+  </section>
+  <div class="chart-grid three">
+    <ds-analytics-chart
+      [title]="t('Composición de operaciones','Operation mix')"
+      [subtitle]="t('Registros de pedimentos · 501','Declaration records · 501')"
+      type="doughnut"
+      [labels]="rankLabels('operations')"
+      [series]="rankSeries('operations',t('Registros','Records'))"
+      (selected)="crossFilter('operation','operations',$event)"
+    />
+    <ds-analytics-chart
+      [title]="t('Aduanas de despacho','Customs offices')"
+      [subtitle]="t('Registros de pedimentos · 501','Declaration records · 501')"
+      [horizontal]="true"
+      [labels]="rankLabels('customs')"
+      [series]="rankSeries('customs',t('Registros','Records'),'#447ec0')"
+      (selected)="crossFilter('customs','customs',$event)"
+    />
+    <ds-analytics-chart
+      [title]="t('Claves de documento','Document codes')"
+      [subtitle]="t('Registros de pedimentos · 501','Declaration records · 501')"
+      [horizontal]="true"
+      [labels]="rankLabels('documents')"
+      [series]="rankSeries('documents',t('Registros','Records'),'#8b70ae')"
+      (selected)="crossFilter('document','documents',$event)"
+    />
+  </div>
+  } @if (tab() === 'trade') {
+  <div class="section-heading">
+    <h2>
+      {{ t('Mercancías, mercados y proveedores','Goods, markets and suppliers')
+      }}
+    </h2>
+    <span
+      >{{ t('Valores monetarios separados por moneda','Monetary values separated
+      by currency') }}</span
+    >
+  </div>
+  <div class="chart-grid">
+    <ds-analytics-chart
+      [title]="t('Flujo de mercancías','Trade flows')"
+      subtitle="USD · 551"
+      [labels]="labels()"
+      [series]="pairSeries('importUsd','exportUsd',[t('Importación','Import'),t('Exportación','Export')])"
+      [stacked]="true"
+    />
+    <ds-analytics-chart
+      [title]="t('Valor en aduana y comercial','Customs and commercial value')"
+      subtitle="MXN · 551"
+      type="line"
+      [labels]="labels()"
+      [series]="pairSeries('customsMxn','commercialMxn',[t('Valor en aduana','Customs value'),t('Valor comercial','Commercial value')])"
+    />
+    <ds-analytics-chart
+      [title]="t('País de origen / destino','Country of origin / destination')"
+      subtitle="USD · 551"
+      [horizontal]="true"
+      [labels]="rankLabels('countries')"
+      [series]="rankSeries('countries','USD','#11998b')"
+      [footnote]="t('Origen en importación; destino en exportación.','Origin for imports; destination for exports.')"
+    />
+    <ds-analytics-chart
+      [title]="t('Fracciones arancelarias','Tariff classifications')"
+      subtitle="USD · 551"
+      [horizontal]="true"
+      [labels]="rankLabels('tariffs')"
+      [series]="rankSeries('tariffs','USD','#447ec0')"
+    />
+    <ds-analytics-chart
+      [title]="t('Proveedores por valor facturado','Suppliers by invoice value')"
+      subtitle="USD · 505"
+      [horizontal]="true"
+      [labels]="rankLabels('suppliers')"
+      [series]="rankSeries('suppliers','USD','#8b70ae')"
+      [footnote]="t('Facturas y partidas son bases distintas; no se suman.','Invoices and line items are separate bases; they are not added together.')"
+    />
+    <ds-analytics-chart
+      [title]="t('Términos de facturación','Invoice terms')"
+      subtitle="USD · 505"
+      type="doughnut"
+      [labels]="rankLabels('incoterms')"
+      [series]="rankSeries('incoterms','USD')"
+    />
+    <ds-analytics-chart
+      [title]="t('Peso bruto declarado','Declared gross weight')"
+      subtitle="kg · 501"
+      type="line"
+      [labels]="labels()"
+      [series]="series('weightKg','kg','#5a9cac')"
+    />
+    <ds-analytics-chart
+      [title]="t('Fletes y ajustes declarados','Declared freight and adjustments')"
+      subtitle="MXN · 501"
+      [labels]="[t('Fletes','Freight'),t('Seguros','Insurance'),t('Embalajes','Packaging'),t('Otros incrementables','Other additions'),t('Deducibles','Deductions')]"
+      [series]="financialCosts()"
+    />
+  </div>
+  } @if (tab() === 'taxes') {
+  <div class="section-heading">
+    <h2>
+      {{ t('Contribuciones y diferencias','Contributions and differences') }}
+    </h2>
+  </div>
+  <div class="method-note">
+    <ds-icon name="file" />
+    <p>
+      {{ t('Las tablas 510, 557 y 702 se presentan por separado. El importe
+      declarado incluye todas las formas de pago; no equivale exclusivamente a
+      efectivo.','Tables 510, 557 and 702 are presented separately. Declared
+      amounts include all payment methods; they are not exclusively cash
+      payments.') }}
+    </p>
+  </div>
+  <div class="chart-grid">
+    <ds-analytics-chart
+      [title]="t('Contribuciones del pedimento','Declaration contributions')"
+      subtitle="MXN · 510"
+      type="line"
+      [labels]="labels()"
+      [series]="series('headerPaymentsMxn','MXN','#d69d31')"
+    />
+    <ds-analytics-chart
+      [title]="t('Contribuciones de las partidas','Line-item contributions')"
+      subtitle="MXN · 557"
+      type="line"
+      [labels]="labels()"
+      [series]="series('itemPaymentsMxn','MXN','#447ec0')"
+    />
+    <ds-analytics-chart
+      [title]="t('Contribuciones por clave','Contributions by code')"
+      subtitle="MXN · 510"
+      [horizontal]="true"
+      [labels]="rankLabels('headerTaxes')"
+      [series]="rankSeries('headerTaxes','MXN','#d69d31')"
+    />
+    <ds-analytics-chart
+      [title]="t('Contribuciones de partidas por clave','Line-item contributions by code')"
+      subtitle="MXN · 557"
+      [horizontal]="true"
+      [labels]="rankLabels('itemTaxes')"
+      [series]="rankSeries('itemTaxes','MXN','#447ec0')"
+    />
+    <ds-analytics-chart
+      [title]="t('Formas de pago','Payment methods')"
+      subtitle="MXN · 510"
+      type="doughnut"
+      [labels]="rankLabels('paymentMethods')"
+      [series]="rankSeries('paymentMethods','MXN')"
+    />
+    <ds-analytics-chart
+      [title]="t('Diferencias de contribuciones','Contribution differences')"
+      subtitle="MXN · 702"
+      [labels]="labels()"
+      [series]="series('paymentDifferencesMxn','MXN','#cf7165')"
+    />
+  </div>
+  } @if (tab() === 'quality') {
+  <div class="section-heading">
+    <h2>
+      {{ t('Selección, reconocimiento y cobertura','Selection, inspection and
+      coverage') }}
+    </h2>
+  </div>
+  <div class="chart-grid">
+    <ds-analytics-chart
+      [title]="t('Semáforo fiscal','Customs selection result')"
+      [subtitle]="t('Eventos de selección · SEL','Selection events · SEL')"
+      [labels]="labels()"
+      [series]="[ {label:t('Rojo','Red'),color:'#cf7165',values:series('red','')[0].values}, {label:t('Verde','Green'),color:'#11998b',values:series('green','')[0].values} ]"
+      [stacked]="true"
+      [footnote]="t('0 = rojo; 1 = verde. Cada selección es un evento.','0 = red; 1 = green. Each selection is an event.')"
+    />
+    <ds-analytics-chart
+      [title]="t('Resultados del reconocimiento','Inspection results')"
+      [subtitle]="t('Registros por grado · INCI','Records by result · INCI')"
+      type="doughnut"
+      [labels]="rankLabels('inspection')"
+      [series]="rankSeries('inspection',t('Registros','Records'))"
+      [footnote]="t('C = correcto, no una incidencia. S = simple; G = grave.','C = correct, not an incident. S = minor; G = serious.')"
+    />
+    <ds-analytics-chart
+      [title]="t('Rectificaciones por mes','Monthly rectifications')"
+      [subtitle]="t('Registros · 701','Records · 701')"
+      [labels]="labels()"
+      [series]="series('rectifications',t('Rectificaciones','Rectifications'),'#8b70ae')"
+    />
+    <ds-analytics-chart
+      [title]="t('Volumen de DataStage','DataStage volume')"
+      [subtitle]="t('Filas de todas las tablas · Sin filtros comerciales','Rows across all tables · No trade filters')"
+      [labels]="labels()"
+      [series]="qualitySeries()"
+    />
+  </div>
+  <div class="quality-facts">
+    <div>
+      <strong>{{ format(r.coverage.invalidNumericValues) }}</strong
+      ><span
+        >{{ t('Valores numéricos ausentes o inválidos','Missing or invalid
+        numeric values') }}</span
+      >
+    </div>
+    <div>
+      <strong>{{ format(r.coverage.orphanItems) }}</strong
+      ><span
+        >{{ t('Partidas sin llave en 501 · Año y rango','Line items without a
+        501 key · Year and range') }}</span
+      >
+    </div>
+    <div>
+      <strong>{{ format(r.coverage.duplicateDeclarationRows) }}</strong
+      ><span
+        >{{ t('Filas adicionales sobre llaves únicas de 501','Additional rows
+        over unique 501 keys') }}</span
+      >
+    </div>
+  </div>
+  <div class="section-heading">
+    <h2>{{ t('Cobertura por tabla y mes','Table coverage by month') }}</h2>
+    <span
+      >{{ t('Sin filtros comerciales · — = sin fuente','No trade filters · — =
+      no source') }}</span
+    >
+  </div>
+  <div class="matrix-scroll">
+    <table class="coverage-matrix">
+      <thead>
+        <tr>
+          <th>{{ t('Tabla','Table') }}</th>
+          @for (m of selectedMonths(); track m.month) {
+          <th>{{ i18n.month(m.month,true) }}</th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (code of tableCodes; track code) {
+        <tr>
+          <th>{{ code.toUpperCase() }}</th>
+          @for (m of selectedMonths(); track m.month) {
+          <td
+            [class.populated]="m.tables[code] > 0"
+            [class.zero]="m.tables[code] === 0"
+          >
+            {{ format(m.tables[code]) }}
+          </td>
+          }
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <div class="method-note">
+    <p>
+      {{ r.source === 'reference' ? t('Los Excel no aportan telemetría del
+      worker. No se infieren tiempos, errores ni tasas de éxito del
+      procesamiento.','The workbooks do not provide worker telemetry. Processing
+      times, errors and success rates are not inferred.') : t('Advertencias y
+      errores corresponden a las versiones publicadas; no representan
+      incidencias aduaneras.','Warnings and errors belong to published versions;
+      they do not represent customs incidents.') }}
+    </p>
+  </div>
+  } @if (tab() === 'definitions') {
+  <section class="definitions">
+    <h2>{{ t('Bases del análisis','Analysis foundations') }}</h2>
+    <p>
+      {{ t('Manual de Consulta Data Stage · Julio 2021 · Páginas 2–3, 9–10,
+      12–13, 17–23.','Data Stage Reference Manual · July 2021 · Pages 2–3, 9–10,
+      12–13, 17–23.') }}
+    </p>
+    <dl>
+      <dt>{{ t('Periodo','Period') }}</dt>
+      <dd>
+        {{ t('Se utiliza Periodo del archivo o de la carga, no se redistribuye
+        por fecha de pago.','The workbook or run period is used; records are not
+        reassigned by payment date.') }}
+      </dd>
+      <dt>{{ t('Pedimentos','Declarations') }}</dt>
+      <dd>
+        {{ t('Llaves distintas de año, mes, patente, número de pedimento y
+        sección aduanera en 501. Las filas adicionales se conservan y se
+        reportan en calidad.','Distinct year, month, broker patent, declaration
+        number and customs section keys in 501. Additional rows are retained and
+        reported in quality.') }}
+      </dd>
+      <dt>{{ t('Valores de mercancías','Trade values') }}</dt>
+      <dd>
+        {{ t('Suma de ValorDolares (USD), ValorAduana y ValorComercial (MXN) en
+        551, sin combinar con 505.','Sum of ValorDolares (USD), ValorAduana and
+        ValorComercial (MXN) in 551, without combining with 505.') }}
+      </dd>
+      <dt>{{ t('Contribuciones','Contributions') }}</dt>
+      <dd>
+        {{ t('ImportePago de 510, 557 y 702, separados por nivel y sin tratar
+        todas las formas de pago como efectivo.','ImportePago in 510, 557 and
+        702, separated by level and without treating all payment methods as
+        cash.') }}
+      </dd>
+      <dt>{{ t('Variaciones','Changes') }}</dt>
+      <dd>
+        {{ t('(Mes actual − mes anterior) / |mes anterior| × 100. Sin variación
+        porcentual cuando la base es cero o falta. Los indicadores superiores
+        muestran el total del rango; su variación corresponde al último mes
+        disponible frente al mes calendario anterior.','(Current month −
+        previous month) / |previous month| × 100. No percentage change when the
+        baseline is zero or missing. Headline values show range totals; their
+        change compares the latest available month with the preceding calendar
+        month.') }}
+      </dd>
+      <dt>
+        {{ t('Cobertura y datos faltantes','Coverage and missing data') }}
+      </dt>
+      <dd>
+        {{ t('Un mes ausente no vale cero. Los totales corresponden a las tablas
+        disponibles. Valores numéricos ausentes o inválidos se excluyen de las
+        sumas y se cuentan en calidad. Las selecciones desconocidas se excluyen
+        de la tasa de rojo.','A missing month is not zero. Totals reflect
+        available tables. Missing or invalid numeric values are excluded from
+        sums and counted in quality. Unknown selection codes are excluded from
+        the red rate.') }}
+      </dd>
+      <dt>{{ t('Filtros y relaciones','Filters and relationships') }}</dt>
+      <dd>
+        {{ t('Operación, aduana y documento filtran la base 501 y sus registros
+        relacionados. Las partidas conservan también su operación y documento.
+        Volumen y cobertura técnica mantienen el universo del
+        periodo.','Operation, customs office and document filter 501 and related
+        records. Line items also retain their own operation and document.
+        Technical volume and coverage retain the full period population.') }}
+      </dd>
+      <dt>
+        {{ t('Versiones y rectificaciones','Versions and rectifications') }}
+      </dt>
+      <dd>
+        {{ t('En SQL sólo se consulta la versión mensual activa. Los Excel son
+        una referencia separada; no se agregan a las cargas publicadas. No se
+        infiere una sustitución fiscal de pedimentos rectificados.','SQL uses
+        only the active monthly version. Workbooks are a separate reference;
+        they are not added to published runs. Fiscal replacement of rectified
+        declarations is not inferred.') }}
+      </dd>
+    </dl>
+    <h2>{{ t('Fuentes del informe','Report sources') }}</h2>
+    @for (s of r.sources; track s.sha256) {
+    <div class="source-row">
+      <ds-icon name="file" />
+      <div>
+        <strong>{{ s.file }}</strong><small>SHA-256: {{ s.sha256 }}</small>
+      </div>
+    </div>
+    } @if (r.source === 'published') { @for (m of activeMonths(); track m.month)
+    {
+    <div class="source-row">
+      <a [routerLink]="['/runs',m.runId]"
+        >{{ i18n.month(m.month) }} {{ r.year }} · {{ t('Versión','Version') }}
+        {{ m.version }}</a
+      >
+    </div>
+    } } @if (r.reconciliation; as check) {
+    <div class="reconciliation" [class.mismatch]="!check.matched">
+      <ds-icon [name]="check.matched ? 'check' : 'alert'" /><span
+        >{{ check.matched ? t('Conciliación correcta','Reconciliation passed') :
+        t('Diferencias detectadas','Differences detected') }} · {{ check.file }}
+        · {{ check.comparedTables }} {{ t('tablas comparadas','tables compared')
+        }}</span
+      >
+    </div>
+    @for (d of check.differences; track $index) {
+    <p>{{ d.period }} · {{ d.table }}</p>
+    } }
+  </section>
+  } @if (tab() !== 'definitions') {
+  <section class="comparison">
+    <div class="section-heading">
+      <div>
+        <h2>{{ t('Comparativa entre meses','Month-to-month comparison') }}</h2>
+        <p>
+          {{ t('Misma fuente y filtros comerciales','Same source and trade
+          filters') }}
+        </p>
+      </div>
+      <div class="compare-selectors">
+        <label
+          >{{ t('Base','Baseline') }}<select
+            [ngModel]="first()"
+            (ngModelChange)="first.set(+$event)"
+          >
+            @for (m of months; track m) {
+            <option [ngValue]="m">{{ i18n.month(m) }}</option>
+            }
+          </select></label
+        ><span>→</span
+        ><label
+          >{{ t('Comparar','Compare') }}<select
+            [ngModel]="second()"
+            (ngModelChange)="second.set(+$event)"
+          >
+            @for (m of months; track m) {
+            <option [ngValue]="m">{{ i18n.month(m) }}</option>
+            }
+          </select></label
+        ><a
+          class="assistant-link"
+          routerLink="/agent"
+          [queryParams]="{prompt:aiPrompt()}"
+          ><ds-icon name="spark" />{{ t('Consultar al asistente','Ask the
+          assistant') }}</a
+        >
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="analysis-table">
+        <thead>
+          <tr>
+            <th>{{ t('Indicador','Metric') }}</th>
+            <th>{{ i18n.month(first()) }}</th>
+            <th>{{ i18n.month(second()) }}</th>
+            <th>{{ t('Diferencia','Difference') }}</th>
+            <th>{{ t('Variación','Change') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (m of metricDefinitions; track m.key) {
+          <tr>
+            <th>{{ t(m.es,m.en) }} <small>{{ m.unit }}</small></th>
+            <td>{{ format(compareValue(first(),m.key),m.unit) }}</td>
+            <td>{{ format(compareValue(second(),m.key),m.unit) }}</td>
+            <td>
+              {{ compareValue(first(),m.key) != null &&
+              compareValue(second(),m.key) != null ?
+              format(compareValue(second(),m.key)! -
+              compareValue(first(),m.key)!,m.unit === '%' ? '' : m.unit) +
+              (m.unit === '%' ? ' pp' : '') : '—' }}
+            </td>
+            <td>
+              <span
+                class="delta-chip"
+                [class.down]="(compareDelta(m.key) || 0) < 0"
+                >{{ delta(compareDelta(m.key)) }}</span
+              >
+            </td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <div class="section-heading">
+    <h2>{{ t('Detalle mensual','Monthly detail') }}</h2>
+    <span
+      >{{ t('Valores completos · mismos filtros','Full values · same filters')
+      }}</span
+    >
+  </div>
+  <div class="table-scroll">
+    <table class="analysis-table monthly-detail">
+      <thead>
+        <tr>
+          <th>{{ t('Mes','Month') }}</th>
+          <th>{{ t('Pedimentos','Declarations') }}</th>
+          <th>USD · 551</th>
+          <th>MXN · 510</th>
+          <th>{{ t('Partidas','Line items') }}</th>
+          <th>{{ t('Rojo','Red') }} %</th>
+          <th>{{ t('Fuente','Source') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (m of selectedMonths(); track m.month) {
+        <tr [class.missing-month]="!m.available">
+          <th>
+            <button
+              type="button"
+              (click)="second.set(m.month);first.set(m.month > 1 ? m.month - 1 : 1)"
+            >
+              {{ i18n.month(m.month) }}
+            </button>
+          </th>
+          <td>{{ format(m.metrics['declarations']) }}</td>
+          <td>{{ format(m.metrics['tradeUsd'],'USD') }}</td>
+          <td>{{ format(m.metrics['headerPaymentsMxn'],'MXN') }}</td>
+          <td>{{ format(m.metrics['items']) }}</td>
+          <td>{{ format(m.metrics['redRate'],'%') }}</td>
+          <td>
+            @if (m.runId) {<a [routerLink]="['/runs',m.runId]"
+              >v{{ m.version }}</a
+            >} @else {<span
+              >{{ m.available ? 'Excel' : t('Sin fuente','No source') }}</span
+            >}
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  } }
+</div>
+<footer class="analytics-footer">
+  <span
+    >DataStage · {{ t('Informe de operaciones','Operations report') }} {{ r.year
+    }}</span
+  ><span
+    >{{ t('Fuente semántica: Manual de Consulta Data Stage, julio
+    2021','Semantic source: Data Stage Reference Manual, July 2021') }}</span
+  >
+</footer>
+}

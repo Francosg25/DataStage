@@ -1,3 +1,4 @@
+import { TranslatePipe, LocalizedNumberPipe } from "../core/i18n";
 import {
   AfterViewInit,
   Component,
@@ -6,8 +7,8 @@ import {
   ViewChild,
   inject,
   signal,
+  effect,
 } from "@angular/core";
-import { DecimalPipe } from "@angular/common";
 import { RouterLink } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
@@ -16,11 +17,13 @@ import { Chart, registerables } from "chart.js";
 import { Api } from "../core/api";
 import { Overview, errorText } from "../core/models";
 import { Icon, Empty, RunList } from "../shared/ui";
+import { I18n } from "../core/i18n";
 Chart.register(...registerables);
 @Component({
   selector: "ds-dashboard",
   imports: [
-    DecimalPipe,
+    TranslatePipe,
+    LocalizedNumberPipe,
     RouterLink,
     MatButtonModule,
     MatProgressBarModule,
@@ -31,36 +34,45 @@ Chart.register(...registerables);
   template: `
     <div class="page-heading">
       <div>
-        <span class="eyebrow">VISTA GENERAL</span>
+        <span class="eyebrow"> {{ "VISTA GENERAL" | t }} </span>
         <h1>
-          El control de tus datos,<br class="desktop-break" />
-          en un solo lugar.
+          {{ "El control de tus datos," | t }} <br class="desktop-break" />
+          {{ "en un solo lugar." | t }}
         </h1>
-        <p>Supervisa tus cargas, valida resultados y consulta cada periodo.</p>
+        <p>
+          {{
+            "Supervisa tus cargas, valida resultados y consulta cada periodo."
+              | t
+          }}
+        </p>
       </div>
       <a mat-flat-button routerLink="/monthly"
-        ><ds-icon name="upload" /> Nueva carga mensual</a
-      >
+        ><ds-icon name="upload" /> {{ "Nueva carga mensual" | t }}
+      </a>
     </div>
     @if (error()) {
       <div class="error-message" role="alert">
-        {{ error() }} <button mat-button (click)="load()">Reintentar</button>
+        {{ error() | t }}
+        <button mat-button (click)="load()">{{ "Reintentar" | t }}</button>
       </div>
     }
     @if (loading()) {
-      <mat-progress-bar mode="indeterminate" aria-label="Cargando resumen" />
+      <mat-progress-bar
+        mode="indeterminate"
+        [attr.aria-label]="'Cargando resumen' | t"
+      />
     }
     <div class="stats-grid">
       @for (card of cards(); track card.label) {
         <article class="stat-card">
           <div class="stat-top">
-            <span>{{ card.label }}</span
+            <span>{{ card.label | t }}</span
             ><span class="stat-icon"><ds-icon [name]="card.icon" /></span>
           </div>
           <strong>{{
-            card.value === null ? "—" : (card.value | number)
+            (card.value === null ? "—" : (card.value | dsNumber)) | t
           }}</strong
-          ><small>{{ card.description }}</small>
+          ><small>{{ card.description | t }}</small>
         </article>
       }
     </div>
@@ -68,10 +80,10 @@ Chart.register(...registerables);
       <section class="panel chart-panel">
         <div class="panel-heading">
           <div>
-            <h2>Actividad por periodo</h2>
-            <p>Registros procesados en las cargas publicadas</p>
+            <h2>{{ "Actividad por periodo" | t }}</h2>
+            <p>{{ "Registros procesados en las cargas publicadas" | t }}</p>
           </div>
-          <span class="subtle-tag">Mensual</span>
+          <span class="subtle-tag"> {{ "Mensual" | t }} </span>
         </div>
         <div
           class="chart-container"
@@ -79,55 +91,62 @@ Chart.register(...registerables);
         >
           <canvas
             #chart
-            aria-label="Gráfico de registros procesados por periodo"
+            [attr.aria-label]="
+              'Gráfico de registros procesados por periodo' | t
+            "
             role="img"
           ></canvas>
           @if (!loading() && !overview()?.monthly?.length) {
             <ds-empty
-              title="Aún no hay actividad"
-              message="Los periodos publicados darán forma a este gráfico."
+              [title]="'Aún no hay actividad' | t"
+              [message]="
+                'Los periodos publicados darán forma a este gráfico.' | t
+              "
               icon="calendar"
             />
           }
         </div>
       </section>
       <section class="panel next-panel">
-        <span class="eyebrow">TU FLUJO DE TRABAJO</span>
-        <h2>Del archivo<br />al dato confiable.</h2>
+        <span class="eyebrow"> {{ "TU FLUJO DE TRABAJO" | t }} </span>
+        <h2>
+          {{ "Del archivo" | t }} <br />
+          {{ "al dato confiable." | t }}
+        </h2>
         <div class="workflow-step">
           <span>01</span>
           <div>
-            <strong>Selecciona el periodo</strong>
-            <p>Cada carga corresponde a un mes.</p>
+            <strong> {{ "Selecciona el periodo" | t }} </strong>
+            <p>{{ "Cada carga corresponde a un mes." | t }}</p>
           </div>
         </div>
         <div class="workflow-step">
           <span>02</span>
           <div>
-            <strong>Adjunta tu archivo ZIP</strong>
-            <p>Validamos y organizamos los ASC.</p>
+            <strong> {{ "Adjunta tu archivo ZIP" | t }} </strong>
+            <p>{{ "Validamos y organizamos los ASC." | t }}</p>
           </div>
         </div>
         <div class="workflow-step">
           <span>03</span>
           <div>
-            <strong>Consulta los resultados</strong>
-            <p>Revisa incidencias y descarga Excel.</p>
+            <strong> {{ "Consulta los resultados" | t }} </strong>
+            <p>{{ "Revisa incidencias y descarga Excel." | t }}</p>
           </div>
         </div>
-        <a routerLink="/monthly" class="text-link"
-          >Comenzar una carga <ds-icon name="arrow"
+        <a routerLink="/monthly" class="text-link">
+          {{ "Comenzar una carga" | t }} <ds-icon name="arrow"
         /></a>
       </section>
     </div>
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <h2>Procesos recientes</h2>
-          <p>El estado de tus últimas ejecuciones</p>
+          <h2>{{ "Procesos recientes" | t }}</h2>
+          <p>{{ "El estado de tus últimas ejecuciones" | t }}</p>
         </div>
-        <a mat-button routerLink="/runs"
-          >Ver historial <ds-icon name="arrow"
+        <a mat-button routerLink="/runs">
+          {{ "Ver historial" | t }} <ds-icon name="arrow"
         /></a>
       </div>
       <ds-run-list [runs]="overview()?.recentRuns || []" />
@@ -135,6 +154,7 @@ Chart.register(...registerables);
   `,
 })
 export class Dashboard implements AfterViewInit {
+  i18n = inject(I18n);
   private api = inject(Api);
   private destroy = inject(DestroyRef);
   @ViewChild("chart") canvas?: ElementRef<HTMLCanvasElement>;
@@ -143,6 +163,10 @@ export class Dashboard implements AfterViewInit {
   loading = signal(true);
   error = signal("");
   constructor() {
+    effect(() => {
+      this.i18n.language();
+      this.render();
+    });
     this.destroy.onDestroy(() => this.chart?.destroy());
     this.load();
   }
@@ -203,10 +227,10 @@ export class Dashboard implements AfterViewInit {
     this.chart = new Chart(this.canvas.nativeElement, {
       type: "bar",
       data: {
-        labels: rows.map((r) => r.period.replace("_", " ")),
+        labels: rows.map((r) => this.i18n.t(r.period.replace("_", " "))),
         datasets: [
           {
-            label: "Registros",
+            label: this.i18n.t("Registros"),
             data: rows.map((r) => r.rows),
             backgroundColor: "#14968b",
             hoverBackgroundColor: "#0d756c",
@@ -216,6 +240,7 @@ export class Dashboard implements AfterViewInit {
         ],
       },
       options: {
+        locale: this.i18n.locale(),
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },

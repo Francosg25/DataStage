@@ -1,7 +1,8 @@
 import { registerLocaleData } from "@angular/common";
 import localeEsMx from "@angular/common/locales/es-MX";
 import { MatPaginatorIntl } from "@angular/material/paginator";
-import { spanishPaginator } from "./app/core/locale";
+import { localizedPaginator } from "./app/core/locale";
+import { LocalizedTitle } from "./app/core/title";
 import { bootstrapApplication } from "@angular/platform-browser";
 import {
   provideAppInitializer,
@@ -9,7 +10,11 @@ import {
   provideBrowserGlobalErrorListeners,
   LOCALE_ID,
 } from "@angular/core";
-import { provideRouter, withComponentInputBinding } from "@angular/router";
+import {
+  provideRouter,
+  withComponentInputBinding,
+  TitleStrategy,
+} from "@angular/router";
 import { provideHttpClient, withInterceptors } from "@angular/common/http";
 import { App } from "./app/app";
 import { routes } from "./app/routes";
@@ -18,7 +23,8 @@ registerLocaleData(localeEsMx);
 bootstrapApplication(App, {
   providers: [
     { provide: LOCALE_ID, useValue: "es-MX" },
-    { provide: MatPaginatorIntl, useFactory: spanishPaginator },
+    { provide: MatPaginatorIntl, useFactory: localizedPaginator },
+    { provide: TitleStrategy, useClass: LocalizedTitle },
     provideBrowserGlobalErrorListeners(),
     provideHttpClient(withInterceptors([bearerInterceptor])),
     provideRouter(routes, withComponentInputBinding()),

@@ -1,6 +1,6 @@
 import json
 from pathlib import PurePosixPath
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, Response, UploadFile
@@ -18,6 +18,7 @@ from app.modules.processing.service import (
     get_run, remember, replay, reprocess, run_response, validate_key,
 )
 from app.modules.reporting.queries import compare_periods, data_page, overview
+from app.modules.reporting.analytics import options as analytics_options, summarize as analytics_summary
 from app.persistence.models import (
     AgentMessage, AuditEvent, Conversation, Issue, Job, OutboxMessage, Period,
     ProcessingFile, ProcessingTable, Run, StoredDocument,
@@ -66,6 +67,7 @@ class ReprocessRequest(StrictModel):
 class MessageRequest(StrictModel):
     message: str = Field(min_length=1, max_length=8000)
     allowActions: bool = False
+    language: Literal['es', 'en'] = 'es'
 
 def _leaf(name):
     result = PurePosixPath((name or "").replace("\\", "/")).name
@@ -279,6 +281,20 @@ def data(table_code: str, request: Request, session: DB, principal: Reader, peri
 def report_overview(session: DB, principal: Reader):
     return overview(session, principal.scope_id)
 
+@router.get("/reports/analytics/options")
+def report_analytics_options(request: Request, session: DB, principal: Reader):
+    return analytics_options(session, request.app.state.settings, principal.scope_id)
+
+@router.get("/reports/analytics")
+def report_analytics(request: Request, session: DB, principal: Reader,
+                     source: str = Query('published', pattern='^(published|reference)$'),
+                     year: int = Query(2026, ge=1900, le=2100),
+                     startMonth: int = Query(1, ge=1, le=12), endMonth: int = Query(12, ge=1, le=12),
+                     operation: str = Query('', max_length=10), customs: str = Query('', max_length=10),
+                     document: str = Query('', max_length=10)):
+    return analytics_summary(session, request.app.state.settings, principal.scope_id, source=source, year=year,
+                             start_month=startMonth, end_month=endMonth, operation=operation, customs=customs, document=document)
+
 @router.get("/audit")
 def events(session: DB, principal: Identity, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
     principal.require("Auditor")
@@ -329,6 +345,10 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
             output = data_page(session, principal.scope_id, args["tableCode"], args.get("period"), limit=args.get("limit", 10))
         elif name == "compare_periods":
             output = compare_periods(session, principal.scope_id, args["firstPeriod"], args["secondPeriod"])
+        elif name == 'get_analytics':
+            output = analytics_summary(session, settings, principal.scope_id, source=args['source'], year=args['year'],
+                                       start_month=args['startMonth'], end_month=args['endMonth'],
+                                       operation=args['operation'], customs=args['customs'], document=args['document'])
         elif name == "search_documentation":
             documents = [
                 {"title": "Procesamiento", "text": "Selecciona un periodo, adjunta un ZIP con ASC delimitados por pipe y consulta la ejecución. El periodo no se infiere por nombre del ZIP."},
@@ -350,11 +370,17 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
         evidence = {"tool": name, "scopeId": principal.scope_id}
         if "runId" in args:
             evidence["runId"] = args["runId"]
+        if name == 'get_analytics':
+            evidence.update(source=args['source'], year=args['year'], startMonth=args['startMonth'], endMonth=args['endMonth'],
+                            operation=args['operation'], customs=args['customs'], document=args['document'],
+                            sources=output['sources'], versions=[{'month':m['month'],'runId':m['runId'],'version':m['version']}
+                            for m in output['monthly'] if m['available']],
+                            url='/analytics')
         audit(session, principal.scope_id, principal.id, "agent.tool", tool=name, callId=call_id)
         commit_or_conflict(session)
         return {"data": output, "evidence": [evidence]}
     from app.modules.foundry import FoundryAgent
-    answer = FoundryAgent(settings).respond(history, execute_tool)
+    answer = FoundryAgent(settings).respond(history, execute_tool, language=body.language)
     session.add(AgentMessage(conversation_id=conversation_id, role="user", content=body.message))
     session.add(AgentMessage(conversation_id=conversation_id, role="assistant", content=answer["message"]))
     audit(session, principal.scope_id, principal.id, "agent.message", conversationId=conversation_id)

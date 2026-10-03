@@ -1,3 +1,4 @@
+import { TranslatePipe } from "../core/i18n";
 import { Component, DestroyRef, inject, signal } from "@angular/core";
 import { RouterLink } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
@@ -10,6 +11,7 @@ import { RunList, Icon } from "../shared/ui";
 @Component({
   selector: "ds-history",
   imports: [
+    TranslatePipe,
     RouterLink,
     MatButtonModule,
     MatPaginatorModule,
@@ -19,33 +21,34 @@ import { RunList, Icon } from "../shared/ui";
   ],
   template: `<div class="page-heading">
       <div>
-        <span class="eyebrow">TRAZABILIDAD</span>
-        <h1>Historial de procesos</h1>
-        <p>Cada ejecución, su versión y sus resultados.</p>
+        <span class="eyebrow"> {{ "TRAZABILIDAD" | t }} </span>
+        <h1>{{ "Historial de procesos" | t }}</h1>
+        <p>{{ "Cada ejecución, su versión y sus resultados." | t }}</p>
       </div>
       <a mat-flat-button routerLink="/monthly"
-        ><ds-icon name="upload" /> Nueva carga</a
-      >
+        ><ds-icon name="upload" /> {{ "Nueva carga" | t }}
+      </a>
     </div>
     @if (error()) {
       <div class="error-message" role="alert">
-        {{ error() }} <button mat-button (click)="load()">Reintentar</button>
+        {{ error() | t }}
+        <button mat-button (click)="load()">{{ "Reintentar" | t }}</button>
       </div>
     }
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <h2>Todas las ejecuciones</h2>
-          <p>{{ total() }} procesos registrados</p>
+          <h2>{{ "Todas las ejecuciones" | t }}</h2>
+          <p>{{ total() | t }} {{ "procesos registrados" | t }}</p>
         </div>
         <button mat-stroked-button (click)="load()" [disabled]="loading()">
-          Actualizar
+          {{ "Actualizar" | t }}
         </button>
       </div>
       @if (loading()) {
         <mat-progress-bar
           mode="indeterminate"
-          aria-label="Cargando historial"
+          [attr.aria-label]="'Cargando historial' | t"
         />
       }
       <ds-run-list [runs]="runs()" /><mat-paginator
@@ -55,7 +58,7 @@ import { RunList, Icon } from "../shared/ui";
         [hidePageSize]="true"
         [disabled]="loading()"
         (page)="change($event)"
-        aria-label="Paginación del historial"
+        [attr.aria-label]="'Paginación del historial' | t"
       />
     </section>`,
 })

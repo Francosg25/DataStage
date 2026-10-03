@@ -80,11 +80,15 @@ if (-not $SkipInstall) {
 }
 
 # This launcher always creates a local-only development instance.
+& $NodeExe (Join-Path $frontendDir 'scripts\sync-guides.mjs')
+if ($LASTEXITCODE -ne 0) { throw 'No fue posible preparar la guía de Foundry.' }
 $env:DATASTAGE_ENVIRONMENT = 'development'
 $env:DATASTAGE_AUTH_MODE = 'development'
 $env:DATASTAGE_DATABASE_URL = 'sqlite:///' + (Join-Path $dataDir 'datastage.db').Replace('\', '/')
 $env:DATASTAGE_DOCUMENT_ROOT = Join-Path $dataDir 'documents'
 $env:DATASTAGE_CORS_ORIGINS = '["http://127.0.0.1:4200","http://localhost:4200"]'
+$referencePath = Join-Path $dataDir 'analytics-reference.json'
+if (Test-Path -LiteralPath $referencePath) { $env:DATASTAGE_ANALYTICS_REFERENCE_FILE = $referencePath }
 Push-Location $backendDir
 try {
     & $venvPython -m alembic upgrade head

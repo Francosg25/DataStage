@@ -1,5 +1,9 @@
+import {
+  TranslatePipe,
+  LocalizedNumberPipe,
+  LocalizedDatePipe,
+} from "../core/i18n";
 import { Component, input, computed } from "@angular/core";
-import { DatePipe, DecimalPipe } from "@angular/common";
 import { RouterLink } from "@angular/router";
 import { Run, DataRow, runLabel } from "../core/models";
 @Component({
@@ -89,12 +93,13 @@ export function statusLabel(value: string | null | undefined): string {
 }
 @Component({
   selector: "ds-status",
+  imports: [TranslatePipe],
   template: `<span
     class="status"
     [class.status-ok]="good()"
     [class.status-bad]="bad()"
     [class.status-warn]="warn()"
-    ><span class="status-dot"></span>{{ label() }}</span
+    ><span class="status-dot"></span>{{ label() | t }}</span
   >`,
 })
 export class Status {
@@ -114,11 +119,11 @@ export class Status {
 }
 @Component({
   selector: "ds-empty",
-  imports: [Icon],
+  imports: [TranslatePipe, Icon],
   template: `<div class="empty-state">
     <div class="empty-icon"><ds-icon [name]="icon()" /></div>
-    <h3>{{ title() }}</h3>
-    <p>{{ message() }}</p>
+    <h3>{{ title() | t }}</h3>
+    <p>{{ message() | t }}</p>
     <ng-content />
   </div>`,
 })
@@ -131,18 +136,28 @@ export class Empty {
 }
 @Component({
   selector: "ds-run-list",
-  imports: [RouterLink, DatePipe, DecimalPipe, Status, Icon, Empty],
+  imports: [
+    TranslatePipe,
+    RouterLink,
+    LocalizedDatePipe,
+    LocalizedNumberPipe,
+    Status,
+    Icon,
+    Empty,
+  ],
   template: `@if (runs().length) {
       <div class="table-scroll">
         <table class="data-table">
           <thead>
             <tr>
-              <th>Periodo / ejecución</th>
-              <th>Tipo</th>
-              <th>Estado</th>
-              <th class="numeric">Registros</th>
-              <th>Fecha de carga</th>
-              <th><span class="sr-only">Detalle</span></th>
+              <th>{{ "Periodo / ejecución" | t }}</th>
+              <th>{{ "Tipo" | t }}</th>
+              <th>{{ "Estado" | t }}</th>
+              <th class="numeric">{{ "Registros" | t }}</th>
+              <th>{{ "Fecha de carga" | t }}</th>
+              <th>
+                <span class="sr-only"> {{ "Detalle" | t }} </span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -150,27 +165,28 @@ export class Empty {
               <tr>
                 <td>
                   <a [routerLink]="['/runs', run.id]" class="table-title">{{
-                    label(run)
+                    label(run) | t
                   }}</a>
-                  <div class="muted mono">{{ run.id.slice(0, 8) }}</div>
+                  <div class="muted mono">{{ run.id.slice(0, 8) | t }}</div>
                 </td>
                 <td>
                   {{
-                    run.kind.toUpperCase() === "ANNUAL" ? "Anual" : "Mensual"
+                    (run.kind.toUpperCase() === "ANNUAL" ? "Anual" : "Mensual")
+                      | t
                   }}
                 </td>
                 <td>
                   <ds-status [value]="run.functionalResult || run.status" />
                 </td>
-                <td class="numeric">{{ run.counts.rows | number }}</td>
+                <td class="numeric">{{ run.counts.rows | dsNumber | t }}</td>
                 <td class="muted">
-                  {{ run.createdAt | date: "dd MMM yyyy, HH:mm" }}
+                  {{ run.createdAt | dsDate: "dd MMM yyyy, HH:mm" | t }}
                 </td>
                 <td>
                   <a
                     [routerLink]="['/runs', run.id]"
                     class="icon-link"
-                    [attr.aria-label]="'Ver ejecución ' + label(run)"
+                    [attr.aria-label]="'Ver ejecución ' + label(run) | t"
                     ><ds-icon name="chevron"
                   /></a>
                 </td>
@@ -181,8 +197,8 @@ export class Empty {
       </div>
     } @else {
       <ds-empty
-        title="Tu historial comienza aquí"
-        message="Carga un archivo ZIP para procesar tu primer periodo."
+        [title]="'Tu historial comienza aquí' | t"
+        [message]="'Carga un archivo ZIP para procesar tu primer periodo.' | t"
       />
     }`,
 })
@@ -192,14 +208,14 @@ export class RunList {
 }
 @Component({
   selector: "ds-data-table",
-  imports: [Empty],
+  imports: [TranslatePipe, Empty],
   template: `@if (rows().length) {
       <div class="table-scroll">
         <table class="data-table">
           <thead>
             <tr>
               @for (key of columns(); track key) {
-                <th>{{ label(key) }}</th>
+                <th>{{ label(key) | t }}</th>
               }
             </tr>
           </thead>
@@ -207,7 +223,9 @@ export class RunList {
             @for (row of rows(); track $index) {
               <tr>
                 @for (key of columns(); track key) {
-                  <td [title]="display(row[key])">{{ display(row[key]) }}</td>
+                  <td [title]="display(row[key]) | t">
+                    {{ display(row[key]) }}
+                  </td>
                 }
               </tr>
             }
@@ -216,8 +234,8 @@ export class RunList {
       </div>
     } @else {
       <ds-empty
-        [title]="emptyTitle()"
-        message="No hay registros para esta selección."
+        [title]="emptyTitle() | t"
+        [message]="'No hay registros para esta selección.' | t"
       />
     }`,
 })

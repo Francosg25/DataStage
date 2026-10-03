@@ -1,5 +1,11 @@
 # DataStage
 
+## Análisis de operaciones
+
+El dashboard está en `/analytics`: evolución mensual, comercio, contribuciones, selección aduanera, cobertura y comparación de meses. Incluye filtros, datos detrás de las gráficas, descarga CSV/PNG y cambio español/inglés. Consulta [definiciones y fuentes](docs/analytics.md).
+
+El asistente comparte las métricas del dashboard mediante `get_analytics`. La [guía de Azure Foundry](docs/azure-foundry.md) también está disponible en `/foundry-guide`, desde la sección Asistente.
+
 Aplicación Angular + FastAPI para cargar ZIP/ASC, procesar periodos mensuales, consolidar el año, consultar resultados y descargar Excel. La API y el worker comparten el motor Python y una base de datos. Los documentos se conservan fuera de la base, con hash y trazabilidad.
 
 La ejecución local usa **SQLite únicamente para desarrollo**. El despliegue corporativo usa **SQL Server, Entra ID y antivirus obligatorio**. La equivalencia con Office Scripts aún requiere los ASC/ZIP y scripts originales; consulta [las decisiones de compatibilidad](docs/compatibility.md).

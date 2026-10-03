@@ -1,5 +1,5 @@
 """Closed tool contracts. Identity and authorization are never model arguments."""
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -38,6 +38,16 @@ class SearchDocumentation(ToolArguments):
     query: Annotated[str, Field(min_length=1, max_length=500)]
 
 
+class GetAnalytics(ToolArguments):
+    source: Literal['published', 'reference']
+    year: Annotated[int, Field(ge=1900, le=2100)]
+    startMonth: Annotated[int, Field(ge=1, le=12)]
+    endMonth: Annotated[int, Field(ge=1, le=12)]
+    operation: Annotated[str, Field(max_length=10)]
+    customs: Annotated[str, Field(max_length=10)]
+    document: Annotated[str, Field(max_length=10)]
+
+
 class StartAnnual(ToolArguments):
     anio: Annotated[int, Field(ge=1900, le=2100)]
     rangoNombre: Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ -]+$")]
@@ -52,6 +62,7 @@ TOOL_MODELS = {
     "get_run": GetRun,
     "list_runs": ListRuns,
     "get_data": GetData,
+    "get_analytics": GetAnalytics,
     "compare_periods": ComparePeriods,
     "search_documentation": SearchDocumentation,
     "request_report": GetRun,
@@ -63,6 +74,7 @@ DESCRIPTIONS = {
     "get_run": "Consulta estado, resultado e incidencias de una ejecución autorizada.",
     "list_runs": "Lista ejecuciones recientes dentro del ámbito autorizado del usuario.",
     "get_data": "Consulta una muestra limitada de una tabla y periodo publicados; no permite SQL.",
+    "get_analytics": "Obtiene los mismos indicadores, series mensuales, USD/MXN, cobertura y fuentes del dashboard. source separa published de reference. Filtros vacíos incluyen todo. No suma 510/557/702 ni facturas con partidas.",
     "compare_periods": "Compara conteos y cobertura de dos periodos autorizados.",
     "search_documentation": "Busca documentación local aprobada y devuelve extractos con sus fuentes.",
     "request_report": "Obtiene el reporte existente de una ejecución autorizada, sin modificar datos.",

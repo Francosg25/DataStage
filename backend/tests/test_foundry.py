@@ -205,14 +205,14 @@ def test_no_tool_evidence_means_no_fabricated_provider_answer():
 
 def test_registered_schemas_are_strict_and_closed():
     definitions = tool_definitions(True)
-    assert len(definitions) == 8
+    assert len(definitions) == 9
     for tool in definitions:
         schema = tool["parameters"]
         assert schema["additionalProperties"] is False
         assert set(schema["required"]) == set(schema["properties"])
         assert tool["strict"] is True
         assert "scope_id" not in schema["properties"]
-    assert len(tool_definitions(False)) == 6
+    assert len(tool_definitions(False)) == 7
     assert validate_tool_arguments("start_annual", {"anio": 2026, "rangoNombre": "Ene-Ago"}, allow_commands=True)["anio"] == 2026
 
 
@@ -230,7 +230,7 @@ def test_registration_is_explicit_and_sdk_definition_contains_only_functions(mon
     definition = project.agents.create_version.call_args.kwargs["definition"].as_dict()
     assert definition["kind"] == "prompt"
     assert definition["model"] == "approved-deployment"
-    assert len(definition["tools"]) == 6
+    assert len(definition["tools"]) == 7
     assert {tool["type"] for tool in definition["tools"]} == {"function"}
 
 

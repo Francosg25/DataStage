@@ -10,6 +10,18 @@ export const routes: Routes = [
     canActivate: [authGuard],
     children: [
       {
+        path: "foundry-guide",
+        loadComponent: () =>
+          import("./features/foundry-guide").then((m) => m.FoundryGuide),
+        title: "Guía de Azure Foundry · DataStage",
+      },
+      {
+        path: "analytics",
+        loadComponent: () =>
+          import("./features/analytics").then((m) => m.Analytics),
+        title: "Análisis de operaciones · DataStage",
+      },
+      {
         path: "access-denied",
         loadComponent: () =>
           import("./features/access-denied").then((m) => m.AccessDenied),

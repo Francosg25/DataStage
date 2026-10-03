@@ -68,14 +68,14 @@ p {
 h1 {
   font-size: 35px;
   line-height: 1.19;
-  letter-spacing: -1.35px;
+  letter-spacing: 0;
   font-weight: 650;
 }
 h2 {
   font-size: 17px;
   line-height: 1.4;
   font-weight: 600;
-  letter-spacing: -0.35px;
+  letter-spacing: 0;
 }
 h3 {
   font-size: 16px;
@@ -148,7 +148,7 @@ p {
   color: #fff;
   font-weight: 650;
   font-size: 23px;
-  letter-spacing: -0.6px;
+  letter-spacing: 0;
 }
 .brand:hover {
   text-decoration: none;
@@ -280,6 +280,26 @@ p {
   display: flex;
   align-items: center;
   gap: 11px;
+}
+.language-select {
+  height: 32px;
+  max-width: 104px;
+  border: 1px solid #d7e0e4;
+  border-radius: 4px;
+  background: white;
+  color: #526b78;
+  font-size: 11px;
+  padding: 0 7px;
+}
+@media print {
+  .sidebar, .topbar, .development-banner, .app-footer, .nav-scrim { display: none !important; }
+  .main-shell { margin: 0 !important; width: 100% !important; }
+  #main-content { padding: 10px !important; }
+}
+.login-language {
+  position: absolute;
+  top: 20px;
+  right: 20px;
 }
 .avatar {
   display: grid;
