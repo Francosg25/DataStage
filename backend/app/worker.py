@@ -17,6 +17,7 @@ from app.modules.engine import InputFile, detect_table_code, export_xlsx, parse_
 from app.modules.engine.catalog import folio_from_name
 from app.modules.identity.auth import Principal
 from app.modules.ingestion.zip_reader import read_zip, scan_document
+from app.modules.ingestion.encoding import decode_asc
 from app.modules.processing.service import (
     audit, create_annual, engine_options, get_or_create_period, json_text,
 )
@@ -201,12 +202,19 @@ def inputs_for_run(factory, store, settings, run):
         else:
             seen[identity] = file_id
             try:
-                content = raw.decode(encoding, errors="strict")
+                content, actual_encoding = decode_asc(raw, encoding)
+                if actual_encoding != encoding:
+                    ingestion_issues.append({
+                    "fileId": file_id,
+                    "fileName": name,
+                    "code": "ENCODING_FALLBACK",
+                    "message": f"El ASC se interpreto con {actual_encoding} en lugar de {encoding}.",
+                    })
             except UnicodeDecodeError:
                 # The deterministic engine classifies non-text content as a per-file error.
                 content = raw
                 ingestion_issues.append({"fileId": file_id, "fileName": name, "code": "INVALID_ENCODING",
-                                         "message": f"No se pudo interpretar el archivo con {encoding}."})
+                                         "message": f"No se pudo interpretar el archivo con UTF-8 ni Windows-1252."})
             inputs.append(InputFile(file_name=name, content=content, period=period, table_code=code, file_id=file_id))
         metadata.append(meta)
     return inputs, documents, metadata, ingestion_issues

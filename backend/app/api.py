@@ -9,6 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
+import logging
+
+from app.modules.processing.period_deletion import (
+    delete_period,
+    deletion_preview,
+)
+
 from app.core.errors import ApplicationError
 from app.core.contracts import DataPage, FileRow, IssueRow, Page, Problem, RunResponse, TableRow
 from app.modules.engine import ENGINE_VERSION, TABLE_NAMES, TABLE_ORDER
@@ -64,6 +71,15 @@ class ReprocessRequest(StrictModel):
     reason: str = Field(min_length=5, max_length=1000)
     expectedVersion: int = Field(ge=0)
 
+class DeletePeriodRequest(StrictModel):
+    expectedVersion: int = Field(ge=0)
+    confirmation: str = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=8, max_length=1000)
+    expectedMonthlyRuns: int = Field(ge=0)
+    expectedAnnualRuns: int = Field(ge=0)
+    expectedBusinessRows: int = Field(ge=0)
+    expectedDocuments: int = Field(ge=0)
+
 class MessageRequest(StrictModel):
     message: str = Field(min_length=1, max_length=8000)
     allowActions: bool = False
@@ -99,6 +115,53 @@ def table_catalog(principal: Reader):
 def periods(session: DB, principal: Reader):
     rows = session.scalars(select(Period).where(Period.scope_id == principal.scope_id).order_by(Period.year.desc(), Period.month.desc()))
     return [{"id": p.id, "year": p.year, "month": p.month, "name": p.name, "activeRunId": p.active_run_id, "version": p.version} for p in rows]
+
+@router.get("/periods/{period_id}/deletion-preview")
+def period_deletion_preview(
+    period_id: str, session: DB, principal: Identity
+):
+    return deletion_preview(session, principal, period_id)[1]
+
+
+@router.delete("/periods/{period_id}")
+def remove_period(
+    period_id: str,
+    body: DeletePeriodRequest,
+    request: Request,
+    session: DB,
+    principal: Identity,
+):
+    preview, keys = delete_period(
+        session,
+        principal,
+        period_id,
+        body.expectedVersion,
+        body.confirmation,
+        body.reason,
+        {
+            "monthlyRuns": body.expectedMonthlyRuns,
+            "annualRuns": body.expectedAnnualRuns,
+            "businessRows": body.expectedBusinessRows,
+            "documents": body.expectedDocuments,
+        },
+    )
+    commit_or_conflict(session)
+
+    cleanup_failures = 0
+    for key in keys:
+        try:
+            request.app.state.storage.resolve(key).unlink(missing_ok=True)
+        except OSError:
+            cleanup_failures += 1
+            logging.getLogger(__name__).warning(
+                "No se pudo eliminar un documento del mes"
+            )
+
+    return {
+        **preview,
+        "storageCleanupFailures": cleanup_failures,
+    }
+
 
 @router.post("/monthly-runs", status_code=202, response_model=RunResponse)
 async def monthly_run(request: Request, response: Response, principal: Identity, key: Idempotency, session: DB,

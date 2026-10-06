@@ -13,6 +13,7 @@ import {
   Page,
   Run,
   Period,
+  PeriodDeletionPreview,
   Overview,
   CatalogTable,
   DataPage,
@@ -32,6 +33,33 @@ export class Api {
   periods() {
     return this.http.get<Period[]>(`${this.base}/periods`);
   }
+  periodDeletionPreview(id: string) {
+  return this.http.get<PeriodDeletionPreview>(
+    `${this.base}/periods/${encodeURIComponent(id)}/deletion-preview`,
+  );
+}
+
+deletePeriod(
+  impact: PeriodDeletionPreview,
+  confirmation: string,
+  reason: string,
+) {
+  return this.http.delete<PeriodDeletionPreview>(
+    `${this.base}/periods/${encodeURIComponent(impact.periodId)}`,
+    {
+      body: {
+        expectedVersion: impact.version,
+        confirmation,
+        reason,
+        expectedMonthlyRuns: impact.monthlyRuns,
+        expectedAnnualRuns: impact.annualRuns,
+        expectedBusinessRows: impact.businessRows,
+        expectedDocuments: impact.documents,
+      },
+    },
+  );
+}
+
   runs(offset = 0, limit = 20) {
     return this.http.get<Page<Run>>(`${this.base}/runs`, {
       params: { offset, limit },

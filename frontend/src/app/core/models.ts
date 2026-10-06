@@ -59,6 +59,18 @@ export interface CatalogTable {
   name: string;
   order: number;
 }
+
+export interface PeriodDeletionPreview {
+  periodId: string;
+  periodName: string;
+  version: number;
+  monthlyRuns: number;
+  annualRuns: number;
+  businessRows: number;
+  documents: number;
+  storageCleanupFailures?: number;
+}
+
 export interface Overview {
   periodsCount: number;
   runsCount: number;
