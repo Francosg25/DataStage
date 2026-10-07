@@ -1,4 +1,5 @@
 @use "@angular/material" as mat;
+@use "./visual-theme" as visual;
 html {
   @include mat.theme(
     (
@@ -1750,3 +1751,5 @@ mat-form-field {
 .chat-disclaimer {
   font-size: 10px;
 }
+
+@include visual.apply;

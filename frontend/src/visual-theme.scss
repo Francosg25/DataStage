@@ -1,0 +1,452 @@
+// Presentation only. Applied after the existing layout and component styles.
+@mixin apply {
+  :root {
+    --ink: #213d49;
+    --muted: #536c79;
+    --teal: #087f76;
+    --line: #dce7eb;
+    --background: #f2f6f8;
+    --navy: #163c46;
+    --surface-glass: rgba(255, 255, 255, 0.88);
+    --surface-shadow: 0 8px 30px rgba(30, 65, 78, 0.055);
+    --mat-sys-primary: #087f76;
+    --mat-sys-outline: #bdced5;
+    --mat-sys-corner-large: 18px;
+  }
+
+  @media screen {
+    body {
+      font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+      background:
+        radial-gradient(ellipse at 84% 0%, #dceeea 0, transparent 42%),
+        radial-gradient(ellipse at 28% 70%, #e5ecf6 0, transparent 46%),
+        var(--background);
+    }
+
+    h1 {
+      letter-spacing: -0.9px;
+      font-weight: 650;
+    }
+    h2,
+    h3 {
+      letter-spacing: -0.2px;
+    }
+    .eyebrow {
+      color: #39746f;
+      letter-spacing: 1.6px;
+    }
+
+    .sidebar {
+      inset: 12px auto 12px 12px;
+      width: 216px;
+      padding: 30px 12px 20px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 22px;
+      background: linear-gradient(
+        165deg,
+        #194650 0%,
+        #173540 58%,
+        #152f3b 100%
+      );
+      box-shadow: 0 16px 40px rgba(17, 47, 59, 0.17);
+    }
+    .brand {
+      margin: 0 10px 38px;
+      font-size: 22px;
+    }
+    .brand-symbol span {
+      background: #8be0c9;
+      border-radius: 4px;
+    }
+    .sidebar nav {
+      gap: 5px;
+    }
+    .sidebar nav a {
+      padding: 12px 11px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      color: #c9dbe2;
+      transition:
+        background-color 160ms ease,
+        border-color 160ms ease;
+    }
+    .sidebar nav a:hover {
+      background: #ffffff0d;
+      border-color: #ffffff16;
+    }
+    .sidebar nav a.nav-active {
+      color: #d2fff0;
+      background: linear-gradient(100deg, #ffffff1c, #ffffff0b);
+      border-color: #ffffff24;
+      box-shadow:
+        inset 3px 0 #8be0c9,
+        0 4px 16px #0d242919;
+    }
+    .workspace-label {
+      color: #acc4ce;
+      margin-left: 11px;
+    }
+    .sidebar-note {
+      border-color: #ffffff1a;
+      color: #b2c8d0;
+    }
+    .sidebar-version {
+      color: #acc4ce;
+    }
+    .nav-tag {
+      background: #ffffff0d;
+      border-color: #ffffff26;
+      color: #cfebe2;
+      border-radius: 6px;
+    }
+
+    .topbar {
+      background: var(--surface-glass);
+      border-bottom-color: #ffffff;
+      box-shadow: 0 4px 18px #24445404;
+    }
+    .avatar {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #d7eee7, #e5edf5);
+      border: 1px solid #fff;
+      color: #285d59;
+    }
+    .language-select {
+      border-radius: 10px;
+      background: #ffffffbd;
+      border-color: #d2dfe4;
+    }
+    .environment-pill {
+      background: #edf8f2;
+      color: #3e665b;
+      border-color: #d6e8df;
+    }
+    .development-banner {
+      background: #fff7e6;
+      color: #725824;
+      border-color: #eadfc6;
+    }
+    .app-footer {
+      color: var(--muted);
+    }
+
+    .panel,
+    .stat-card,
+    .login-card {
+      background: var(--surface-glass);
+      border: 1px solid #ffffff;
+      border-radius: 20px;
+      box-shadow: var(--surface-shadow);
+    }
+    .stat-card {
+      padding: 22px;
+    }
+    .stat-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      background: #e9f5f1;
+      color: #23786f;
+    }
+    .stat-card > strong {
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+    }
+    .stat-card > small {
+      color: var(--muted);
+    }
+    .panel-heading {
+      padding: 24px;
+    }
+    .next-panel {
+      background: linear-gradient(145deg, #edf7f3, #f7fbfc);
+      padding: 26px;
+    }
+    .subtle-tag {
+      background: #f2f7f8;
+      border-radius: 9px;
+      color: var(--muted);
+    }
+    .empty-icon,
+    .upload-symbol {
+      border-radius: 15px;
+      background: #eaf3f4;
+      color: #52838a;
+    }
+    .login-card {
+      border-radius: 28px;
+    }
+    .login-logo {
+      background: linear-gradient(135deg, #164650, #087f76);
+      border-radius: 18px;
+    }
+
+    .mat-mdc-button-base {
+      border-radius: 11px !important;
+      transition:
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+    }
+    .mat-mdc-unelevated-button:not(:disabled) {
+      box-shadow: 0 4px 12px #087f761c;
+    }
+    .mat-mdc-outlined-button:not(:disabled) {
+      background: #ffffff80;
+    }
+    .mat-mdc-form-field {
+      --mat-form-field-container-text-font: "Segoe UI", Arial, sans-serif;
+    }
+    .mat-mdc-paginator {
+      background: #ffffffeb;
+    }
+    .data-table th {
+      background: #f0f5f7;
+      font-weight: 600;
+      color: #45606d;
+    }
+    .data-table td {
+      border-bottom-color: #e7eef1;
+    }
+    .data-table tr:hover td {
+      background: #eef7f5;
+    }
+    .status {
+      border-radius: 8px;
+    }
+    .upload-zone {
+      border-radius: 18px;
+      background: #f5faf9;
+      border-color: #a8c9c6;
+    }
+    .upload-active {
+      background: #e7f5ee;
+      border-color: var(--teal);
+    }
+    .file-select {
+      border-radius: 10px;
+    }
+    .period-tile {
+      border-radius: 12px;
+      background: #f6fafb;
+    }
+    .chat-input,
+    .chat-message {
+      border-radius: 16px;
+    }
+    .chat-message {
+      background: #f4f8fa;
+    }
+    .chat-message.user-message {
+      background: #e9f5f0;
+    }
+    .error-message {
+      border-radius: 12px;
+    }
+
+    // Host selectors deliberately outrank Angular's scoped presentation rules.
+    .app-shell .main-shell ds-analytics {
+      color: var(--ink);
+      .analytics-heading h1 {
+        font-size: 30px;
+        letter-spacing: -0.7px;
+      }
+      .filterbar {
+        padding: 18px;
+        border: 1px solid #ffffff;
+        border-radius: 18px;
+        background: var(--surface-glass);
+        box-shadow: var(--surface-shadow);
+      }
+      .filterbar label,
+      .compare-selectors label {
+        color: #496471;
+      }
+      select,
+      .part-search input {
+        border-radius: 9px;
+        border-color: #becfd6;
+        background: #ffffffeb;
+      }
+      .heading-actions button,
+      .part-search button,
+      .pagination button,
+      .section-heading > button {
+        border-radius: 10px;
+        border-color: #d2dfe4;
+      }
+      .currency-switch {
+        border-radius: 10px;
+        border-color: #bdced5;
+      }
+      .heading-actions .currency-switch button {
+        border-radius: 0;
+      }
+      .report-tabs {
+        gap: 6px;
+        border: 0;
+        padding: 5px;
+        border-radius: 14px;
+        background: #e6eef1;
+      }
+      .report-tabs button {
+        padding: 10px 14px;
+        border: 0;
+        border-radius: 10px;
+        color: #516c79;
+        transition:
+          background-color 160ms ease,
+          color 160ms ease;
+      }
+      .report-tabs button.active {
+        background: #fff;
+        color: #086d64;
+        box-shadow: 0 2px 8px #28495712;
+      }
+      .kpi {
+        padding: 16px 14px;
+        border: 1px solid #fff;
+        border-top: 3px solid var(--metric-color);
+        border-radius: 16px;
+        background: var(--surface-glass);
+        box-shadow: var(--surface-shadow);
+      }
+      .kpi-label,
+      .kpi-label span,
+      .kpi-note {
+        color: #536c79;
+      }
+      .kpi-value {
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.4px;
+      }
+      .analysis-table thead th {
+        background: #edf5f5;
+        color: #2e5660;
+      }
+    }
+    .app-shell .main-shell ds-analytics-chart .viz {
+      background: #fffffff5;
+      border: 1px solid #fff;
+      border-radius: 18px;
+      box-shadow: var(--surface-shadow);
+    }
+    .app-shell .main-shell ds-analytics-chart .viz-header {
+      padding: 20px 20px 10px;
+    }
+    .app-shell .main-shell ds-analytics-chart .viz-tools button {
+      border-radius: 8px;
+    }
+    .app-shell .main-shell ds-analytics-chart .viz.expanded {
+      background: #fff;
+    }
+
+    .app-shell .main-shell ds-project-maps {
+      .map-viewer {
+        border-color: #fff;
+        border-radius: 20px;
+        box-shadow: var(--surface-shadow);
+      }
+      .map-toolbar {
+        background: #f7fafb;
+        padding: 12px;
+      }
+      .page-select select {
+        border-radius: 9px;
+        border-color: #c7d7dd;
+      }
+      .map-viewport {
+        background-color: #e9eff2;
+        background-image: radial-gradient(#bfd0d740 1px, transparent 1px);
+        background-size: 18px 18px;
+      }
+      .map-thumbnail {
+        border-radius: 10px;
+      }
+      .map-thumbnail.selected {
+        border-color: var(--teal);
+        background: #eef8f3;
+      }
+      .thumbnail-image {
+        border-radius: 6px;
+      }
+      .map-viewer:fullscreen {
+        border-radius: 0;
+        background: #fff;
+      }
+    }
+
+    @supports (
+      (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+    ) {
+      .topbar,
+      .app-shell .main-shell ds-analytics .filterbar,
+      .login-card {
+        -webkit-backdrop-filter: blur(14px);
+        backdrop-filter: blur(14px);
+      }
+    }
+    @media (max-width: 900px) {
+      .sidebar {
+        inset: 0 auto 0 0;
+        width: 240px;
+        border-radius: 0 22px 22px 0;
+      }
+      .stat-card {
+        padding: 18px;
+      }
+    }
+    @media (max-width: 620px) {
+      h1,
+      .app-shell .main-shell ds-analytics .analytics-heading h1 {
+        font-size: 26px;
+      }
+      .stat-card {
+        padding: 16px 14px;
+        border-radius: 16px;
+      }
+      .panel,
+      .app-shell .main-shell ds-project-maps .map-viewer {
+        border-radius: 16px;
+      }
+      .app-shell .main-shell ds-analytics .filterbar {
+        padding: 14px;
+        gap: 10px;
+      }
+      .app-shell .main-shell ds-analytics .report-tabs button {
+        padding: 10px 12px;
+      }
+      .login-card {
+        padding: 30px 24px;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .sidebar nav a,
+      .mat-mdc-button-base,
+      .app-shell .main-shell ds-analytics .report-tabs button {
+        transition: none;
+      }
+    }
+    @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+      .topbar,
+      .panel,
+      .stat-card,
+      .login-card,
+      .app-shell .main-shell ds-analytics .filterbar,
+      .app-shell .main-shell ds-analytics .kpi {
+        background: #fff;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: #a5bac4;
+      }
+    }
+    @media (forced-colors: active) {
+      .sidebar nav a.nav-active,
+      .app-shell .main-shell ds-analytics .report-tabs button.active {
+        border: 2px solid Highlight;
+        color: HighlightText;
+        background: Highlight;
+      }
+    }
+  }
+}
