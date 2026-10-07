@@ -1,0 +1,13 @@
+-que muestre en resumen en actividad por mes solo cierta cantidad de meses, para que no se sature de barras
+-Una opcion para que me genere una especie de reporte general dependiendo de los meses filtrados en PDF
+-Dar los primeros pasos para configurar Microsoft Entry ID
+-Traspasar todos los datos de 2020 a 2026
+-Para las graficas IGI e IVA pagados por mes debemos de tener en cuenta tambien la columna K, no solo la columna J y L, ya que la columna K representa si FP0 es efectivo
+FP21 es CERTIVA. Se comento que para esta seccion -Se prefiere una tabla con montos que una grafica
+-Modificar tabla de rectificaciones, nos gustaria algo como lo de la imagen. Aduana y que aduana es, cuantos r1 se hicieron, total de pedimentos por esa aduana, % de error respecto a pedimentos por aduana y % error global
+
+
+
+
+
+-Aplicar diseño con animaciones y glassmorpish

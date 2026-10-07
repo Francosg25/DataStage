@@ -67,7 +67,7 @@ interface Message {
         <h2>{{ "El asistente estará aquí." | t }}</h2>
         <p>
           {{
-            "La conexión con Microsoft Foundry aún no está configurada en este entorno. Tu equipo de IT debe habilitar el servicio y sus credenciales."
+            "La conexión con Microsoft Foundry aun no esta configurada en este entorno."
               | t
           }}
         </p>
