@@ -32,3 +32,23 @@ CAMBIAR COLOR A ENCABEZADOS PARA QUE ESTEN DE MANERA MAS LEGIBLE
 QUITAR GRAFICA DE CONTRIBUCIONES DE LA PARTIDA
 
 QUE SE PUEDAN BORRAR GRANDES CANTIDADES DE MESES
+
+AGREGAR ANEXO 22 A CONTEXTO
+
+La función para eliminar un mes ya existe parcialmente, pero la interfaz quedó mal: el selector, los campos y el botón aparecen amontonados en una sola línea. Además, tiene demasiados pasos: seleccionar mes, pulsar «Ver impacto», escribir el nombre exacto y proporcionar un motivo. Quiero una experiencia mucho más sencilla.
+
+Cambia la interfaz así:
+
+En Historial de procesos, muestra los meses en una lista clara y ordenada. Coloca un botón discreto «Eliminar» junto a cada mes, visible solo para usuarios con permiso Admin.
+
+Al pulsarlo, abre un único diálogo de confirmación con el nombre del mes y el impacto calculado por el backend: registros, versiones mensuales y consolidados anuales afectados. Incluye botones «Cancelar» y «Eliminar mes».
+
+No solicites escribir el nombre del mes, proporcionar un motivo ni pulsar antes «Ver impacto». El diálogo debe cargar el impacto automáticamente.
+
+Usa los componentes y estilos de Angular Material que ya utiliza el proyecto. Cuida espaciado, alineación y diseño adaptable; no dejes controles cortados o superpuestos como en la captura.
+
+Tras eliminar, actualiza automáticamente la lista y los indicadores. Debe ser posible volver a cargar el ZIP corregido para ese mismo mes.
+
+Mantén la integridad de los datos: la eliminación solo se ejecuta después de confirmar; el backend debe comprobar el permiso Admin, impedir borrar un proceso activo y evitar que queden consolidados anuales con datos del mes eliminado. Si la versión o el impacto cambian mientras está abierto el diálogo, muestra un mensaje y vuelve a cargar el impacto. Conserva la auditoría.
+
+Integra los cambios con los archivos y patrones existentes. Entrégame los archivos modificados completos, explica brevemente qué cambiaste y ejecuta las pruebas disponibles. No sustituyas toda la pantalla de historial por una interfaz improvisada.
