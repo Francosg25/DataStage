@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+from dataclasses import asdict
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -8,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import ApplicationError
 from app.modules.engine import EngineOptions, parse_period
+from app.modules.engine.models import ConsolidationRange, consolidation_range
 from app.persistence.models import (
     AnnualSource, AuditEvent, IdempotencyRequest, Job, Period, Run, StoredDocument,
 )
@@ -63,12 +65,14 @@ def get_document(session, document_id, scope):
 
 def run_response(session, run):
     period = session.get(Period, run.period_id) if run.period_id else None
+    period_range = consolidation_range(json.loads(run.options_json or "{}"))
     counts = {name: 0 for name in ("receivedFiles", "processedFiles", "skippedFiles", "failedFiles",
                                   "processedTables", "rows", "warnings", "errors")}
     counts.update(json.loads(run.counts_json or "{}"))
     return {
         "id": run.id, "kind": run.kind, "period": period.name if period else None,
         "year": run.year, "rangeName": run.range_name,
+        "periodRange": period_range.payload() if period_range else None,
         "status": run.status, "phase": run.phase, "progress": run.progress,
         "functionalResult": run.functional_result, "publicationStatus": run.publication_status,
         "exportStatus": run.export_status,
@@ -134,6 +138,12 @@ def create_monthly(session, settings, principal, key, period_text, original_name
         return previous
     existing = session.scalar(select(Run).where(Run.scope_id == principal.scope_id,
                                                Run.input_fingerprint == execution_hash))
+    if existing and period.active_run_id and existing.id != period.active_run_id and existing.status not in ('queued', 'running'):
+        principal.require('Reprocessor')
+        # Re-uploading an older file must create a replacement, not return an inactive run.
+        execution_hash = fingerprint({'input': execution_hash, 'replaces': period.active_run_id})
+        existing = session.scalar(select(Run).where(Run.scope_id == principal.scope_id,
+                                                   Run.input_fingerprint == execution_hash))
     if existing:
         remember(session, principal.scope_id, key, request_hash, existing)
         return existing
@@ -159,20 +169,28 @@ def create_monthly(session, settings, principal, key, period_text, original_name
     return run
 
 
-def create_annual(session, settings, principal, key, year, range_name, source_run_ids=None, files=None):
+def create_annual(session, settings, principal, key, year, range_name, source_run_ids=None, files=None,
+                  *, period_range: ConsolidationRange | None = None):
     principal.require("Operator")
+    if period_range:
+        year, range_name = period_range.start_year, period_range.label
     if not 1900 <= year <= 2100:
         raise ApplicationError(400, "INVALID_YEAR", "El año debe estar entre 1900 y 2100")
     if source_run_ids and files:
         raise ApplicationError(400, "MIXED_SOURCES", "Selecciona versiones mensuales o archivos, no ambos")
     # Replay the caller's request before resolving mutable active-month pointers.
     # The execution fingerprint below separately fixes the selected source snapshot.
-    request_hash = fingerprint({"kind": "annual", "year": year, "range": range_name,
-                                "sourceRunIds": source_run_ids, "files": files})
+    request = {"kind": "annual", "year": year, "range": range_name,
+               "sourceRunIds": source_run_ids, "files": files}
+    if period_range:
+        request["periodRange"] = period_range.payload()
+    request_hash = fingerprint(request)
     previous = replay(session, principal.scope_id, key, request_hash)
     if previous:
         return previous
     options = engine_settings(settings)
+    if period_range:
+        options["consolidation_range"] = asdict(period_range)
     manifest = []
     sources = []
     if files:
@@ -186,17 +204,27 @@ def create_annual(session, settings, principal, key, year, range_name, source_ru
                              "sha256": document.sha256})
     else:
         if source_run_ids is None:
-            sources = list(session.scalars(select(Run).join(Period, Period.active_run_id == Run.id)
-                           .where(Period.scope_id == principal.scope_id, Period.year == year)
-                           .order_by(Period.month)))
+            query = select(Run).join(Period, Period.active_run_id == Run.id).where(
+                Period.scope_id == principal.scope_id, Run.scope_id == principal.scope_id)
+            if period_range:
+                query = query.where((Period.year * 12 + Period.month).between(
+                    period_range.start_index, period_range.end_index))
+            else:
+                query = query.where(Period.year == year)
+            sources = list(session.scalars(query.order_by(Period.year, Period.month)))
         else:
             if len(source_run_ids) != len(set(source_run_ids)):
                 raise ApplicationError(400, "DUPLICATE_SOURCE", "Una versión mensual aparece más de una vez")
             sources = [get_run(session, rid, principal.scope_id) for rid in source_run_ids]
         seen_periods = set()
         for source in sources:
-            if source.kind != "monthly" or source.publication_status != "published" or source.year != year:
+            if (source.kind != "monthly" or source.publication_status != "published"
+                    or (not period_range and source.year != year)):
                 raise ApplicationError(409, "SOURCE_NOT_PUBLISHED", "Cada fuente debe ser una versión mensual publicada del año")
+            if period_range:
+                period = session.get(Period, source.period_id)
+                if not period or not period_range.contains(period.year, period.month):
+                    raise ApplicationError(409, "SOURCE_OUTSIDE_RANGE", "Una fuente está fuera del rango seleccionado")
             if source.period_id in seen_periods:
                 raise ApplicationError(400, "MULTIPLE_PERIOD_VERSIONS", "Selecciona una sola versión por periodo")
             seen_periods.add(source.period_id)
@@ -238,12 +266,16 @@ def reprocess(session, settings, principal, key, original_id, reason, expected_v
         raise ApplicationError(409, "VERSION_CONFLICT", "El periodo cambió; actualiza antes de reprocesar")
     if original.status in ("queued", "running"):
         raise ApplicationError(409, "RUN_ACTIVE", "La ejecución todavía está en proceso")
+    options = engine_settings(settings)
+    period_range = consolidation_range(json.loads(original.options_json))
+    if period_range:
+        options["consolidation_range"] = asdict(period_range)
     run = Run(id=str(uuid4()), scope_id=principal.scope_id, kind=original.kind,
               period_id=original.period_id, year=original.year, range_name=original.range_name,
               parent_run_id=original.id, created_by=principal.id,
               input_fingerprint=fingerprint({"reprocess": original.id, "key": key}),
               expected_period_version=expected_version, engine_version=ENGINE_VERSION,
-              source_manifest_json=original.source_manifest_json, options_json=json_text(engine_settings(settings)))
+              source_manifest_json=original.source_manifest_json, options_json=json_text(options))
     session.add(run)
     session.flush()
     for source in session.scalars(select(AnnualSource).where(AnnualSource.annual_run_id == original.id)):

@@ -23,4 +23,12 @@ describe("application language", () => {
     const pipe = TestBed.runInInjectionContext(() => new LocalizedNumberPipe());
     expect(pipe.transform(12345.5)).toBe("12,345.5");
   });
+  it("uses month terminology only in registered interface labels", () => {
+    const i18n = TestBed.inject(I18n);
+    i18n.set("es");
+    expect(i18n.t("Selecciona el periodo")).toBe("Selecciona el mes");
+    expect(i18n.t("archivo_periodo_001")).toBe("archivo_periodo_001");
+    i18n.set("en");
+    expect(i18n.t("Selecciona el periodo").toLowerCase()).toContain("month");
+  });
 });

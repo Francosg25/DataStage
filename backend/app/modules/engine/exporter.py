@@ -42,7 +42,7 @@ def _datetime_cell(value: object) -> datetime | None:
 
 
 def export_xlsx(result: dict, path: Path) -> None:
-    """Validate first; write an atomic .xlsx with native styled Excel tables."""
+    """Validate first; write an atomic .xlsx with filtered ranges, not tables."""
     path = Path(path)
     control_headers = list(ANNUAL_CONTROL_HEADERS if result["kind"] == "annual" else MONTHLY_CONTROL_HEADERS)
     sheets = [{"sheetName": "Control_Proceso", "headers": control_headers, "dateColumns": [],
@@ -53,17 +53,18 @@ def export_xlsx(result: dict, path: Path) -> None:
     import uuid
     temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
-        # Tables require normal memory mode. Worker resource limits bound each job.
         with xlsxwriter.Workbook(str(temp_path), {"strings_to_formulas": False, "strings_to_urls": False}) as workbook:
-            header_format = workbook.add_format({"bold": True, "bg_color": "#D9EAF7", "align": "center", "valign": "vcenter"})
+            header_format = workbook.add_format({
+                "bold": True, "font_color": "#FFFFFF", "bg_color": "#145C56",
+                "font_size": 11, "align": "left", "valign": "vcenter", "text_wrap": True,
+            })
             text_format = workbook.add_format({"num_format": "@"})
             date_format = workbook.add_format({"num_format": "yyyy-mm-dd hh:mm:ss"})
-            table_names: set[str] = set()
             for sheet in sheets:
                 worksheet = workbook.add_worksheet(sheet["sheetName"])
                 headers, rows = sheet["headers"], sheet["rows"]
                 date_keys = set(sheet["dateColumns"])
-                widths = [len(header) for header in headers]
+                widths = [max(len(line) for line in header.split("\n")) for header in headers]
                 worksheet.freeze_panes(1, 0)
                 for column, header in enumerate(headers):
                     worksheet.write_string(0, column, header, header_format)
@@ -78,22 +79,10 @@ def export_xlsx(result: dict, path: Path) -> None:
                             worksheet.write_string(row_index, column, visible, text_format)
                         widths[column] = max(widths[column], *(len(line) for line in visible.split("\n")))
                 for column, width in enumerate(widths):
-                    worksheet.set_column(column, column, min(255, max(10, width + 2)), text_format)
-                base = "T_" + re.sub(r"[^A-Za-z0-9_]", "_", sheet["sheetName"])
-                table_name, suffix = base, 2
-                while table_name.casefold() in table_names:
-                    table_name, suffix = f"{base}_{suffix}", suffix + 1
-                table_names.add(table_name.casefold())
-                if rows:
-                    status = worksheet.add_table(0, 0, len(rows), len(headers) - 1, {
-                        "name": table_name, "style": "Table Style Medium 2",
-                        "columns": [{"header": header, "header_format": header_format} for header in headers],
-                    })
-                    if status != 0:
-                        worksheet.autofilter(0, 0, len(rows), len(headers) - 1)
-                else:
-                    worksheet.autofilter(0, 0, 0, len(headers) - 1)
-                worksheet.set_row(0, 24)
+                    worksheet.set_column(column, column, min(255, max(12, width + 4)), text_format)
+                worksheet.autofilter(0, 0, len(rows), len(headers) - 1)
+                header_lines = max(len(header.split("\n")) for header in headers)
+                worksheet.set_row(0, max(32, header_lines * 16 + 12))
         temp_path.replace(path)
     finally:
         if temp_path.exists():

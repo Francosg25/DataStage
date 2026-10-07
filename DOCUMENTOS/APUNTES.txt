@@ -52,3 +52,5 @@ Tras eliminar, actualiza automáticamente la lista y los indicadores. Debe ser p
 Mantén la integridad de los datos: la eliminación solo se ejecuta después de confirmar; el backend debe comprobar el permiso Admin, impedir borrar un proceso activo y evitar que queden consolidados anuales con datos del mes eliminado. Si la versión o el impacto cambian mientras está abierto el diálogo, muestra un mensaje y vuelve a cargar el impacto. Conserva la auditoría.
 
 Integra los cambios con los archivos y patrones existentes. Entrégame los archivos modificados completos, explica brevemente qué cambiaste y ejecuta las pruebas disponibles. No sustituyas toda la pantalla de historial por una interfaz improvisada.
+=======
+QUE LAS CANTIDADES SE MUESTREN EN DOLARES, QUE HAYA UNA OPCION PARA CAMBIARLAS A MXN

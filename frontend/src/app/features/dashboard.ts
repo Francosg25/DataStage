@@ -36,13 +36,11 @@ Chart.register(...registerables);
       <div>
         <span class="eyebrow"> {{ "VISTA GENERAL" | t }} </span>
         <h1>
-          {{ "El control de tus datos," | t }} <br class="desktop-break" />
-          {{ "en un solo lugar." | t }}
+          {{ i18n.choose("Resumen operativo", "Operations overview") }}
         </h1>
         <p>
           {{
-            "Supervisa tus cargas, valida resultados y consulta cada periodo."
-              | t
+            i18n.choose('Estado de cargas y versiones publicadas', 'Upload and published-version status')
           }}
         </p>
       </div>
@@ -109,10 +107,7 @@ Chart.register(...registerables);
       </section>
       <section class="panel next-panel">
         <span class="eyebrow"> {{ "TU FLUJO DE TRABAJO" | t }} </span>
-        <h2>
-          {{ "Del archivo" | t }} <br />
-          {{ "al dato confiable." | t }}
-        </h2>
+        <h2>{{ i18n.choose("Cargas y resultados", "Uploads and results") }}</h2>
         <div class="workflow-step">
           <span>01</span>
           <div>

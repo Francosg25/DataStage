@@ -15,6 +15,7 @@ from app.core.errors import ApplicationError
 from app.core.logging import configure_logging
 from app.modules.engine import InputFile, detect_table_code, export_xlsx, parse_period, process_annual, process_monthly
 from app.modules.engine.catalog import folio_from_name
+from app.modules.engine.models import consolidation_range
 from app.modules.identity.auth import Principal
 from app.modules.ingestion.zip_reader import read_zip, scan_document
 from app.modules.ingestion.encoding import decode_asc
@@ -238,7 +239,8 @@ def process_job(factory, store, settings, job):
             period_name = session.get(Period, run.period_id).name
         result = process_monthly(period_name, inputs, options)
     else:
-        result = process_annual(run.year, run.range_name, inputs, options)
+        result = process_annual(run.year, run.range_name, inputs, options,
+                                period_range=consolidation_range(json.loads(run.options_json)))
     result["warnings"].extend(ingestion_issues)
     duplicates = [meta for meta in metadata if meta.get("status") == "SKIPPED_DUPLICATE"]
     result["receivedFiles"] += len(duplicates)
@@ -337,8 +339,12 @@ def export_job(factory, store, settings, job):
             period = session.get(Period, run.period_id)
             name = f"DataStage_{period.name}.xlsx"
         else:
-            safe_range = "".join(c for c in run.range_name if c.isalnum() or c in "-_") or "Anual"
-            name = f"DataStage_{run.year}_{safe_range}.xlsx"
+            period_range = consolidation_range(json.loads(run.options_json))
+            if period_range:
+                name = f"DataStage_{period_range.label.replace(' - ', '_')}.xlsx"
+            else:
+                safe_range = "".join(c for c in run.range_name if c.isalnum() or c in "-_") or "Anual"
+                name = f"DataStage_{run.year}_{safe_range}.xlsx"
     output_key = f"{uuid4().hex}.xlsx"
     if hasattr(store, "track_output"):
         store.track_output(output_key)

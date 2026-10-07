@@ -7,7 +7,7 @@ import pytest
 from app.modules.engine import InputFile, export_xlsx, process_annual, process_monthly
 
 
-def test_excel_preserves_text_dates_styles_tables_and_control(tmp_path):
+def test_excel_preserves_text_dates_readable_headers_and_filtered_ranges(tmp_path):
     result = process_monthly("Abril_2026", [InputFile("x_501.asc", "Clave|FechaPagoReal|Nota\n00001|20260423121314|=SUM(A1:A2)\n00002|invalid|https://example.com", "Abril_2026")])
     path = tmp_path / "DataStage_Abril_2026.xlsx"
     export_xlsx(result, path)
@@ -23,15 +23,17 @@ def test_excel_preserves_text_dates_styles_tables_and_control(tmp_path):
     assert worksheet["F2"].value == "=SUM(A1:A2)"
     assert worksheet["F2"].data_type == "s"
     assert worksheet["F3"].hyperlink is None
-    assert worksheet["A1"].fill.fgColor.rgb == "FFD9EAF7"
+    assert worksheet["A1"].fill.fgColor.rgb == "FF145C56"
+    assert worksheet["A1"].font.color.rgb == "FFFFFFFF"
     assert worksheet["A1"].font.bold
-    assert worksheet["A1"].alignment.horizontal == "center"
-    table = next(iter(worksheet.tables.values()))
-    assert table.name.startswith("T_")
-    assert table.tableStyleInfo.name == "TableStyleMedium2"
-    assert table.ref == "A1:F3"
+    assert worksheet["A1"].alignment.horizontal == "left"
+    assert worksheet["A1"].alignment.wrap_text
+    assert worksheet.row_dimensions[1].height == 32
+    assert worksheet.auto_filter.ref == "A1:F3"
+    assert all(not sheet.tables for sheet in workbook)
     with ZipFile(path) as archive:
         assert "<f>" not in archive.read("xl/worksheets/sheet2.xml").decode()
+        assert not any(name.startswith("xl/tables/") for name in archive.namelist())
 
 
 def test_header_only_sheet_has_autofilter(tmp_path):
@@ -44,12 +46,38 @@ def test_header_only_sheet_has_autofilter(tmp_path):
     assert worksheet.max_row == 1
 
 
+def test_multiline_headers_have_readable_height_and_filter_space(tmp_path):
+    result = {"kind": "monthly", "controlRows": [], "tables": [{
+        "sheetName": "Encabezados", "headers": ["DescripcionMercancia", "Importe\noriginal"],
+        "dateColumns": [], "rows": [["Articulo", "0001"]],
+    }]}
+    path = tmp_path / "headers.xlsx"
+    export_xlsx(result, path)
+    worksheet = openpyxl.load_workbook(path)["Encabezados"]
+    assert worksheet.row_dimensions[1].height == 44
+    assert worksheet.column_dimensions["A"].width >= len("DescripcionMercancia") + 4
+    assert worksheet["B1"].value == "Importe\noriginal"
+    assert worksheet["B1"].alignment.wrap_text
+    assert worksheet["B2"].value == "0001"
+    assert worksheet.auto_filter.ref == "A1:B2"
+    assert not worksheet.tables
+
+
 def test_annual_control_column_order_and_export(tmp_path):
     result = process_annual(2026, "Ene-Ago", [InputFile("x_501.asc", "A\n001", "Jan_2026")])
     path = tmp_path / "annual.xlsx"
     export_xlsx(result, path)
-    worksheet = openpyxl.load_workbook(path).worksheets[0]
+    workbook = openpyxl.load_workbook(path)
+    worksheet = workbook.worksheets[0]
     assert [cell.value for cell in worksheet[1]] == ["Periodo", "Archivo", "Tabla", "Hoja", "Estatus", "Filas", "Columnas", "ColumnasFecha", "Mensaje"]
+    for sheet in workbook:
+        assert not sheet.tables
+        assert sheet.auto_filter.ref == sheet.dimensions
+        assert sheet.freeze_panes == "A2"
+        assert all(cell.font.color.rgb == "FFFFFFFF" for cell in sheet[1])
+        assert all(cell.fill.fgColor.rgb == "FF145C56" for cell in sheet[1])
+    with ZipFile(path) as archive:
+        assert not any(name.startswith("xl/tables/") for name in archive.namelist())
 
 
 def test_export_limits_fail_before_replacing_existing_file(tmp_path):

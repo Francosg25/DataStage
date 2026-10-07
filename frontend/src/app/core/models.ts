@@ -23,12 +23,19 @@ export interface Counts {
   warnings: number;
   errors: number;
 }
+export interface ConsolidationRange {
+  startYear: number;
+  startMonth: number;
+  endYear: number;
+  endMonth: number;
+}
 export interface Run {
   id: string;
   kind: string;
   period: string | null;
   year: number | null;
   rangeName: string | null;
+  periodRange?: ConsolidationRange | null;
   status: string;
   phase: string;
   progress: number;
@@ -104,6 +111,7 @@ export function isTerminal(run: Run): boolean {
 export function runLabel(run: Run): string {
   return (
     run.period ||
+    (run.periodRange && run.rangeName) ||
     [run.year, run.rangeName].filter(Boolean).join(" · ") ||
     "Sin periodo"
   );

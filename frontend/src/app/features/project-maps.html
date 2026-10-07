@@ -1,0 +1,222 @@
+<header class="maps-heading">
+  <div>
+    <span class="eyebrow">{{ t('ACTIVOS FIJOS', 'FIXED ASSETS') }}</span>
+    <h1>{{ t('Mapas del proyecto', 'Project maps') }}</h1>
+  </div>
+  @if (catalog(); as source) {
+  <div class="source-meta">
+    <strong>{{ source.location }}</strong><span>{{ sourceDate() }}</span>
+  </div>
+  }
+</header>
+
+@if (loading()) {
+<mat-progress-bar
+  mode="indeterminate"
+  [attr.aria-label]="t('Cargando mapas', 'Loading maps')"
+/>
+} @else if (catalogError()) {
+<div class="map-empty" role="alert">
+  <h2>
+    {{ t('No se pudieron cargar los mapas', 'Maps could not be loaded') }}
+  </h2>
+  <button mat-stroked-button (click)="loadCatalog()">
+    <svg lucideRotateCw aria-hidden="true"></svg>{{ t('Reintentar', 'Retry') }}
+  </button>
+</div>
+} @else if (!pages().length) {
+<div class="map-empty">
+  <h2>{{ t('No hay mapas disponibles', 'No maps available') }}</h2>
+</div>
+} @else {
+<section
+  #viewer
+  class="map-viewer"
+  (keydown)="onKey($event)"
+  [attr.aria-label]="t('Visor de mapas', 'Map viewer')"
+>
+  <div class="map-toolbar">
+    <div class="page-navigation">
+      <button
+        mat-icon-button
+        [disabled]="index() === 0"
+        (click)="goTo(index() - 1)"
+        [matTooltip]="t('Hoja anterior', 'Previous page')"
+        [attr.aria-label]="t('Hoja anterior', 'Previous page')"
+      >
+        <svg lucideChevronLeft aria-hidden="true"></svg>
+      </button>
+      <span class="page-count" aria-live="polite" aria-atomic="true"
+        >{{ index() + 1 }} / {{ pages().length }}</span
+      >
+      <button
+        mat-icon-button
+        [disabled]="index() === pages().length - 1"
+        (click)="goTo(index() + 1)"
+        [matTooltip]="t('Hoja siguiente', 'Next page')"
+        [attr.aria-label]="t('Hoja siguiente', 'Next page')"
+      >
+        <svg lucideChevronRight aria-hidden="true"></svg>
+      </button>
+    </div>
+    <label class="page-select"
+      ><span class="sr-only">{{ t('Seleccionar mapa', 'Select map') }}</span>
+      <select
+        [attr.aria-label]="t('Seleccionar mapa', 'Select map')"
+        [value]="index()"
+        (change)="goTo(+$any($event.target).value)"
+      >
+        @for (page of pages(); track page.id; let i = $index) {
+        <option [value]="i">{{ title(page) }}</option>
+        }
+      </select>
+    </label>
+    <div class="map-tools" [attr.aria-label]="t('Vista del mapa', 'Map view')">
+      <button
+        mat-icon-button
+        (click)="changeZoom(-0.5)"
+        [disabled]="zoom() <= 1"
+        [matTooltip]="t('Alejar', 'Zoom out')"
+        [attr.aria-label]="t('Alejar', 'Zoom out')"
+      >
+        <svg lucideZoomOut aria-hidden="true"></svg>
+      </button>
+      <output class="zoom-level">{{ zoom() * 100 }}%</output>
+      <button
+        mat-icon-button
+        (click)="changeZoom(0.5)"
+        [disabled]="zoom() >= 4"
+        [matTooltip]="t('Acercar', 'Zoom in')"
+        [attr.aria-label]="t('Acercar', 'Zoom in')"
+      >
+        <svg lucideZoomIn aria-hidden="true"></svg>
+      </button>
+      <button
+        mat-icon-button
+        (click)="fit()"
+        [matTooltip]="t('Ajustar a la vista', 'Fit to view')"
+        [attr.aria-label]="t('Ajustar a la vista', 'Fit to view')"
+      >
+        <svg lucideScan aria-hidden="true"></svg>
+      </button>
+      <span class="tool-divider"></span>
+      <button
+        mat-icon-button
+        (click)="download()"
+        [disabled]="!image(current()!)"
+        [matTooltip]="t('Descargar mapa', 'Download map')"
+        [attr.aria-label]="t('Descargar mapa', 'Download map')"
+      >
+        <svg lucideDownload aria-hidden="true"></svg>
+      </button>
+      <button
+        mat-icon-button
+        (click)="toggleFullscreen()"
+        [matTooltip]="fullscreen() ? t('Salir de pantalla completa', 'Exit fullscreen') : t('Pantalla completa', 'Fullscreen')"
+        [attr.aria-label]="fullscreen() ? t('Salir de pantalla completa', 'Exit fullscreen') : t('Pantalla completa', 'Fullscreen')"
+      >
+        @if (fullscreen()) { <svg lucideMinimize aria-hidden="true"></svg> }
+        @else { <svg lucideMaximize aria-hidden="true"></svg> }
+      </button>
+    </div>
+  </div>
+  @if (notice()) {
+  <p class="map-notice" role="status">{{ notice() }}</p>
+  }
+  <div
+    #viewport
+    class="map-viewport"
+    tabindex="0"
+    [class.zoomed]="zoom() > 1"
+    [attr.aria-label]="title(current()!)"
+    (pointerdown)="startPan($event)"
+    (pointermove)="pan($event)"
+    (pointerup)="endPan()"
+    (pointercancel)="endPan()"
+    (lostpointercapture)="endPan()"
+  >
+    <div class="sheet-space">
+      @for (page of selectedPages(); track page.id) { @if (image(page); as url)
+      {
+      <img
+        class="map-sheet"
+        [class.backward]="direction() < 0"
+        [src]="url"
+        [alt]="title(page)"
+        [attr.width]="page.width"
+        [attr.height]="page.height"
+        [style.width.px]="sheetWidth()"
+        draggable="false"
+        (error)="imageFailed(page)"
+      />
+      } @else if (failed().has(key(page))) {
+      <div class="map-empty" role="alert">
+        <p>
+          {{ t('No se pudo cargar esta hoja', 'This page could not be loaded')
+          }}
+        </p>
+        <button mat-stroked-button (click)="loadImage(page)">
+          <svg lucideRotateCw aria-hidden="true"></svg>{{ t('Reintentar',
+          'Retry') }}
+        </button>
+      </div>
+      } @else {
+      <div class="map-loading">
+        <mat-progress-bar
+          mode="indeterminate"
+          [attr.aria-label]="t('Cargando hoja', 'Loading page')"
+        />
+      </div>
+      } }
+    </div>
+  </div>
+  <div class="sheet-caption">
+    <h2>{{ title(current()!) }}</h2>
+    <span
+      >{{ t('Diapositiva original', 'Source slide') }} {{ current()!.slide
+      }}</span
+    >
+  </div>
+  <nav
+    class="map-thumbnails"
+    [attr.aria-label]="t('Hojas del proyecto', 'Project pages')"
+  >
+    @for (page of pages(); track page.id; let i = $index) {
+    <button
+      class="map-thumbnail"
+      [class.selected]="i === index()"
+      [attr.aria-current]="i === index() ? 'page' : null"
+      [attr.aria-label]="(i + 1) + '. ' + title(page)"
+      (click)="goTo(i)"
+    >
+      <span class="thumbnail-image"
+        >@if (image(page, true); as url) {
+        <img
+          [src]="url"
+          alt=""
+          [width]="page.width"
+          [height]="page.height"
+          (error)="imageFailed(page, true)"
+        />
+        }</span
+      >
+      <span class="thumbnail-label"
+        ><span class="thumbnail-number">{{ i + 1 }}</span
+        ><span>{{ title(page) }}</span></span
+      >
+    </button>
+    }
+  </nav>
+</section>
+<div class="maps-source">
+  <span>{{ catalog()!.title }}</span><span>{{ catalog()!.sourceFile }}</span>
+</div>
+<details class="map-transcript">
+  <summary>{{ t('Texto de la hoja original', 'Original page text') }}</summary>
+  <div lang="en">
+    @for (line of current()!.text; track $index) {
+    <p>{{ line }}</p>
+    }
+  </div>
+</details>
+}

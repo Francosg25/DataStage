@@ -3,6 +3,174 @@
   color: #25343d;
   letter-spacing: 0;
 }
+.currency-switch {
+  display: flex;
+  border: 1px solid #b9c9cc;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.part-alias { display: block; white-space: normal; max-width: 260px; overflow-wrap: anywhere; font-size: 11px; font-weight: 400; }
+.heading-actions .currency-switch button {
+  border: 0;
+  border-radius: 0;
+  min-width: 46px;
+  font-weight: 700;
+}
+.heading-actions .currency-switch button.active {
+  background: #173e48;
+  color: #fff;
+}
+.filterbar label.wide-filter {
+  min-width: 170px;
+  flex: 1.5;
+}
+.persistent-alert {
+  border-left: 3px solid #aa6413;
+  color: #71440f;
+}
+.part-search,
+.pagination,
+.comparison-links {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  margin: 18px 0;
+  flex-wrap: wrap;
+}
+.part-search label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 220px;
+}
+.part-search input {
+  border: 1px solid #b9c9cc;
+  border-radius: 4px;
+  padding: 9px;
+}
+.part-search button,
+.pagination button,
+.section-heading > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #b9c9cc;
+  border-radius: 4px;
+  background: #fff;
+  padding: 8px 12px;
+  color: #234c57;
+}
+.part-search ds-icon,
+.section-heading > button ds-icon {
+  width: 16px;
+  height: 16px;
+}
+.tax-table-heading {
+  font-size: 14px;
+  margin: 22px 0 10px;
+}
+.tax-table-heading span {
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 12px;
+}
+.analysis-table thead th {
+  background: #e4eef0;
+  color: #173e48;
+  font-weight: 700;
+}
+.analysis-table td small {
+  display: block;
+  font-size: 10px;
+  white-space: normal;
+}
+.analysis-table .observation-cell {
+  min-width: 220px;
+  max-width: 460px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.unassigned {
+  color: #965712;
+}
+.pagination {
+  justify-content: flex-end;
+  font-size: 12px;
+}
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+.comparison-metric {
+  padding: 16px 0;
+  border-top: 1px solid #dbe3e7;
+  min-width: 0;
+}
+.comparison-metric h3 {
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.comparison-metric h3 small {
+  font-weight: 400;
+}
+.comparison-metric > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.comparison-metric span {
+  font-size: 11px;
+  color: #536773;
+}
+.comparison-metric b {
+  display: block;
+  font-size: 17px;
+  color: #25343d;
+  overflow-wrap: anywhere;
+  margin: 5px 0 12px;
+}
+.comparison-change {
+  font-size: 12px;
+  font-weight: 600;
+  color: #276758;
+}
+.comparison-links a {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.filterbar label,
+.compare-selectors label {
+  color: #435d67;
+}
+@media (max-width: 800px) {
+  .comparison-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tax-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+@media (max-width: 500px) {
+  .comparison-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .heading-actions {
+    flex-wrap: wrap;
+  }
+  .compare-selectors {
+    flex-wrap: wrap;
+  }
+  .part-search label {
+    min-width: 0;
+    width: 100%;
+  }
+}
 .analytics-heading {
   display: flex;
   justify-content: space-between;

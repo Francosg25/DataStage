@@ -1,5 +1,6 @@
 """Elimina un mes y los consolidados derivados en una transacción."""
 import json
+import hashlib
 
 from sqlalchemy import delete, func, select, update
 
@@ -271,3 +272,43 @@ def delete_period(
     session.delete(period)
     session.flush()
     return preview, storage_keys
+
+
+def bulk_deletion_preview(session, principal, period_ids, *, lock=False):
+    principal.require('Admin')
+    if not period_ids or len(period_ids) != len(set(period_ids)):
+        raise ApplicationError(400, 'INVALID_MONTH_SELECTION', 'Selecciona meses distintos')
+    previews, runs = [], {}
+    for period_id in sorted(period_ids):
+        _, preview, targets = deletion_preview(session, principal, period_id, lock=lock)
+        previews.append(preview)
+        runs.update(targets)
+    ids = sorted(runs)
+    impact = {
+        'monthlyRuns': sum(r.kind == 'monthly' for r in runs.values()),
+        'annualRuns': sum(r.kind == 'annual' for r in runs.values()),
+        'businessRows': sum(session.scalar(select(func.count()).select_from(t).where(t.c.processing_run_id.in_(ids))) or 0 for t in BUSINESS_TABLES.values()) if ids else 0,
+        'documents': session.scalar(select(func.count()).select_from(StoredDocument).where(StoredDocument.run_id.in_(ids))) if ids else 0,
+    }
+    payload = {'periods': previews, 'impact': impact, 'runIds': ids}
+    token = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    return {**payload, 'token': token, 'confirmation': f'DELETE {len(previews)} MONTHS'}
+
+
+def delete_periods(session, principal, period_ids, expected_token, confirmation, reason):
+    preview = bulk_deletion_preview(session, principal, period_ids, lock=True)
+    if preview['token'] != expected_token:
+        raise ApplicationError(409, 'IMPACT_CHANGED', 'El impacto cambió; revisa los meses de nuevo')
+    if confirmation != preview['confirmation']:
+        raise ApplicationError(400, 'CONFIRMATION_MISMATCH', 'La confirmación no coincide')
+    keys = []
+    # Validate the whole selection before deleting; shared annual runs are counted once.
+    for original in preview['periods']:
+        _, impact, targets = deletion_preview(session, principal, original['periodId'], lock=True)
+        if not set(targets).issubset(preview['runIds']):
+            raise ApplicationError(409, 'IMPACT_CHANGED', 'El impacto cambió durante la operación')
+        _, deleted_keys = delete_period(session, principal, original['periodId'], original['version'],
+                                        original['periodName'], reason,
+                                        {k: impact[k] for k in ('monthlyRuns', 'annualRuns', 'businessRows', 'documents')})
+        keys.extend(deleted_keys)
+    return preview, sorted(set(keys))

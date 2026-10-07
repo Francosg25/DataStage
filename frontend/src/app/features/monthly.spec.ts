@@ -1,7 +1,7 @@
 import { TestBed } from "@angular/core/testing";
 import { FormBuilder } from "@angular/forms";
 import { Router } from "@angular/router";
-import { throwError } from "rxjs";
+import { of, throwError } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { Api } from "../core/api";
 import { Auth } from "../core/auth";
@@ -15,7 +15,7 @@ describe("reintentos de una carga mensual", () => {
     TestBed.configureTestingModule({
       providers: [
         FormBuilder,
-        { provide: Api, useValue: { monthly } },
+        { provide: Api, useValue: { monthly, periods: () => of([]) } },
         { provide: Auth, useValue: { config: () => ({ maxUploadMb: 10 }) } },
         { provide: Router, useValue: { navigate: vi.fn() } },
       ],

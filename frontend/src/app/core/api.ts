@@ -7,8 +7,21 @@ import {
   AnalyticsReport,
 } from "./analytics";
 import { I18n } from "./i18n";
+import { ProjectMapCatalog } from "./project-maps";
+export interface BulkPeriodPreview {
+  periods: PeriodDeletionPreview[];
+  impact: {
+    monthlyRuns: number;
+    annualRuns: number;
+    businessRows: number;
+    documents: number;
+  };
+  token: string;
+  confirmation: string;
+}
 import {
   AppConfig,
+  ConsolidationRange,
   Identity,
   Page,
   Run,
@@ -21,6 +34,18 @@ import {
 } from "./models";
 @Injectable({ providedIn: "root" })
 export class Api {
+  projectMaps() {
+    return this.http.get<ProjectMapCatalog>(`${this.base}/project-maps`);
+  }
+  projectMapImage(id: string, thumbnail = false) {
+    return this.http.get(
+      `${this.base}/project-maps/${encodeURIComponent(id)}/image`,
+      {
+        params: { thumbnail },
+        responseType: "blob",
+      },
+    );
+  }
   private readonly http = inject(HttpClient);
   private readonly i18n = inject(I18n);
   readonly base = "/api/v1";
@@ -33,32 +58,52 @@ export class Api {
   periods() {
     return this.http.get<Period[]>(`${this.base}/periods`);
   }
+  bulkPeriodPreview(periodIds: string[]) {
+    return this.http.post<BulkPeriodPreview>(
+      `${this.base}/periods/bulk-deletion-preview`,
+      { periodIds },
+    );
+  }
+  deletePeriods(
+    preview: BulkPeriodPreview,
+    confirmation: string,
+    reason: string,
+  ) {
+    return this.http.post<
+      BulkPeriodPreview & { storageCleanupFailures: number }
+    >(`${this.base}/periods/bulk-delete`, {
+      periodIds: preview.periods.map((p) => p.periodId),
+      expectedToken: preview.token,
+      confirmation,
+      reason,
+    });
+  }
   periodDeletionPreview(id: string) {
-  return this.http.get<PeriodDeletionPreview>(
-    `${this.base}/periods/${encodeURIComponent(id)}/deletion-preview`,
-  );
-}
+    return this.http.get<PeriodDeletionPreview>(
+      `${this.base}/periods/${encodeURIComponent(id)}/deletion-preview`,
+    );
+  }
 
-deletePeriod(
-  impact: PeriodDeletionPreview,
-  confirmation: string,
-  reason: string,
-) {
-  return this.http.delete<PeriodDeletionPreview>(
-    `${this.base}/periods/${encodeURIComponent(impact.periodId)}`,
-    {
-      body: {
-        expectedVersion: impact.version,
-        confirmation,
-        reason,
-        expectedMonthlyRuns: impact.monthlyRuns,
-        expectedAnnualRuns: impact.annualRuns,
-        expectedBusinessRows: impact.businessRows,
-        expectedDocuments: impact.documents,
+  deletePeriod(
+    impact: PeriodDeletionPreview,
+    confirmation: string,
+    reason: string,
+  ) {
+    return this.http.delete<PeriodDeletionPreview>(
+      `${this.base}/periods/${encodeURIComponent(impact.periodId)}`,
+      {
+        body: {
+          expectedVersion: impact.version,
+          confirmation,
+          reason,
+          expectedMonthlyRuns: impact.monthlyRuns,
+          expectedAnnualRuns: impact.annualRuns,
+          expectedBusinessRows: impact.businessRows,
+          expectedDocuments: impact.documents,
+        },
       },
-    },
-  );
-}
+    );
+  }
 
   runs(offset = 0, limit = 20) {
     return this.http.get<Page<Run>>(`${this.base}/runs`, {
@@ -98,12 +143,10 @@ deletePeriod(
       headers: { "Idempotency-Key": key },
     });
   }
-  annual(year: number, range: string, key: string) {
-    return this.http.post<Run>(
-      `${this.base}/annual-runs`,
-      { anio: year, rangoNombre: range },
-      { headers: { "Idempotency-Key": key } },
-    );
+  annual(range: ConsolidationRange, key: string) {
+    return this.http.post<Run>(`${this.base}/annual-runs`, range, {
+      headers: { "Idempotency-Key": key },
+    });
   }
   reprocess(id: string, reason: string, expectedVersion: number, key: string) {
     return this.http.post<Run>(
