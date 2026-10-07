@@ -15,12 +15,20 @@ class RunCounts(BaseModel):
     errors: int
 
 
+class ConsolidationRangeResponse(BaseModel):
+    startYear: int
+    startMonth: int
+    endYear: int
+    endMonth: int
+
+
 class RunResponse(BaseModel):
     id: str
     kind: Literal["monthly", "annual"]
     period: str | None
     year: int
     rangeName: str | None
+    periodRange: ConsolidationRangeResponse | None = None
     status: Literal["queued", "running", "completed", "needs_attention", "failed"]
     phase: str
     progress: int

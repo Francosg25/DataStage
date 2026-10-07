@@ -45,9 +45,25 @@ export class I18n {
   t(value: unknown): string {
     if (value == null) return "";
     const text = String(value);
-    if (this.language() === "es") return text;
     const key = text.replace(/\s+/g, " ").trim();
-    if (ENGLISH[key]) return ENGLISH[key];
+    if (ENGLISH[key]) {
+      const translateMonth = (v: string) =>
+        v.replace(/\b(periodos|periodo|periods|period)\b/gi, (word) => {
+          const replacement = (
+            {
+              periodos: "meses",
+              periodo: "mes",
+              periods: "months",
+              period: "month",
+            } as Record<string, string>
+          )[word.toLowerCase()];
+          return word[0] === word[0].toUpperCase()
+            ? replacement[0].toUpperCase() + replacement.slice(1)
+            : replacement;
+        });
+      return translateMonth(this.language() === "es" ? text : ENGLISH[key]);
+    }
+    if (this.language() === "es") return text;
     const period =
       /^(Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)([_ ])(\d{4})$/.exec(
         key,

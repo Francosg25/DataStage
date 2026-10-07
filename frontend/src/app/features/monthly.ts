@@ -1,7 +1,7 @@
-import { TranslatePipe } from "../core/i18n";
+import { I18n, TranslatePipe } from "../core/i18n";
 import { Component, DestroyRef, inject, signal } from "@angular/core";
 import { ReactiveFormsModule, FormBuilder, Validators } from "@angular/forms";
-import { Router, RouterLink } from "@angular/router";
+import { Router } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatSelectModule } from "@angular/material/select";
@@ -10,7 +10,7 @@ import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { Api } from "../core/api";
 import { Auth } from "../core/auth";
-import { errorText } from "../core/models";
+import { Period, errorText } from "../core/models";
 import { Icon } from "../shared/ui";
 export const MONTHS = [
   "Enero",
@@ -39,7 +39,6 @@ export function validateZip(file: File, maxMb: number): string {
   imports: [
     TranslatePipe,
     ReactiveFormsModule,
-    RouterLink,
     MatButtonModule,
     MatFormFieldModule,
     MatSelectModule,
@@ -48,20 +47,8 @@ export function validateZip(file: File, maxMb: number): string {
     Icon,
   ],
   template: `
-    <div class="page-heading">
-      <div>
-        <span class="eyebrow"> {{ "INGESTA DE ARCHIVOS" | t }} </span>
-        <h1>{{ "Nueva carga mensual" | t }}</h1>
-        <p>
-          {{
-            "Selecciona el periodo y adjunta el ZIP con tus archivos ASC." | t
-          }}
-        </p>
-      </div>
-      <a mat-stroked-button routerLink="/runs"> {{ "Ver historial" | t }} </a>
-    </div>
     <div class="form-columns">
-      <section class="panel form-panel">
+      <section class="form-panel">
         <form [formGroup]="form" (ngSubmit)="submit()">
           <div class="step-heading">
             <span>1</span>
@@ -104,6 +91,17 @@ export function validateZip(file: File, maxMb: number): string {
               </p>
             </div>
           </div>
+          @if (existingMonth(); as p) {
+            <div class="note" role="status">
+              {{
+                i18n.choose(
+                  "Se reemplazará el mes publicado al completar la carga. Se conserva el historial.",
+                  "The published month will be replaced after successful processing. History is retained."
+                )
+              }}
+              · v{{ p.version }}
+            </div>
+          }
           <div
             class="upload-zone"
             [class.upload-active]="dragging()"
@@ -160,9 +158,9 @@ export function validateZip(file: File, maxMb: number): string {
         </form>
       </section>
       <aside>
-        <section class="panel info-panel">
+        <section class="info-panel">
           <span class="eyebrow"> {{ "ANTES DE COMENZAR" | t }} </span>
-          <h2>{{ "Una carga, todo conectado." | t }}</h2>
+          <h2>{{ i18n.choose("Datos de la carga", "Upload details") }}</h2>
           <ul class="check-list">
             <li>
               <ds-icon name="check" />
@@ -170,7 +168,12 @@ export function validateZip(file: File, maxMb: number): string {
             </li>
             <li>
               <ds-icon name="check" />
-              {{ "Los archivos se agrupan por código de tabla." | t }}
+              {{
+                i18n.choose(
+                  "Se admiten archivos ASC en subcarpetas del ZIP.",
+                  "ASC files in ZIP subfolders are supported."
+                )
+              }}
             </li>
             <li>
               <ds-icon name="check" />
@@ -200,6 +203,8 @@ export function validateZip(file: File, maxMb: number): string {
   `,
 })
 export class Monthly {
+  i18n = inject(I18n);
+  periods = signal<Period[]>([]);
   api = inject(Api);
   auth = inject(Auth);
   router = inject(Router);
@@ -219,6 +224,13 @@ export class Monthly {
   dragging = signal(false);
   private key = crypto.randomUUID();
   constructor() {
+    this.api
+      .periods()
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: (p) => this.periods.set(p),
+        error: (e) => this.error.set(errorText(e)),
+      });
     this.form.valueChanges
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe(() => (this.key = crypto.randomUUID()));
@@ -227,6 +239,15 @@ export class Monthly {
     return this.file()
       ? `${(this.file()!.size / 1024 / 1024).toFixed(2)} MB`
       : "";
+  }
+  existingMonth() {
+    const f = this.form.getRawValue();
+    return this.periods().find(
+      (p) =>
+        p.year === f.year &&
+        p.month === MONTHS.indexOf(f.month) + 1 &&
+        p.activeRunId,
+    );
   }
   select(event: Event) {
     const file = (event.target as HTMLInputElement).files?.[0];

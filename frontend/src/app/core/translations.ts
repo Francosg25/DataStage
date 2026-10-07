@@ -1,4 +1,17 @@
 export const ENGLISH: Record<string, string> = {
+  "Mapas del proyecto": "Project maps",
+  Desde: "From",
+  Hasta: "Through",
+  "Año inicial": "Start year",
+  "Mes inicial": "Start month",
+  "Año final": "End year",
+  "Mes final": "End month",
+  "El mes final no puede ser anterior al mes inicial.":
+    "The end month cannot be earlier than the start month.",
+  "meses con versión publicada": "months with a published version",
+  "No hay versiones mensuales disponibles entre estas fechas.":
+    "No monthly versions are available between these dates.",
+  "Comparativa mensual": "Monthly comparison",
   Historial: "History",
   "Detalle de ejecución": "Run details",
   "Guía de Azure Foundry": "Azure Foundry guide",
@@ -245,6 +258,7 @@ export const ENGLISH: Record<string, string> = {
   "← Volver al historial": "← Back to history",
   Resumen: "Overview",
   "Carga mensual": "Monthly upload",
+  Cargas: "Uploads",
   "Análisis de operaciones": "Operations analytics",
   Asistente: "Assistant",
   "Periodos publicados": "Published periods",

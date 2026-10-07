@@ -292,9 +292,20 @@ p {
   padding: 0 7px;
 }
 @media print {
-  .sidebar, .topbar, .development-banner, .app-footer, .nav-scrim { display: none !important; }
-  .main-shell { margin: 0 !important; width: 100% !important; }
-  #main-content { padding: 10px !important; }
+  .sidebar,
+  .topbar,
+  .development-banner,
+  .app-footer,
+  .nav-scrim {
+    display: none !important;
+  }
+  .main-shell {
+    margin: 0 !important;
+    width: 100% !important;
+  }
+  #main-content {
+    padding: 10px !important;
+  }
 }
 .login-language {
   position: absolute;
@@ -706,6 +717,52 @@ main#main-content {
 }
 .form-panel {
   padding: 28px;
+}
+ds-uploads {
+  .form-panel {
+    min-width: 0;
+    padding: 0;
+  }
+  .form-columns {
+    gap: 32px;
+    align-items: start;
+  }
+  .form-columns > aside {
+    border-left: 1px solid var(--line);
+    padding-left: 28px;
+    min-width: 0;
+  }
+  .info-panel {
+    padding: 0;
+  }
+  .info-panel h2 {
+    font-size: 16px;
+  }
+  .help-caption {
+    padding: 24px 0 0;
+  }
+  .source-section {
+    margin-top: 32px;
+    border-top: 1px solid var(--line);
+    padding-top: 24px;
+  }
+  .source-section .panel-heading {
+    padding: 0 0 20px;
+  }
+  .period-grid {
+    padding: 0;
+  }
+  @media (max-width: 900px) {
+    .form-columns {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .form-columns > aside {
+      display: block;
+      border-left: 0;
+      border-top: 1px solid var(--line);
+      padding: 24px 0 0;
+    }
+  }
 }
 .step-heading {
   display: flex;

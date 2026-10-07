@@ -14,11 +14,14 @@ import logging
 from app.modules.processing.period_deletion import (
     delete_period,
     deletion_preview,
+    bulk_deletion_preview,
+    delete_periods,
 )
 
 from app.core.errors import ApplicationError
 from app.core.contracts import DataPage, FileRow, IssueRow, Page, Problem, RunResponse, TableRow
 from app.modules.engine import ENGINE_VERSION, TABLE_NAMES, TABLE_ORDER
+from app.modules.engine.models import ConsolidationRange
 from app.modules.identity.auth import Principal, current_principal, require_reader
 from app.modules.processing.service import (
     audit, commit_or_conflict, create_annual, create_monthly, fingerprint, get_document,
@@ -26,6 +29,7 @@ from app.modules.processing.service import (
 )
 from app.modules.reporting.queries import compare_periods, data_page, overview
 from app.modules.reporting.analytics import options as analytics_options, summarize as analytics_summary
+from app.modules.reporting.project_maps import catalog as project_maps_catalog, image_path as project_map_image
 from app.persistence.models import (
     AgentMessage, AuditEvent, Conversation, Issue, Job, OutboxMessage, Period,
     ProcessingFile, ProcessingTable, Run, StoredDocument,
@@ -57,15 +61,33 @@ class SourceRef(StrictModel):
     tableCode: str | None = Field(default=None, max_length=100)
 
 class AnnualRequest(StrictModel):
-    anio: int = Field(ge=1900, le=2100)
-    rangoNombre: str = Field(min_length=1, max_length=100)
-    sourceRunIds: list[str] | None = Field(default=None, min_length=1, max_length=12)
+    anio: int | None = Field(default=None, ge=1900, le=2100)
+    rangoNombre: str | None = Field(default=None, min_length=1, max_length=100)
+    startYear: int | None = Field(default=None, ge=1900, le=2100, strict=True)
+    startMonth: int | None = Field(default=None, ge=1, le=12, strict=True)
+    endYear: int | None = Field(default=None, ge=1900, le=2100, strict=True)
+    endMonth: int | None = Field(default=None, ge=1, le=12, strict=True)
+    sourceRunIds: list[str] | None = Field(default=None, min_length=1, max_length=2412)
     files: list[SourceRef] | None = Field(default=None, min_length=1, max_length=2000)
     @model_validator(mode="after")
     def exclusive_sources(self):
         if self.sourceRunIds is not None and self.files is not None:
             raise ValueError("Selecciona versiones mensuales o archivos")
+        endpoints = (self.startYear, self.startMonth, self.endYear, self.endMonth)
+        if any(value is not None for value in endpoints):
+            if any(value is None for value in endpoints):
+                raise ValueError("Indica el año y mes inicial y el año y mes final.")
+            if self.anio is not None or self.rangoNombre is not None:
+                raise ValueError("No combines el rango explícito con el formato anual anterior.")
+            self.period_range()
+        elif self.anio is None or self.rangoNombre is None:
+            raise ValueError("Indica los cuatro extremos del rango o el año y nombre del rango anual.")
         return self
+
+    def period_range(self) -> ConsolidationRange | None:
+        if self.startYear is None:
+            return None
+        return ConsolidationRange(self.startYear, self.startMonth, self.endYear, self.endMonth)
 
 class ReprocessRequest(StrictModel):
     reason: str = Field(min_length=5, max_length=1000)
@@ -84,6 +106,14 @@ class MessageRequest(StrictModel):
     message: str = Field(min_length=1, max_length=8000)
     allowActions: bool = False
     language: Literal['es', 'en'] = 'es'
+
+class BulkPeriodSelection(StrictModel):
+    periodIds: list[str] = Field(min_length=1, max_length=24)
+
+class BulkDeleteRequest(BulkPeriodSelection):
+    expectedToken: str = Field(min_length=64, max_length=64)
+    confirmation: str = Field(min_length=1, max_length=100)
+    reason: str = Field(min_length=8, max_length=1000)
 
 def _leaf(name):
     result = PurePosixPath((name or "").replace("\\", "/")).name
@@ -110,6 +140,17 @@ def me(principal: Identity):
 @router.get("/catalog/tables")
 def table_catalog(principal: Reader):
     return [{"code": code, "name": TABLE_NAMES[code], "order": order} for order, code in enumerate(TABLE_ORDER)]
+
+
+@router.get("/project-maps")
+def project_maps(request: Request, principal: Reader):
+    return project_maps_catalog(principal, request.app.state.settings)
+
+
+@router.get("/project-maps/{map_id}/image")
+def project_map(map_id: str, request: Request, principal: Reader, thumbnail: bool = False):
+    path = project_map_image(principal, request.app.state.settings, map_id, thumbnail)
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, no-store"})
 
 @router.get("/periods")
 def periods(session: DB, principal: Reader):
@@ -161,6 +202,27 @@ def remove_period(
         **preview,
         "storageCleanupFailures": cleanup_failures,
     }
+
+
+@router.post('/periods/bulk-deletion-preview')
+def bulk_period_preview(body: BulkPeriodSelection, session: DB, principal: Identity):
+    return bulk_deletion_preview(session, principal, body.periodIds)
+
+
+@router.post('/periods/bulk-delete')
+def remove_periods(body: BulkDeleteRequest, request: Request, session: DB, principal: Identity):
+    if len(body.reason.strip()) < 8:
+        raise ApplicationError(400, 'REASON_REQUIRED', 'Indica un motivo de al menos 8 caracteres')
+    preview, keys = delete_periods(session, principal, body.periodIds, body.expectedToken, body.confirmation, body.reason.strip())
+    commit_or_conflict(session)
+    failures = 0
+    for key in keys:
+        try:
+            request.app.state.storage.resolve(key).unlink(missing_ok=True)
+        except OSError:
+            failures += 1
+            logging.getLogger(__name__).warning('No se pudo eliminar un documento de los meses seleccionados')
+    return {**preview, 'storageCleanupFailures': failures}
 
 
 @router.post("/monthly-runs", status_code=202, response_model=RunResponse)
@@ -225,7 +287,8 @@ async def source_file(request: Request, principal: Identity, session: DB,
 @router.post("/annual-runs", status_code=202, response_model=RunResponse)
 def annual_run(body: AnnualRequest, request: Request, response: Response, session: DB, principal: Identity, key: Idempotency):
     run = create_annual(session, request.app.state.settings, principal, key, body.anio, body.rangoNombre,
-                        body.sourceRunIds, [f.model_dump() for f in body.files] if body.files else None)
+                        body.sourceRunIds, [f.model_dump() for f in body.files] if body.files else None,
+                        period_range=body.period_range())
     commit_or_conflict(session)
     _accepted(response, run)
     return run_response(session, run)
@@ -354,9 +417,9 @@ def report_analytics(request: Request, session: DB, principal: Reader,
                      year: int = Query(2026, ge=1900, le=2100),
                      startMonth: int = Query(1, ge=1, le=12), endMonth: int = Query(12, ge=1, le=12),
                      operation: str = Query('', max_length=10), customs: str = Query('', max_length=10),
-                     document: str = Query('', max_length=10)):
+                     document: str = Query('', max_length=10), currency: Literal['USD', 'MXN'] = 'USD'):
     return analytics_summary(session, request.app.state.settings, principal.scope_id, source=source, year=year,
-                             start_month=startMonth, end_month=endMonth, operation=operation, customs=customs, document=document)
+                             start_month=startMonth, end_month=endMonth, operation=operation, customs=customs, document=document, currency=currency)
 
 @router.get("/audit")
 def events(session: DB, principal: Identity, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
@@ -434,6 +497,10 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
         if "runId" in args:
             evidence["runId"] = args["runId"]
         if name == 'get_analytics':
+            parts = output['partTaxes']
+            output['partTaxes'] = {**parts, 'rows': parts['rows'][:20], 'alerts': [],
+                                   'totalRows': len(parts['rows']), 'totalAlerts': len(parts['alerts']),
+                                   'detailLimited': True}
             evidence.update(source=args['source'], year=args['year'], startMonth=args['startMonth'], endMonth=args['endMonth'],
                             operation=args['operation'], customs=args['customs'], document=args['document'],
                             sources=output['sources'], versions=[{'month':m['month'],'runId':m['runId'],'version':m['version']}

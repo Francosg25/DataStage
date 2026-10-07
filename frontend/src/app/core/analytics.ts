@@ -17,6 +17,9 @@ export interface Ranking {
   rows: number;
 }
 export interface AnalyticsReport {
+  currency: "USD" | "MXN";
+  partTaxes: PartTaxes;
+  rectifications: { patent: string; values: (number | null)[] }[];
   source: string;
   year: number;
   startMonth: number;
@@ -45,6 +48,7 @@ export interface AnalyticsReport {
     orphanItems: number;
     duplicateDeclarationRows: number;
     processingFiltersApplied: boolean;
+    missingExchangeRates: number;
   };
   filters: { customs: string[]; documents: string[]; operations: string[] };
 }
@@ -53,6 +57,7 @@ export interface AnalyticsOptions {
   defaultSource: string;
 }
 export interface AnalyticsFilters {
+  currency?: "USD" | "MXN";
   source: string;
   year: number;
   startMonth: number;
@@ -60,4 +65,38 @@ export interface AnalyticsFilters {
   operation: string;
   customs: string;
   document: string;
+}
+
+export interface PartTaxRow {
+  partNumber: string | null;
+  alternatePartNumbers?: string[];
+  tariff: string;
+  items: number;
+  igi: number | null;
+  iva: number | null;
+  months: Record<string, { igi: number | null; iva: number | null }>;
+}
+export interface PartAlert {
+  year: number;
+  month: number;
+  patent: string;
+  declaration: string;
+  customs: string;
+  tariff: string;
+  sequence: string;
+  status: "missing" | "ambiguous";
+  candidates: string[];
+  observations: string[];
+}
+export interface PartTaxes {
+  rows: PartTaxRow[];
+  alerts: PartAlert[];
+  missingParts: number;
+  ambiguousParts: number;
+  invalidItemKeys: number;
+  unmatchedTaxRows: number;
+  observationSourceAvailable: boolean;
+  available: boolean;
+  currency: string;
+  totals: { igi: number | null; iva: number | null };
 }

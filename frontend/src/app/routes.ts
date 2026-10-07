@@ -36,10 +36,31 @@ export const routes: Routes = [
       },
       {
         path: "monthly",
+        pathMatch: "full",
+        redirectTo: "uploads/monthly",
+      },
+      {
+        path: "uploads",
         canActivate: [operatorGuard],
+        canActivateChild: [operatorGuard],
         loadComponent: () =>
-          import("./features/monthly").then((m) => m.Monthly),
-        title: "Carga mensual · DataStage",
+          import("./features/uploads").then((m) => m.Uploads),
+        title: "Cargas · DataStage",
+        children: [
+          { path: "", pathMatch: "full", redirectTo: "monthly" },
+          {
+            path: "monthly",
+            loadComponent: () =>
+              import("./features/monthly").then((m) => m.Monthly),
+            title: "Cargas mensuales · DataStage",
+          },
+          {
+            path: "consolidated",
+            loadComponent: () =>
+              import("./features/consolidated").then((m) => m.Consolidated),
+            title: "Consolidados · DataStage",
+          },
+        ],
       },
       {
         path: "runs",
@@ -55,9 +76,8 @@ export const routes: Routes = [
       },
       {
         path: "annual",
-        canActivate: [operatorGuard],
         loadComponent: () => import("./features/annual").then((m) => m.Annual),
-        title: "Consolidado anual · DataStage",
+        title: "Comparativa mensual · DataStage",
       },
       {
         path: "data",
@@ -69,6 +89,12 @@ export const routes: Routes = [
         path: "agent",
         loadComponent: () => import("./features/agent").then((m) => m.Agent),
         title: "Asistente · DataStage",
+      },
+      {
+        path: "project-maps",
+        loadComponent: () =>
+          import("./features/project-maps").then((m) => m.ProjectMaps),
+        title: "Mapas del proyecto · DataStage",
       },
       {
         path: "administration",

@@ -57,4 +57,17 @@ describe("contratos de la API", () => {
     request.flush(new Blob(["xlsx"]));
     expect((await promise).body?.size).toBe(4);
   });
+  it("carga los mapas con token corporativo, no como archivos públicos", async () => {
+    const promise = firstValueFrom(api.projectMapImage("plant-1", true));
+    await Promise.resolve();
+    const request = http.expectOne(
+      "/api/v1/project-maps/plant-1/image?thumbnail=true",
+    );
+    expect(request.request.responseType).toBe("blob");
+    expect(request.request.headers.get("Authorization")).toBe(
+      "Bearer corporate-access-token",
+    );
+    request.flush(new Blob(["png"], { type: "image/png" }));
+    expect((await promise).size).toBe(3);
+  });
 });

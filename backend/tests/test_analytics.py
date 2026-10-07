@@ -44,6 +44,17 @@ def test_numeric_contract():
     assert change(0, 10) == -100
 
 
+def test_incomplete_monthly_tax_coverage_is_not_a_zero_or_partial_total(system, tmp_path):
+    _, client, settings = system
+    data = install_reference(settings, tmp_path)
+    del data['periods'][1]['tables']['557']
+    settings.analytics_reference_file.write_text(json.dumps(data), encoding='utf-8')
+    result = client.get('/api/v1/reports/analytics', params={'source': 'reference', 'year': 2026}).json()
+    assert result['totals']['igiPaid'] is None
+    assert result['totals']['ivaPaid'] is None
+    assert not result['partTaxes']['available']
+
+
 def test_reference_grains_currency_and_null_months(system, tmp_path):
     _, client, settings = system
     install_reference(settings, tmp_path)

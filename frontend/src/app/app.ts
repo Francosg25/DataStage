@@ -157,18 +157,18 @@ export class App {
   allowedNavigation() {
     return this.navigation.filter(
       (item) =>
-        !["/monthly", "/annual"].includes(item.path) ||
-        this.auth.hasRole("Operator", "Admin"),
+        item.path !== "/uploads" || this.auth.hasRole("Operator", "Admin"),
     );
   }
   navigation = [
     { path: "/", label: "Resumen", icon: "grid" },
-    { path: "/analytics", label: "Análisis de operaciones", icon: "history" },
-    { path: "/monthly", label: "Carga mensual", icon: "upload" },
+    { path: "/analytics", label: "Análisis de operaciones", icon: "chart" },
+    { path: "/uploads", label: "Cargas", icon: "upload" },
     { path: "/runs", label: "Historial de procesos", icon: "history" },
-    { path: "/annual", label: "Consolidado anual", icon: "calendar" },
+    { path: "/annual", label: "Comparativa mensual", icon: "calendar" },
     { path: "/data", label: "Consulta de datos", icon: "database" },
     { path: "/agent", label: "Asistente", icon: "spark" },
+    { path: "/project-maps", label: "Mapas del proyecto", icon: "map" },
     { path: "/administration", label: "Administración", icon: "settings" },
   ];
 }

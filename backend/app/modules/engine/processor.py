@@ -9,7 +9,7 @@ from .catalog import (
     normalize_header, normalize_text, parse_period, range_end_month, table_sort_key,
 )
 from .dates import is_date_header, parse_date
-from .models import EngineOptions, InputFile
+from .models import ConsolidationRange, EngineOptions, InputFile
 
 _PATENTE = {"patente", "patenteaduanal"}
 _PEDIMENTO = {"pedimento", "numeropedimento", "numerodepedimento"}
@@ -194,10 +194,11 @@ def process_monthly(period: str, files: list[InputFile], options: EngineOptions 
     return _process("monthly", year, canonical, None, selected, len(files), [], options or EngineOptions(), [])
 
 
-def process_annual(year: int, range_name: str, files: list[InputFile], options: EngineOptions | None = None) -> dict:
+def process_annual(year: int, range_name: str, files: list[InputFile], options: EngineOptions | None = None,
+                   *, period_range: ConsolidationRange | None = None) -> dict:
     if isinstance(year, bool) or not isinstance(year, int) or not 1900 <= year <= 2100:
         raise ValueError("El año objetivo debe estar entre 1900 y 2100.")
-    end_month = range_end_month(range_name)
+    end_month = period_range.end_month if period_range else range_end_month(range_name)
     selected, excluded, warnings = [], [], []
     if end_month is None:
         warnings.append({"fileId": "", "fileName": "", "rowNumber": None, "column": None,
@@ -207,9 +208,11 @@ def process_annual(year: int, range_name: str, files: list[InputFile], options: 
         reason = ""
         try:
             source_year, month, canonical = parse_period(file.period)
-            if source_year != year:
+            if period_range and not period_range.contains(source_year, month):
+                reason = "Periodo fuera del rango solicitado."
+            elif not period_range and source_year != year:
                 reason = "Periodo fuera del año objetivo."
-            elif month > end_month:
+            elif not period_range and month > end_month:
                 reason = "Periodo fuera del rango solicitado."
             else:
                 selected.append((source_year, month, file.file_name, ordinal, replace(file, period=canonical)))
@@ -218,5 +221,9 @@ def process_annual(year: int, range_name: str, files: list[InputFile], options: 
         if reason:
             excluded.append({"fileId": file.file_id, "fileName": file.file_name, "period": file.period, "reason": reason})
     selected.sort(key=lambda item: item[:4])
-    return _process("annual", year, None, normalize_text(range_name), [item[4] for item in selected],
-                    len(files), excluded, options or EngineOptions(), warnings)
+    result = _process("annual", period_range.start_year if period_range else year, None,
+                      period_range.label if period_range else normalize_text(range_name),
+                      [item[4] for item in selected], len(files), excluded, options or EngineOptions(), warnings)
+    if period_range:
+        result["periodRange"] = period_range.payload()
+    return result

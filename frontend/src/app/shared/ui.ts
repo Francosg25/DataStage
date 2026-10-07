@@ -4,21 +4,34 @@ import {
   LocalizedDatePipe,
 } from "../core/i18n";
 import { Component, input, computed } from "@angular/core";
+import { LucideChartColumnIncreasing, LucideMap } from "@lucide/angular";
 import { RouterLink } from "@angular/router";
 import { Run, DataRow, runLabel } from "../core/models";
 @Component({
   selector: "ds-icon",
-  template: `<svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.7"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    aria-hidden="true"
-  >
-    <path [attr.d]="path()" />
-  </svg>`,
+  imports: [LucideChartColumnIncreasing, LucideMap],
+  template: `@if (name() === "chart") {
+      <svg
+        lucideChartColumnIncreasing
+        [size]="20"
+        [strokeWidth]="1.7"
+        aria-hidden="true"
+      ></svg>
+    } @else if (name() === "map") {
+      <svg lucideMap [size]="20" [strokeWidth]="1.7" aria-hidden="true"></svg>
+    } @else {
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path [attr.d]="path()" />
+      </svg>
+    }`,
   styles: [
     `
       :host {

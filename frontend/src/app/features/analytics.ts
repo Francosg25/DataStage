@@ -9,7 +9,9 @@ import {
   AnalyticsOptions,
   AnalyticsReport,
   Ranking,
+  PartTaxRow,
 } from "../core/analytics";
+import { customsLabel } from "../core/customs-labels";
 import { I18n } from "../core/i18n";
 import { errorText } from "../core/models";
 import { Icon } from "../shared/ui";
@@ -31,6 +33,31 @@ export class Analytics {
   loading = signal(true);
   error = signal("");
   tab = signal("overview");
+  partSearch = signal("");
+  partPage = signal(0);
+  alertPage = signal(0);
+  readonly pageSize = 25;
+  readonly taxTypes = ["igi", "iva"] as const;
+  taxRows = computed(() => {
+    const search = this.partSearch().trim().toLowerCase();
+    return (this.report()?.partTaxes?.rows || []).filter(
+      (r) =>
+        !search ||
+        `${r.partNumber || ""} ${(r.alternatePartNumbers || []).join(' ')} ${r.tariff}`.toLowerCase().includes(search),
+    );
+  });
+  visibleTaxRows = computed(() =>
+    this.taxRows().slice(
+      this.partPage() * this.pageSize,
+      (this.partPage() + 1) * this.pageSize,
+    ),
+  );
+  visibleAlerts = computed(() =>
+    (this.report()?.partTaxes?.alerts || []).slice(
+      this.alertPage() * this.pageSize,
+      (this.alertPage() + 1) * this.pageSize,
+    ),
+  );
   filters: AnalyticsFilters = {
     source: "published",
     year: new Date().getFullYear(),
@@ -39,6 +66,7 @@ export class Analytics {
     operation: "",
     customs: "",
     document: "",
+    currency: "USD",
   };
   months = Array.from({ length: 12 }, (_, i) => i + 1);
   first = signal(7);
@@ -71,56 +99,58 @@ export class Analytics {
     { id: "quality", es: "Control y calidad", en: "Control & quality" },
     { id: "definitions", es: "Fuentes y métricas", en: "Sources & metrics" },
   ];
-  readonly metricDefinitions = [
-    {
-      key: "declarations",
-      es: "Pedimentos",
-      en: "Declarations",
-      unit: "",
-      source: "501",
-      color: "#11998b",
-    },
-    {
-      key: "tradeUsd",
-      es: "Valor de mercancías",
-      en: "Trade value",
-      unit: "USD",
-      source: "551",
-      color: "#447ec0",
-    },
-    {
-      key: "customsMxn",
-      es: "Valor en aduana",
-      en: "Customs value",
-      unit: "MXN",
-      source: "551",
-      color: "#8b70ae",
-    },
-    {
-      key: "headerPaymentsMxn",
-      es: "Contribuciones de pedimento",
-      en: "Declaration contributions",
-      unit: "MXN",
-      source: "510",
-      color: "#d69d31",
-    },
-    {
-      key: "items",
-      es: "Partidas",
-      en: "Line items",
-      unit: "",
-      source: "551",
-      color: "#5a9cac",
-    },
-    {
-      key: "redRate",
-      es: "Selecciones en rojo",
-      en: "Red selections",
-      unit: "%",
-      source: "SEL",
-      color: "#cf7165",
-    },
-  ];
+  get metricDefinitions() {
+    return [
+      {
+        key: "declarations",
+        es: "Pedimentos",
+        en: "Declarations",
+        unit: "",
+        source: "501",
+        color: "#11998b",
+      },
+      {
+        key: this.moneyKey("trade"),
+        es: "Valor de mercancías",
+        en: "Trade value",
+        unit: this.currency(),
+        source: "551",
+        color: "#447ec0",
+      },
+      {
+        key: "igiPaid",
+        es: "IGI pagado",
+        en: "Import duty paid (IGI)",
+        unit: this.currency(),
+        source: "557 · FP 0",
+        color: "#2877b5",
+      },
+      {
+        key: "ivaPaid",
+        es: "IVA pagado",
+        en: "VAT paid (IVA)",
+        unit: this.currency(),
+        source: "557 · FP 0",
+        color: "#9b6520",
+      },
+      {
+        key: "rectifications",
+        es: "Rectificaciones",
+        en: "Amendments",
+        unit: "",
+        source: "701",
+        color: "#5a9cac",
+      },
+      {
+        key: "redRate",
+        es: "Selecciones en rojo",
+        en: "Red selections",
+        unit: "%",
+        source: "SEL",
+        color: "#cf7165",
+      },
+    ];
+  }
   readonly tableCodes = [
     "501",
     "502",
@@ -169,9 +199,11 @@ export class Analytics {
       .subscribe((data) => {
         this.report.set(data);
         this.loading.set(false);
+        this.partPage.set(0);
+        this.alertPage.set(0);
         if (data?.latestMonth) {
           this.second.set(data.latestMonth);
-          this.first.set(Math.max(1, data.latestMonth - 1));
+          this.first.set(Math.max(data.startMonth || 1, data.latestMonth - 1));
         }
       });
     this.initialize();
@@ -250,8 +282,8 @@ export class Analytics {
     labels: [string, string],
   ): ChartSeries[] {
     return [
-      ...this.series(first, labels[0], "#11998b"),
-      ...this.series(second, labels[1], "#447ec0"),
+      ...this.series(first, labels[0], first === 'igiPaid' ? '#2877b5' : '#11998b'),
+      ...this.series(second, labels[1], second === 'ivaPaid' ? '#9b6520' : '#447ec0'),
     ];
   }
   ranking(key: string): Ranking[] {
@@ -280,7 +312,7 @@ export class Analytics {
           C: this.t("Correcto", "Correct"),
         }[key] || key
       );
-    return key;
+    return customsLabel(key, dimension, this.i18n.language()) || key;
   }
   crossFilter(
     dimension: "customs" | "document" | "operation",
@@ -334,7 +366,167 @@ export class Analytics {
       : ((b - a) / Math.abs(a)) * 100;
   }
   trendName() {
-    return this.metricDefinitions.find((m) => m.key === this.trendMetric());
+    return (
+      this.metricDefinitions.find((m) => m.key === this.trendMetric()) ||
+      this.metricDefinitions[1]
+    );
+  }
+  currency() {
+    return this.report()?.currency || this.filters.currency || "USD";
+  }
+  moneyKey(name: string) {
+    return name + (this.currency() === "USD" ? "Usd" : "Mxn");
+  }
+  setCurrency(currency: "USD" | "MXN") {
+    if (this.filters.currency === currency) return;
+    this.filters.currency = currency;
+    this.trendMetric.set("trade" + (currency === "USD" ? "Usd" : "Mxn"));
+    this.load();
+  }
+  rectificationSeries(): ChartSeries[] {
+    const colors = [
+      "#2877b5",
+      "#138679",
+      "#a16b20",
+      "#a65877",
+      "#586bbb",
+      "#78873c",
+      "#ba6657",
+      "#647a85",
+    ];
+    return (this.report()?.rectifications || []).map((r, i) => ({
+      label: `${this.t("Patente", "Broker license")} ${r.patent}`,
+      color: colors[i % colors.length],
+      values: this.selectedMonths().map((m) => r.values[m.month - 1]),
+    }));
+  }
+  topParts() {
+    return (this.report()?.partTaxes?.rows || [])
+      .filter((r) => r.partNumber && r.igi != null && r.igi > 0)
+      .slice(0, 10);
+  }
+  partLabels() {
+    return this.topParts().map((r) => `${r.partNumber} · ${r.tariff}`);
+  }
+  partSeries(): ChartSeries[] {
+    return [
+      {
+        label: this.currency(),
+        color: "#2877b5",
+        values: this.topParts().map((r) => r.igi),
+      },
+    ];
+  }
+  taxValue(row: PartTaxRow, month: number, tax: "igi" | "iva") {
+    if (
+      month < (this.report()?.startMonth || 1) ||
+      month > (this.report()?.endMonth || 12)
+    )
+      return null;
+    const m = this.report()?.monthly[month - 1];
+    if (
+      !m?.available ||
+      !Object.hasOwn(m.tables, "557") ||
+      !Object.hasOwn(m.tables, "551")
+    )
+      return null;
+    return (
+      row.months[String(month)]?.[tax] ?? (row.months[String(month)] ? null : 0)
+    );
+  }
+  taxDifference(row: PartTaxRow, tax: "igi" | "iva") {
+    const a = this.taxValue(row, this.first(), tax),
+      b = this.taxValue(row, this.second(), tax);
+    return a == null || b == null ? null : b - a;
+  }
+  taxChange(row: PartTaxRow, tax: "igi" | "iva") {
+    const a = this.taxValue(row, this.first(), tax),
+      b = this.taxValue(row, this.second(), tax);
+    return a == null || b == null || a === 0
+      ? null
+      : ((b - a) / Math.abs(a)) * 100;
+  }
+  searchParts(value: string) {
+    this.partSearch.set(value);
+    this.partPage.set(0);
+  }
+  exportParts() {
+    this.exportRows(
+      [
+        "part_number",
+        "alternate_part_numbers",
+        "tariff",
+        "year",
+        "month",
+        "currency",
+        "igi_paid_fp0",
+        "iva_paid_fp0",
+      ],
+      this.taxRows().flatMap((r) =>
+        Object.entries(r.months).map(([month, v]) => [
+          r.partNumber,
+          (r.alternatePartNumbers || []).join(' | '),
+          r.tariff,
+          this.report()?.year,
+          month,
+          this.currency(),
+          v.igi,
+          v.iva,
+        ]),
+      ),
+      "IGI-IVA",
+    );
+  }
+  exportAlerts() {
+    this.exportRows(
+      [
+        "year",
+        "month",
+        "broker_license",
+        "declaration",
+        "customs",
+        "tariff",
+        "item_sequence",
+        "status",
+        "candidates",
+      ],
+      (this.report()?.partTaxes?.alerts || []).map((r) => [
+        r.year,
+        r.month,
+        r.patent,
+        r.declaration,
+        r.customs,
+        r.tariff,
+        r.sequence,
+        r.status,
+        r.candidates.join(" | "),
+      ]),
+      "NP-alerts",
+    );
+  }
+  private exportRows(headers: string[], rows: unknown[][], name: string) {
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row
+          .map(
+            (v) =>
+              '"' +
+              String(v ?? "")
+                .replace(/^[=+@\-\t\r]/, "'$&")
+                .replace(/"/g, '""') +
+              '"',
+          )
+          .join(","),
+      )
+      .join("\r\n");
+    const url = URL.createObjectURL(
+      new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `DataStage-${name}-${this.report()?.year}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   share() {
     const r = this.report();
@@ -384,6 +576,8 @@ export class Analytics {
         this.filters.customs || "all",
         this.t("Documento", "Document"),
         this.filters.document || "all",
+        this.t("Moneda", "Currency"),
+        this.currency(),
       ],
       ["month", "available", ...keys],
       ...this.selectedMonths().map((m) => [

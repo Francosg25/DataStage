@@ -337,7 +337,7 @@ export class AnalyticsChart {
           locale,
           responsive: true,
           maintainAspectRatio: false,
-          animation: { duration: 250 },
+          animation: false,
           indexAxis: horizontal ? "y" : "x",
           onClick: (_, elements) => {
             if (elements.length) this.selected.emit(elements[0].index);
@@ -415,7 +415,7 @@ export class AnalyticsChart {
   }
   hasData() {
     return this.series().some((s) =>
-      s.values.some((v) => v != null && v !== 0),
+      s.values.some((v) => v != null),
     );
   }
   download() {

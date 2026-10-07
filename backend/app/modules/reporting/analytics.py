@@ -1,7 +1,7 @@
 """Read-only trade analytics. Aggregate each grain separately; never fan out joins."""
 from collections import defaultdict
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from functools import lru_cache
 import json
 from pathlib import Path
@@ -11,44 +11,24 @@ from sqlalchemy import select
 from app.core.errors import ApplicationError
 from app.persistence.business import BUSINESS_TABLES
 from app.persistence.models import Period, ProcessingTable, Run
+from .trade_values import KEY_FIELDS, identity, number, text_value, strict_sum
+from .part_taxes import convert, exchange_rates, paid_taxes, paid_totals
 
-KEY_FIELDS = ('patente', 'pedimento', 'seccion_aduanera')
 FIELDS = {
     '501': (*KEY_FIELDS, 'tipo_operacion', 'clave_documento', 'tipo_pedimento',
             'peso_bruto_mercancia', 'total_fletes', 'total_seguros', 'total_embalajes',
-            'total_incrementables', 'total_deducibles', 'medio_transporte_entrada_salida'),
+            'total_incrementables', 'total_deducibles', 'medio_transporte_entrada_salida', 'tipo_cambio'),
     '551': (*KEY_FIELDS, 'tipo_operacion', 'clave_documento', 'fraccion', 'secuencia_fraccion',
             'valor_dolares', 'valor_aduana', 'valor_comercial', 'pais_origen_destino'),
     '505': (*KEY_FIELDS, 'proveedor_mercancia', 'pais_facturacion', 'termino_facturacion', 'valor_dolares'),
     '510': (*KEY_FIELDS, 'clave_contribucion', 'forma_pago', 'importe_pago'),
-    '557': (*KEY_FIELDS, 'clave_contribucion', 'forma_pago', 'importe_pago'),
+    '557': (*KEY_FIELDS, 'fraccion', 'secuencia_fraccion', 'clave_contribucion', 'forma_pago', 'importe_pago'),
+    '558': (*KEY_FIELDS, 'fraccion', 'secuencia_fraccion', 'secuencia_observacion', 'observaciones'),
     '702': (*KEY_FIELDS, 'clave_contribucion', 'forma_pago', 'importe_pago'),
     '701': KEY_FIELDS,
     'sel': (*KEY_FIELDS, 'tipo_operacion', 'clave_documento', 'semaforo_fiscal'),
     'inci': (*KEY_FIELDS, 'tipo_operacion', 'clave_documento', 'grado_incidencia'),
 }
-
-
-def text_value(value):
-    return '' if value is None else str(value).strip()
-
-
-def identity(row):
-    # Numeric identifiers in Excel and zero-padded ASC identifiers must agree.
-    values = [text_value(row.get(f)) for f in KEY_FIELDS]
-    if not all(values):
-        return None
-    return (row['year'], row['month'], *(v.lstrip('0') or '0' for v in values))
-
-
-def number(value):
-    if value is None or str(value).strip() == '':
-        return None
-    try:
-        parsed = Decimal(str(value).strip())
-        return parsed if parsed.is_finite() else None
-    except InvalidOperation:
-        return None
 
 
 def total(rows, field):
@@ -129,7 +109,9 @@ def ranking(rows, key, field=None, limit=8):
 
 
 def summarize(session, settings, scope, *, source='published', year=2026, start_month=1,
-              end_month=12, operation='', customs='', document=''):
+              end_month=12, operation='', customs='', document='', currency='USD'):
+    if currency not in {'USD', 'MXN'}:
+        raise ApplicationError(400, 'INVALID_CURRENCY', 'Moneda no admitida')
     if start_month > end_month:
         raise ApplicationError(400, 'INVALID_RANGE', 'El mes inicial debe ser anterior o igual al final.')
     if source == 'reference':
@@ -143,6 +125,7 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
     periods = {p['month']: p for p in data['periods'] if p['year'] == year}
     raw = {code: [r for r in data['tables'].get(code, []) if r['year'] == year] for code in FIELDS}
     headers = raw['501']
+    rates = exchange_rates(headers)
     def matches(r):
         return ((not operation or text_value(r.get('tipo_operacion')) == operation)
                 and (not customs or text_value(r.get('seccion_aduanera')) == customs)
@@ -166,7 +149,7 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
         unique = {identity(r) for r in general if identity(r) is not None}
         red = sum(text_value(r.get('semaforo_fiscal')) == '0' for r in tables['sel'])
         green = sum(text_value(r.get('semaforo_fiscal')) == '1' for r in tables['sel'])
-        return {
+        result = {
             'declarations': len(unique) if '501' in coverage else None,
             'imports': len({identity(r) for r in general if identity(r) is not None and text_value(r.get('tipo_operacion')) == '1'}) if '501' in coverage else None,
             'exports': len({identity(r) for r in general if identity(r) is not None and text_value(r.get('tipo_operacion')) == '2'}) if '501' in coverage else None,
@@ -194,6 +177,18 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
             'seriousIncidents': sum(text_value(r.get('grado_incidencia')) == 'G' for r in tables['inci']) if 'inci' in coverage else None,
             'correctInspections': sum(text_value(r.get('grado_incidencia')) == 'C' for r in tables['inci']) if 'inci' in coverage else None,
         }
+        monetary = {'trade': ('551', 'valor_dolares', 'USD'), 'customs': ('551', 'valor_aduana', 'MXN'),
+                    'commercial': ('551', 'valor_comercial', 'MXN'), 'invoice': ('505', 'valor_dolares', 'USD'),
+                    'headerPayments': ('510', 'importe_pago', 'MXN'), 'freight': ('501', 'total_fletes', 'MXN'),
+                    'insurance': ('501', 'total_seguros', 'MXN'), 'packing': ('501', 'total_embalajes', 'MXN'),
+                    'increments': ('501', 'total_incrementables', 'MXN'), 'deductions': ('501', 'total_deducibles', 'MXN')}
+        for name, (code, field, original) in monetary.items():
+            result[name + currency.title()] = strict_sum(convert(r, field, original, currency, rates) for r in tables[code]) if code in coverage else None
+        for name, operation_code in [('import', '1'), ('export', '2')]:
+            result[name + currency.title()] = strict_sum(convert(r, 'valor_dolares', 'USD', currency, rates) for r in items if text_value(r.get('tipo_operacion')) == operation_code) if '551' in coverage else None
+        taxes = paid_totals(tables, coverage, currency, rates)
+        result.update(igiPaid=taxes['igi'], ivaPaid=taxes['iva'])
+        return result
 
     monthly = []
     for month in range(1, 13):
@@ -209,6 +204,12 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
     selected_periods = [p for n, p in periods.items() if start_month <= n <= end_month]
     coverage = {c for p in selected_periods for c in p['tables']}
     summary = metrics(selected, coverage)
+    parts = paid_taxes(selected, coverage, currency, rates)
+    parts['available'] = bool(selected_periods) and all({'551', '557'}.issubset(p['tables']) for p in selected_periods)
+    parts['observationSourceAvailable'] = bool(selected_periods) and all('558' in p['tables'] for p in selected_periods)
+    if not parts['available']:
+        parts['totals'] = {'igi': None, 'iva': None}
+        summary.update(igiPaid=None, ivaPaid=None)
     available_months = sorted(p['month'] for p in selected_periods)
     latest = available_months[-1] if available_months else None
     last = monthly[latest - 1]['metrics'] if latest else {}
@@ -234,13 +235,31 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
         'transport': ranking(selected['501'], 'medio_transporte_entrada_salida'),
         'inspection': ranking(selected['inci'], 'grado_incidencia'),
     }
+    for name, (code, key, field, original) in {
+        'countries': ('551', 'pais_origen_destino', 'valor_dolares', 'USD'),
+        'tariffs': ('551', 'fraccion', 'valor_dolares', 'USD'),
+        'suppliers': ('505', 'proveedor_mercancia', 'valor_dolares', 'USD'),
+        'incoterms': ('505', 'termino_facturacion', 'valor_dolares', 'USD'),
+        'headerTaxes': ('510', 'clave_contribucion', 'importe_pago', 'MXN'),
+        'paymentMethods': ('510', 'forma_pago', 'importe_pago', 'MXN'),
+    }.items():
+        groups = defaultdict(list)
+        for row in selected[code]:
+            groups[text_value(row.get(key)) or 'unknown'].append(convert(row, field, original, currency, rates))
+        values = sorted([{'key': k, 'value': strict_sum(v), 'rows': len(v)} for k, v in groups.items()], key=lambda r: (-(r['value'] or 0), r['key']))
+        breakdowns[name] = values[:8] + ([{'key': 'other', 'value': strict_sum(number(v['value']) for v in values[8:]), 'rows': sum(v['rows'] for v in values[8:])}] if len(values) > 8 else [])
+    rectifications = []
+    for patent in sorted({text_value(r.get('patente')) for r in selected['701']}):
+        rectifications.append({'patent': patent, 'values': [sum(text_value(r.get('patente')) == patent and r['month'] == m for r in selected['701']) if m in periods and '701' in periods[m]['tables'] else None for m in range(1, 13)]})
     return {
+        'currency': currency, 'partTaxes': parts, 'rectifications': rectifications,
         'source': source, 'year': year, 'startMonth': start_month, 'endMonth': end_month,
         'generatedAt': datetime.now(timezone.utc).isoformat(), 'sources': data.get('sources', []),
         'reconciliation': data.get('reconciliation'), 'monthly': monthly, 'totals': summary,
         'latestMonth': latest, 'previousMonth': latest - 1 if latest and latest > 1 else None,
         'latest': last, 'previous': previous, 'deltas': deltas, 'breakdowns': breakdowns,
         'coverage': {'availableMonths': available_months, 'requestedMonths': end_month - start_month + 1,
+                     'missingExchangeRates': sum(rates.get(identity(r)) is None for r in selected['501']),
                      'tables': completeness, 'invalidNumericValues': invalid, 'orphanItems': orphan_items,
                      'duplicateDeclarationRows': len(selected['501']) - len({identity(r) for r in selected['501'] if identity(r) is not None}),
                      'processingFiltersApplied': False},
