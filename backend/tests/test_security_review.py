@@ -163,7 +163,8 @@ def claims():
     now = datetime.now(timezone.utc)
     return {"iss": "https://login.microsoftonline.com/test-tenant/v2.0", "aud": "api-audience",
             "tid": "test-tenant", "sub": "sub-user", "oid": "oid-user", "iat": now,
-            "exp": now + timedelta(minutes=5), "roles": ["Reader"], "scope_id": "injected"}
+            "exp": now + timedelta(minutes=5), "roles": ["Reader"], "scope_id": "injected",
+            "scp": "access_as_user"}
 
 
 def test_entra_token_scope_cannot_override_deployment_scope(monkeypatch, signing_key):
@@ -179,6 +180,8 @@ def test_entra_token_scope_cannot_override_deployment_scope(monkeypatch, signing
 @pytest.mark.parametrize("patch", [
     {"aud": "another-api"}, {"iss": "https://untrusted.invalid"}, {"tid": "another-tenant"},
     {"exp": datetime(2020, 1, 1, tzinfo=timezone.utc)}, {"roles": ["UnrecognizedRole"]},
+    {"scp": None}, {"scp": "other_scope"}, {"scp": ["access_as_user"]},
+    {"scp": "prefix_access_as_user"},
 ])
 def test_entra_rejects_invalid_identity_claims(monkeypatch, signing_key, patch):
     monkeypatch.setattr(auth, "jwks_client", lambda _: SimpleNamespace(

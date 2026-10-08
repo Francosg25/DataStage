@@ -9,9 +9,11 @@ import { Api } from "../core/api";
 import { Auth } from "../core/auth";
 import { CatalogTable, DataRow, errorText } from "../core/models";
 import { DataTable, Icon } from "../shared/ui";
+import { EntraSetup } from "./entra-setup";
 @Component({
   selector: "ds-administration",
   imports: [
+    EntraSetup,
     TranslatePipe,
     MatTabsModule,
     MatButtonModule,
@@ -86,7 +88,8 @@ import { DataTable, Icon } from "../shared/ui";
                   | t
               }}
             </p>
-          </div></mat-tab
+          </div>
+          <ds-entra-setup /></mat-tab
         ><mat-tab [label]="'Catálogo de tablas' | t"
           ><div class="panel-heading">
             <div>

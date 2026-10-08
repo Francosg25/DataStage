@@ -1,8 +1,9 @@
 import { Component, DestroyRef, computed, inject, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
+import { NgTemplateOutlet } from "@angular/common";
 import { RouterLink } from "@angular/router";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { Subject, switchMap, catchError, of, tap } from "rxjs";
+import { Subject, switchMap, catchError, of, tap, finalize } from "rxjs";
 import { Api } from "../core/api";
 import {
   AnalyticsFilters,
@@ -19,7 +20,7 @@ import { AnalyticsChart, ChartSeries } from "../shared/analytics-chart";
 
 @Component({
   selector: "ds-analytics",
-  imports: [FormsModule, RouterLink, Icon, AnalyticsChart],
+  imports: [FormsModule, NgTemplateOutlet, RouterLink, Icon, AnalyticsChart],
   templateUrl: "./analytics.html",
   styleUrl: "./analytics.scss",
 })
@@ -32,6 +33,8 @@ export class Analytics {
   report = signal<AnalyticsReport | null>(null);
   loading = signal(true);
   error = signal("");
+  exportingPdf = signal(false);
+  pdfError = signal("");
   tab = signal("overview");
   partSearch = signal("");
   partPage = signal(0);
@@ -43,7 +46,9 @@ export class Analytics {
     return (this.report()?.partTaxes?.rows || []).filter(
       (r) =>
         !search ||
-        `${r.partNumber || ""} ${(r.alternatePartNumbers || []).join(' ')} ${r.tariff}`.toLowerCase().includes(search),
+        `${r.partNumber || ""} ${(r.alternatePartNumbers || []).join(" ")} ${r.tariff}`
+          .toLowerCase()
+          .includes(search),
     );
   });
   visibleTaxRows = computed(() =>
@@ -282,8 +287,16 @@ export class Analytics {
     labels: [string, string],
   ): ChartSeries[] {
     return [
-      ...this.series(first, labels[0], first === 'igiPaid' ? '#2877b5' : '#11998b'),
-      ...this.series(second, labels[1], second === 'ivaPaid' ? '#9b6520' : '#447ec0'),
+      ...this.series(
+        first,
+        labels[0],
+        first === "igiPaid" ? "#2877b5" : "#11998b",
+      ),
+      ...this.series(
+        second,
+        labels[1],
+        second === "ivaPaid" ? "#9b6520" : "#447ec0",
+      ),
     ];
   }
   ranking(key: string): Ranking[] {
@@ -465,7 +478,7 @@ export class Analytics {
       this.taxRows().flatMap((r) =>
         Object.entries(r.months).map(([month, v]) => [
           r.partNumber,
-          (r.alternatePartNumbers || []).join(' | '),
+          (r.alternatePartNumbers || []).join(" | "),
           r.tariff,
           this.report()?.year,
           month,
@@ -609,8 +622,48 @@ export class Analytics {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  print() {
-    window.print();
+  percentage(value: number | null) {
+    return value === null
+      ? this.t("Sin dato", "Unavailable")
+      : new Intl.NumberFormat(this.i18n.locale(), {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(value) + "%";
+  }
+  downloadPdf() {
+    const report = this.report();
+    if (!report || this.loading() || this.exportingPdf()) return;
+    const language = this.i18n.language();
+    this.exportingPdf.set(true);
+    this.pdfError.set("");
+    this.api
+      .analyticsPdf(report.appliedFilters, language, report.snapshotId)
+      .pipe(
+        takeUntilDestroyed(this.destroy),
+        finalize(() => this.exportingPdf.set(false)),
+      )
+      .subscribe({
+        next: (blob) => {
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement("a");
+          anchor.href = url;
+          anchor.download = `DataStage-${report.year}-${String(report.startMonth).padStart(2, "0")}-${String(report.endMonth).padStart(2, "0")}-${report.currency}-${language}.pdf`;
+          anchor.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
+        error: (error) =>
+          this.pdfError.set(
+            error.status === 409
+              ? this.t(
+                  "Los datos cambiaron. Actualiza el análisis y vuelve a descargar el PDF.",
+                  "Data changed. Refresh analytics and download the PDF again.",
+                )
+              : this.t(
+                  "No se pudo generar el PDF. Revisa la conexión y vuelve a intentarlo.",
+                  "The PDF could not be generated. Check the connection and try again.",
+                ),
+          ),
+      });
   }
   aiPrompt() {
     const context = `source=${this.filters.source}, operation=${this.filters.operation || '""'}, customs=${this.filters.customs || '""'}, document=${this.filters.document || '""'}`;

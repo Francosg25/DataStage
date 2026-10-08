@@ -46,6 +46,10 @@ def current_principal(request: Request) -> Principal:
                             options={"require": ["exp", "iat", "iss", "aud", "sub"]})
         if claims.get("tid") != settings.entra_tenant_id:
             raise ValueError("Wrong tenant")
+        scope = settings.entra_api_scope.rsplit('/', 1)[-1]
+        delegated = claims.get('scp')
+        if not isinstance(delegated, str) or scope not in delegated.split():
+            raise ApplicationError(403, "SCOPE_REQUIRED", "El token no autoriza acceso delegado a DataStage")
         roles = claims.get("roles", [])
         if not isinstance(roles, list):
             raise ValueError("Invalid roles")

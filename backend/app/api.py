@@ -29,6 +29,7 @@ from app.modules.processing.service import (
 )
 from app.modules.reporting.queries import compare_periods, data_page, overview
 from app.modules.reporting.analytics import options as analytics_options, summarize as analytics_summary
+from app.modules.reporting.pdf_report import render_report
 from app.modules.reporting.project_maps import catalog as project_maps_catalog, image_path as project_map_image
 from app.persistence.models import (
     AgentMessage, AuditEvent, Conversation, Issue, Job, OutboxMessage, Period,
@@ -420,6 +421,17 @@ def report_analytics(request: Request, session: DB, principal: Reader,
                      document: str = Query('', max_length=10), currency: Literal['USD', 'MXN'] = 'USD'):
     return analytics_summary(session, request.app.state.settings, principal.scope_id, source=source, year=year,
                              start_month=startMonth, end_month=endMonth, operation=operation, customs=customs, document=document, currency=currency)
+
+@router.get("/reports/analytics/pdf")
+def report_pdf(report: Annotated[dict, Depends(report_analytics)],
+               language: Literal['es', 'en'] = 'es',
+               snapshot: str | None = Query(None, pattern='^[a-f0-9]{64}$')):
+    if snapshot and snapshot != report['snapshotId']:
+        raise ApplicationError(409, 'REPORT_CHANGED', 'Los datos cambiaron. Actualiza el analisis antes de exportar.')
+    filename = f"DataStage-{report['year']}-{report['startMonth']:02d}-{report['endMonth']:02d}-{report['currency']}-{language}.pdf"
+    return Response(render_report(report, language), media_type='application/pdf', headers={
+        'Content-Disposition': f'attachment; filename="{filename}"', 'Cache-Control': 'private, no-store',
+        'X-Content-Type-Options': 'nosniff'})
 
 @router.get("/audit")
 def events(session: DB, principal: Identity, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):

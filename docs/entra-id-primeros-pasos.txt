@@ -1,0 +1,144 @@
+DATASTAGE | PRIMEROS PASOS CON MICROSOFT ENTRA ID
+Cuenta corporativa y laptop administrada. Revisado: 8 de octubre de 2026.
+
+1. ALCANCE
+Microsoft Entra ID es el servicio de identidad, no un programa que tengas que
+instalar. Estos pasos se realizan en https://entra.microsoft.com/ con TI.
+Azure CLI, permisos de administrador de Windows y secretos en Angular NO son
+necesarios para registrar las aplicaciones y preparar el inicio de sesion.
+Entra ID protege el acceso a DataStage; Microsoft Foundry es un servicio
+separado para el asistente. Tener acceso a Foundry no concede automaticamente
+permisos para registrar aplicaciones ni dar consentimiento en Entra.
+
+Todavia no se ha activado el inicio de sesion corporativo. La pantalla de
+Administracion muestra la configuracion cargada, no una certificacion de TI.
+No se ha importado informacion historica de 2020 a 2026.
+
+2. LO QUE DEBES SOLICITAR A TI
+- Confirmar el Directory (tenant) ID de la empresa y el entorno de pruebas.
+- Autorizar dos registros internos: DataStage API y DataStage Web.
+- Designar propietario y responsable de seguridad para ambos registros.
+- Aprobar las URL exactas de prueba y produccion, el consentimiento y los
+  usuarios piloto. Las restricciones de registro varian por organizacion.
+- Confirmar politicas de MFA, Conditional Access, equipo conforme, proxy,
+  VPN, DNS, certificados y acceso a los endpoints de autenticacion.
+- Asignar roles de DataStage segun funcion y minimo privilegio.
+Si no aparece App registrations o no puedes crear/autorizar una aplicacion,
+detente en ese punto y envia la solicitud a TI. No uses cuentas personales,
+no desactives MFA y no solicites desactivar controles corporativos.
+
+3. REGISTRAR DATASTAGE API (TI O PROPIETARIO AUTORIZADO)
+Entra ID > App registrations > New registration.
+Nombre: DataStage API (o la convencion corporativa).
+Supported account types: Accounts in this organizational directory only.
+La API no necesita una Redirect URI para este flujo.
+Guardar Application (client) ID de la API y Directory (tenant) ID.
+
+Expose an API:
+- Application ID URI: api://<API_CLIENT_ID>, o el URI aprobado por TI.
+- Add a scope: access_as_user.
+- Consentimiento: administradores, segun la politica corporativa.
+- Activar el permiso y describirlo como acceso delegado a DataStage.
+
+Manifest (formato Microsoft Graph):
+- Dentro de api, establecer requestedAccessTokenVersion en 2.
+- No reemplazar el manifiesto completo ni otras propiedades corporativas.
+DataStage valida issuer v2 y audiencia. Para tokens v2, configurar la audiencia
+con el Application (client) ID de la API (GUID), no el ID de Web ni el scope.
+
+App roles: crear roles habilitados para Users/Groups con estos VALORES exactos:
+Reader       Consulta de datos, analisis, mapas y reportes.
+Operator     Cargas y operaciones autorizadas.
+Reprocessor  Reprocesamiento autorizado.
+Auditor      Consulta de auditoria.
+Admin        Acceso administrativo. Reservar para responsables autorizados.
+Un usuario puede requerir mas de un rol. No asignar Admin a todos los usuarios.
+Estos son roles de DataStage, no roles de administrador del tenant de Microsoft.
+
+Enterprise applications > DataStage API > Users and groups:
+Asignar usuarios piloto o grupos aprobados a sus roles. Si se exige asignacion,
+TI debe habilitarla y mantenerla. La asignacion por grupos puede depender de la
+licencia; TI debe verificarlo. Probar primero un usuario con rol Reader.
+
+4. REGISTRAR DATASTAGE WEB (SPA)
+Crear un segundo registro, tambien de un solo tenant. Guardar su client ID.
+Authentication > Add a platform > Single-page application.
+Agregar la URI exacta que muestra Administracion > Microsoft Entra ID:
+por ejemplo http://localhost:4200/login para desarrollo autorizado.
+Si usas http://127.0.0.1:4200/login, TI debe verificar las restricciones del
+portal para loopback IP; Microsoft documenta casos que requieren editar
+replyUrlsWithType en el manifiesto. No asumir que localhost y 127.0.0.1
+son intercambiables. La barra del navegador debe coincidir con la URI aprobada.
+Produccion: https://<dominio-aprobado>/login. Sin comodines.
+No habilitar implicit grant para este flujo MSAL con codigo y PKCE.
+No crear ni colocar un client secret dentro del frontend.
+
+API permissions > Add a permission > My APIs > DataStage API:
+Elegir Delegated permissions > access_as_user.
+Solicitar Grant admin consent a TI si corresponde a su politica.
+No agregar permisos de Microsoft Graph o de Foundry si no se requieren para
+este inicio de sesion. Mantener propietarios en ambos registros para facilitar
+su administracion y descubrimiento en el portal.
+
+5. VARIABLES DEL BACKEND, SOLO DESPUES DE APROBACION
+DATASTAGE_ENTRA_TENANT_ID=<DIRECTORY_TENANT_ID>
+DATASTAGE_ENTRA_CLIENT_ID=<WEB_SPA_CLIENT_ID>
+DATASTAGE_ENTRA_AUDIENCE=<API_CLIENT_ID_GUID>
+DATASTAGE_ENTRA_API_SCOPE=api://<API_CLIENT_ID>/access_as_user
+DATASTAGE_AUTH_MODE=entra
+
+Si TI eligio otro Application ID URI, usa ese prefijo en ENTRA_API_SCOPE.
+No confundir client ID, object ID, tenant ID, audiencia y scope.
+Estos identificadores no son contrasenas, pero deben compartirse solo por
+canales corporativos autorizados. No enviar tokens, secretos ni contrasenas.
+
+Guardar las variables mediante el mecanismo de despliegue aprobado. Reiniciar
+la API y el worker para que lean la configuracion. scripts/start-dev.ps1 fija
+autenticacion de desarrollo: NO usar ese arranque para validar Entra sin adaptar
+el despliegue de pruebas con TI. Seguir docs/entra-id.md.
+No cambiar ENVIRONMENT a production solo para probar el login: produccion
+exige ademas SQL Server, antivirus, HTTPS y la revision de seguridad completa.
+
+6. PRUEBA PILOTO Y CRITERIOS DE ACEPTACION
+- Un usuario asignado inicia sesion, cumple MFA y consulta /api/v1/me.
+- El token de acceso de la API tiene audiencia de la API, issuer v2, tenant
+  correcto, permiso scp access_as_user y roles de DataStage.
+- Reader puede consultar y descargar reportes; no debe poder realizar cargas.
+- Usuario sin rol no puede consultar datos protegidos.
+- Tokens expirados, de otro tenant o para Microsoft Graph deben rechazarse.
+- Abrir directamente /api/v1/reports/analytics/pdf sin autenticar devuelve 401.
+- Probar cierre de sesion, expiracion, navegacion, mapas y descarga de PDF.
+- Registrar resultados, responsable de aprobacion y plan de despliegue.
+No pegar tokens corporativos en decodificadores publicos; revisar con TI mediante
+herramientas locales autorizadas sin guardar el token en logs.
+
+7. ERRORES FRECUENTES
+AADSTS50011: URI de retorno no coincide con el registro SPA.
+AADSTS65001 / consentimiento requerido: TI debe revisar los permisos delegados.
+401: revisar audiencia API, tenant, version del token y expiracion.
+403: revisar scope delegado y roles asignados en la aplicacion empresarial de API.
+Bloqueo por acceso condicional: elevar a TI; no desactivar ni evadir la politica.
+
+8. SOLICITUD QUE PUEDES ENVIAR A TI
+Necesitamos habilitar SSO de Microsoft Entra ID para la aplicacion interna
+DataStage (Angular SPA y FastAPI), usando la cuenta corporativa y el equipo
+administrado. Solicitamos dos registros single-tenant, un permiso delegado
+access_as_user de la API, tokens v2, URI SPA aprobada, consentimiento y roles
+Reader/Operator/Reprocessor/Auditor/Admin para usuarios piloto. No necesitamos
+Azure CLI ni un secreto en el frontend. Favor de confirmar tenant ID, client ID
+de Web, client ID/URI de API, URL de prueba, restricciones corporativas y el
+responsable de aprobar el piloto. No solicitamos desactivar MFA ni controles.
+
+9. DOCUMENTACION OFICIAL
+Registro:
+https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app
+API y scopes:
+https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-configure-app-expose-web-apis
+Roles:
+https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps
+URI de retorno y loopback:
+https://learn.microsoft.com/en-us/entra/identity-platform/reply-url
+Manifiesto Microsoft Graph:
+https://learn.microsoft.com/en-us/entra/identity-platform/reference-microsoft-graph-app-manifest
+Validacion de tokens:
+https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens

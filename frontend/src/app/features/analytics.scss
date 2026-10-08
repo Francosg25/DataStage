@@ -3,13 +3,99 @@
   color: #25343d;
   letter-spacing: 0;
 }
+.report-data-section {
+  margin: 28px 0;
+  padding-top: 20px;
+  border-top: 1px solid #cbd9dd;
+  min-width: 0;
+}
+.report-data-section .section-heading {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.report-data-section h2 {
+  font-size: 17px;
+  line-height: 1.4;
+  margin: 0 0 4px;
+}
+.report-data-section .section-heading p,
+.data-source,
+.data-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #526570;
+}
+.data-note {
+  margin-top: 10px;
+}
+.data-warning {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #874d10;
+  margin: 10px 0;
+}
+.financial-table {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.report-data-section .financial-table thead tr + tr th {
+  text-align: right;
+}
+@media (max-width: 640px) {
+  .report-data-section .section-heading > span {
+    max-width: 100%;
+    text-align: left;
+  }
+}
+.report-data-section .financial-table thead th {
+  background: #145c56;
+  color: #fff;
+  white-space: normal;
+}
+.report-data-section .financial-table thead .certiva-heading {
+  background: #285f86;
+}
+.financial-table thead .cash-heading,
+.financial-table thead .certiva-heading {
+  text-align: center;
+}
+.financial-table tbody th {
+  font-weight: 500;
+  text-align: left;
+}
+.financial-table tbody tr:nth-child(even) {
+  background: #f2f6f7;
+}
+.financial-table tfoot th,
+.financial-table tfoot td {
+  background: #dfefeb;
+  color: #164c46;
+  font-weight: 700;
+  border-top: 2px solid #77aaa1;
+  padding: 12px;
+}
+.financial-table tfoot td {
+  text-align: right;
+}
+.financial-table .customs-name {
+  min-width: 190px;
+  max-width: 340px;
+  white-space: normal;
+}
 .currency-switch {
   display: flex;
   border: 1px solid #b9c9cc;
   border-radius: 4px;
   overflow: hidden;
 }
-.part-alias { display: block; white-space: normal; max-width: 260px; overflow-wrap: anywhere; font-size: 11px; font-weight: 400; }
+.part-alias {
+  display: block;
+  white-space: normal;
+  max-width: 260px;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 400;
+}
 .heading-actions .currency-switch button {
   border: 0;
   border-radius: 0;
@@ -795,7 +881,8 @@ select {
     min-width: 0;
     grid-column: 1/-1;
   }
-  .filterbar label {
+  .filterbar label,
+  .filterbar label.wide-filter {
     min-width: 0;
   }
   .filterbar .reset-button {

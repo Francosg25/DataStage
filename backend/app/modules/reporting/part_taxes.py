@@ -54,7 +54,7 @@ def convert(row, field, source_currency, currency, rates):
     return value / rate if currency == 'USD' else value * rate
 
 
-def import_payments(tables):
+def import_payments(tables, payment_method='0'):
     operations = defaultdict(set)
     for row in tables['551']:
         if (key := item_identity(row)) is not None:
@@ -62,7 +62,7 @@ def import_payments(tables):
     rows, unmatched = [], 0
     for row in tables['557']:
         tax = {'6': 'igi', '3': 'iva'}.get(normalized(row.get('clave_contribucion')))
-        if not tax or normalized(row.get('forma_pago')) != '0':
+        if not tax or normalized(row.get('forma_pago')) != payment_method:
             continue
         operation = operations.get(item_identity(row), set())
         if len(operation) != 1 or '' in operation:
@@ -76,6 +76,23 @@ def paid_totals(tables, coverage, currency, rates):
     rows, unmatched = import_payments(tables)
     return {tax: strict_sum(convert(row, 'importe_pago', 'MXN', currency, rates) for row, kind in rows if kind == tax)
             if '551' in coverage and '557' in coverage and not unmatched else None for tax in ('igi', 'iva')}
+
+
+def payment_method_totals(tables, coverage, currency, rates):
+    result = {}
+    for method, name in [('0', 'cash'), ('21', 'certiva')]:
+        rows, unmatched = import_payments(tables, method)
+        result[name] = {
+            tax: strict_sum(convert(row, 'importe_pago', 'MXN', currency, rates)
+                            for row, kind in rows if kind == tax)
+            if {'551', '557'}.issubset(coverage) and not unmatched else None
+            for tax in ('igi', 'iva')
+        }
+        result[name]['unmatchedRows'] = unmatched
+    result['otherPaymentRows'] = sum(
+        normalized(row.get('clave_contribucion')) in {'3', '6'}
+        and normalized(row.get('forma_pago')) not in {'0', '21'} for row in tables['557'])
+    return result
 
 
 def paid_taxes(tables, coverage, currency, rates):

@@ -132,6 +132,16 @@ export class Api {
       params: { ...filters },
     });
   }
+  analyticsPdf(
+    filters: AnalyticsFilters,
+    language: "es" | "en",
+    snapshot: string,
+  ) {
+    return this.http.get(`${this.base}/reports/analytics/pdf`, {
+      params: { ...filters, language, snapshot },
+      responseType: "blob",
+    });
+  }
   catalog() {
     return this.http.get<CatalogTable[]>(`${this.base}/catalog/tables`);
   }

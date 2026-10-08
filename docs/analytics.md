@@ -25,7 +25,7 @@ El Manual de Consulta Data Stage, julio 2021, aporta las definiciones de 501, 55
 | Peso bruto | `PesoBrutoMercancia` de 501 en kg. |
 | Semáforo rojo | Eventos SEL con código 0 / eventos con código 0 o 1. |
 | Reconocimientos | INCI S = simple, G = grave, C = correcto. C no es una incidencia. |
-| Rectificaciones | Filas de 701. No se interpreta automáticamente como sustitución de otras operaciones. |
+| Rectificaciones | Llaves distintas de año, mes, patente, pedimento y aduana en 701. No implica error operativo ni sustitución fiscal. |
 | Variación | `(actual - base) / abs(base) * 100`; sin porcentaje con base cero o ausente. |
 
 El mes procede de `Periodo`, no de la fecha de pago. Un mes sin fuente muestra `null`, no cero. Los totales suman datos disponibles del rango; la cobertura se muestra junto al informe. Los nulos numéricos no se convierten en cero y se cuentan en calidad. La variación de las tarjetas corresponde al último mes disponible frente al mes calendario anterior, incluso si ese mes queda fuera del rango seleccionado.
@@ -44,6 +44,48 @@ El parámetro `currency=USD|MXN` selecciona la moneda de presentación, con USD 
 
 El Excel IGI abril 2025 a marzo 2026 es referencia de presentación. No se incorpora al snapshot enero-agosto 2026 ni se inventa su desglose mensual.
 
+## Contribuciones por forma de pago y rectificaciones
+
+La tabla mensual usa `paymentMethods` en cada mes y en el total. Separa IGI/IVA
+de importación por `FormaPago=0` (efectivo) y `FormaPago=21` (CERTIVA). No suma
+crédito y efectivo. Las tarjetas y el análisis por NP siguen midiendo FP 0.
+Otros medios se excluyen explícitamente y se cuenta su presencia en 557.
+El cruce con 551 no multiplica pagos cuando hay partidas repetidas. Un cruce
+incompleto o ambiguo invalida el total de la forma afectada, no el de la otra.
+
+`rectificationsByCustoms` agrupa llaves únicas de 701 y 501 por aduana. R1 es la
+etiqueta operativa de rectificaciones registradas en 701: las claves de documento
+del Excel de ejemplo son AF, IN, RT, etc., no la cadena R1. Los meses forman parte
+de la llave, de modo que apariciones en meses distintos se mantienen separadas.
+No se deduplican las filas de pago 557 por igualdad de monto.
+
+- `% aduana = R1 de la aduana / pedimentos 501 de esa aduana * 100`.
+- `% global = R1 de la aduana / pedimentos 501 de toda la selección * 100`.
+- El filtro de aduana también restringe la base global. Su valor se muestra en pantalla.
+- Los totales porcentuales se recalculan con los conteos, no con promedios de tasas.
+- Base cero, llaves inválidas, 701 sin 501 o cobertura incompleta no generan tasas falsas.
+- La imagen ilustrativa suma 1,105 pedimentos visibles. En el Excel de referencia,
+  enero-junio de 2026 con todas las operaciones suma 1,527 pedimentos y 31 R1:
+  7/1,527 = 0.46%, consistente con el porcentaje global de Manzanillo del ejemplo.
+  Se muestran también aduanas sin rectificaciones. Los conteos 501 de Altamira y
+  AIFA en esta selección difieren de la imagen; no se reemplazan por valores manuales.
+- No se inventaron responsables logísticos ni costos aproximados.
+
+## Reporte PDF
+
+`GET /api/v1/reports/analytics/pdf` reutiliza exactamente la dependencia de
+consulta y autorización del análisis. Acepta los mismos filtros, `language=es|en`
+y opcionalmente `snapshot`, el SHA-256 de la respuesta sin `generatedAt`.
+El cliente siempre manda los filtros y snapshot del reporte mostrado, no del
+formulario mientras cambia. Un corte distinto devuelve 409 y exige actualizar.
+El archivo se genera en memoria con ReportLab, sin mandar datos a terceros,
+sin persistirlos públicamente y con respuesta `no-store`.
+
+Incluye indicadores, evolución mensual, FP 0/21, principales NP, rectificaciones,
+fórmulas, cobertura, alertas, fuentes SHA-256 y versiones publicadas. Las tablas
+repiten encabezados al paginar. La descarga incorpora año, meses, moneda e idioma.
+La carga histórica 2020-2026 queda expresamente pendiente.
+
 ## Preparar referencias
 
 Desde `backend`, con las dependencias del lock instaladas:
@@ -58,7 +100,7 @@ La conciliación normaliza campos numéricos de la especificación y excluye las
 
 ## Interfaz
 
-La ruta `/analytics` conserva sus cinco vistas existentes. El panorama integra cuatro gráficas: valor de mercancías, IGI/IVA mensual, IGI por NP y rectificaciones por mes/patente. Contribuciones incluye dos tablas comparativas separadas de IGI e IVA. Control y calidad contiene las alertas NP. Se mantienen filtros, CSV, PNG, ampliación e impresión. ES/EN actualiza etiquetas y formatos regionales. El comparador visual de `/annual` permite mes/año contra mes/año y solo contiene análisis. El apartado Cargas separa los flujos de mensuales (`/uploads/monthly`) y consolidados (`/uploads/consolidated`), ambos reservados a Operator/Admin. `/monthly` redirige al nuevo flujo mensual. Los Excel nuevos usan rangos normales con autofiltros y fila superior inmovilizada, sin tablas de Excel; sus encabezados tienen fondo verde oscuro y texto blanco en negrita.
+La ruta `/analytics` conserva sus cinco vistas existentes. El panorama integra dos gráficas (mercancías e IGI por NP) y las tablas de FP 0/21 y rectificaciones por aduana. Contribuciones reutiliza la tabla de pagos y conserva las comparativas de IGI/IVA por NP. Control y calidad reutiliza rectificaciones y conserva las alertas NP. Se mantienen filtros, CSV, PNG y ampliación; PDF sustituye la impresión de la pestaña. ES/EN actualiza etiquetas y formatos regionales. Resumen muestra por defecto los últimos seis meses publicados, con selector de 3/6/12; los totales generales no se recortan. El comparador `/annual` sigue siendo de solo análisis. Cargas separa mensuales y consolidados. Los Excel permanecen como rangos normales con autofiltros, sin tablas nativas, y encabezados de alto contraste.
 
 `get_analytics` en Foundry usa el mismo servicio y agrega evidencia de fuentes/versiones. Envía un resumen acotado de NP (20 filas, conteos completos, sin texto de observaciones), no todas las alertas al modelo. El enlace al asistente sólo prepara una pregunta; no la envía automáticamente.
 

@@ -1,16 +1,26 @@
 import { TestBed } from "@angular/core/testing";
-import { of, Subject } from "rxjs";
+import { of, Subject, throwError } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { Api } from "../core/api";
 import { Analytics } from "./analytics";
 import { AnalyticsReport } from "../core/analytics";
 
 describe("analytics filters and comparisons", () => {
-  it('finds the principal part using its alternate code without duplicating tax rows', () => {
+  it("finds the principal part using its alternate code without duplicating tax rows", () => {
     const { component } = setup();
-    const row = { partNumber: '1200-1030847AN', alternatePartNumbers: ['1200-1030847AND'], tariff:'123',items:1,igi:100,iva:0,months:{'1':{igi:100,iva:0}} };
-    component.report.set({partTaxes:{rows:[row]}} as unknown as AnalyticsReport);
-    component.searchParts('1200-1030847AND');
+    const row = {
+      partNumber: "1200-1030847AN",
+      alternatePartNumbers: ["1200-1030847AND"],
+      tariff: "123",
+      items: 1,
+      igi: 100,
+      iva: 0,
+      months: { "1": { igi: 100, iva: 0 } },
+    };
+    component.report.set({
+      partTaxes: { rows: [row] },
+    } as unknown as AnalyticsReport);
+    component.searchParts("1200-1030847AND");
     expect(component.taxRows()).toEqual([row]);
   });
   function setup() {
@@ -20,6 +30,9 @@ describe("analytics filters and comparisons", () => {
       .fn()
       .mockReturnValueOnce(first)
       .mockReturnValue(second);
+    const analyticsPdf = vi
+      .fn()
+      .mockReturnValue(throwError(() => ({ status: 409 })));
     TestBed.configureTestingModule({
       providers: [
         {
@@ -31,6 +44,7 @@ describe("analytics filters and comparisons", () => {
                 sources: [{ id: "reference", years: [2026] }],
               }),
             analytics,
+            analyticsPdf,
           },
         },
       ],
@@ -40,8 +54,52 @@ describe("analytics filters and comparisons", () => {
       first,
       second,
       analytics,
+      analyticsPdf,
     };
   }
+  it("exports the displayed filters and snapshot and allows retry after a conflict", () => {
+    const { component, analyticsPdf } = setup();
+    const appliedFilters = {
+      source: "reference",
+      year: 2026,
+      startMonth: 1,
+      endMonth: 6,
+      operation: "1",
+      customs: "240",
+      document: "",
+      currency: "MXN" as const,
+    };
+    component.report.set({
+      appliedFilters,
+      snapshotId: "snapshot",
+    } as AnalyticsReport);
+    component.loading.set(false);
+    component.filters.startMonth = 9;
+    component.i18n.set("en");
+    component.downloadPdf();
+    expect(analyticsPdf).toHaveBeenCalledWith(appliedFilters, "en", "snapshot");
+    expect(component.pdfError()).toContain("Data changed");
+    expect(component.exportingPdf()).toBe(false);
+    component.downloadPdf();
+    expect(analyticsPdf).toHaveBeenCalledTimes(2);
+  });
+  it("guards PDF downloads while loading or exporting", () => {
+    const { component, analyticsPdf } = setup();
+    component.downloadPdf();
+    component.report.set({ snapshotId: "s" } as AnalyticsReport);
+    component.downloadPdf();
+    component.loading.set(false);
+    component.exportingPdf.set(true);
+    component.downloadPdf();
+    expect(analyticsPdf).not.toHaveBeenCalled();
+  });
+  it("shows small amendment rates to two decimals without inventing missing rates", () => {
+    const { component } = setup();
+    component.i18n.set("en");
+    expect(component.percentage(0.46)).toBe("0.46%");
+    expect(component.percentage(0)).toBe("0.00%");
+    expect(component.percentage(null)).toBe("Unavailable");
+  });
   it("cancels obsolete requests when a filter changes", () => {
     const { component, first, second, analytics } = setup();
     component.filters.operation = "1";

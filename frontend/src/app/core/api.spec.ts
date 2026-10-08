@@ -29,6 +29,39 @@ describe("contratos de la API", () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it("downloads filtered PDF reports with a corporate token and snapshot", async () => {
+    const promise = firstValueFrom(
+      api.analyticsPdf(
+        {
+          source: "reference",
+          year: 2026,
+          startMonth: 2,
+          endMonth: 6,
+          operation: "1",
+          customs: "160",
+          document: "AF",
+          currency: "MXN",
+        },
+        "en",
+        "abc",
+      ),
+    );
+    await Promise.resolve();
+    const request = http.expectOne(
+      (r) => r.url === "/api/v1/reports/analytics/pdf",
+    );
+    expect(request.request.responseType).toBe("blob");
+    expect(request.request.headers.get("Authorization")).toBe(
+      "Bearer corporate-access-token",
+    );
+    expect(request.request.params.get("startMonth")).toBe("2");
+    expect(request.request.params.get("endMonth")).toBe("6");
+    expect(request.request.params.get("customs")).toBe("160");
+    expect(request.request.params.get("snapshot")).toBe("abc");
+    expect(request.request.params.get("language")).toBe("en");
+    request.flush(new Blob(["%PDF-test"]));
+    expect((await promise).size).toBe(9);
+  });
   it("envía ZIP, periodo, token e idempotencia en la carga mensual", async () => {
     const file = new File(["abc"], "carga.zip");
     const promise = firstValueFrom(

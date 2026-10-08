@@ -33,12 +33,12 @@
     </button>
     <button
       type="button"
-      (click)="print()"
-      [disabled]="!report() || loading()"
-      [title]="t('Imprimir','Print')"
-      [attr.aria-label]="t('Imprimir','Print')"
+      (click)="downloadPdf()"
+      [disabled]="!report() || loading() || exportingPdf()"
+      [title]="t('Descargar reporte general PDF','Download general PDF report')"
+      [attr.aria-label]="t('Descargar reporte general PDF','Download general PDF report')"
     >
-      <ds-icon name="file" />
+      <ds-icon name="file" /> PDF
     </button>
     <button
       type="button"
@@ -50,6 +50,13 @@
     </button>
   </div>
 </header>
+@if (exportingPdf()) {
+<p role="status">
+  {{ t('Generando reporte PDF...', 'Generating PDF report...') }}
+</p>
+} @if (pdfError()) {
+<p class="error-message" role="alert">{{ pdfError() }}</p>
+}
 <div class="filterbar">
   <label class="source-filter"
     >{{ t('Fuente','Source') }}<select
@@ -258,9 +265,14 @@ r.partTaxes.invalidItemKeys > 0) {
     }
   </div>
   @if (r.coverage.availableMonths.length && !r.partTaxes.available) {
-    <div class="reference-notice"><ds-icon name="alert" /><span>{{ t('Cobertura incompleta de partidas y pagos (551/557). Los totales de IGI/IVA no están disponibles.','Incomplete line-item and payment coverage (551/557). IGI/VAT totals are unavailable.') }}</span></div>
-  }
-  } @if (tab() === 'overview') {
+  <div class="reference-notice">
+    <ds-icon name="alert" /><span
+      >{{ t('Cobertura incompleta de partidas y pagos (551/557). Los totales de
+      IGI/IVA no están disponibles.','Incomplete line-item and payment coverage
+      (551/557). IGI/VAT totals are unavailable.') }}</span
+    >
+  </div>
+  } } @if (tab() === 'overview') {
   <div class="chart-grid">
     <ds-analytics-chart
       [title]="t('Valor de mercancías por mes','Monthly trade value')"
@@ -272,13 +284,6 @@ r.partTaxes.invalidItemKeys > 0) {
       (selected)="selectMonth($event)"
     />
     <ds-analytics-chart
-      [title]="t('IGI e IVA pagados por mes','Monthly import duty and VAT paid')"
-      [subtitle]="currency() + ' · ' + t('Importaciones · Efectivo (FP 0)','Imports · Cash payment (FP 0)')"
-      [labels]="labels()"
-      [series]="pairSeries('igiPaid','ivaPaid',[t('IGI · Importación','IGI · Import duty'),t('IVA · Valor agregado','IVA · VAT')])"
-      (selected)="selectMonth($event)"
-    />
-    <ds-analytics-chart
       [title]="t('Números de parte con mayor IGI','Top part numbers by import duty')"
       [subtitle]="currency() + ' · ' + t('10 principales · NP y fracción','Top 10 · Part number and tariff')"
       [horizontal]="true"
@@ -286,14 +291,9 @@ r.partTaxes.invalidItemKeys > 0) {
       [series]="partSeries()"
       [footnote]="t('Solo NP identificados sin ambigüedad.','Only unambiguously identified part numbers.')"
     />
-    <ds-analytics-chart
-      [title]="t('Rectificaciones por mes y patente','Monthly amendments by broker license')"
-      [subtitle]="t('Registros 701 · Patente del agente aduanal','701 records · Customs broker license')"
-      [labels]="labels()"
-      [series]="rectificationSeries()"
-      [stacked]="true"
-    />
   </div>
+  <ng-container *ngTemplateOutlet="paymentsTable" />
+  <ng-container *ngTemplateOutlet="rectificationsTable" />
   } @if (tab() === 'trade') {
   <div class="chart-grid">
     <ds-analytics-chart
@@ -328,14 +328,8 @@ r.partTaxes.invalidItemKeys > 0) {
     />
   </div>
   } @if (tab() === 'taxes') {
+  <ng-container *ngTemplateOutlet="paymentsTable" />
   <div class="chart-grid">
-    <ds-analytics-chart
-      [title]="t('IGI e IVA pagados por mes','Monthly import duty and VAT paid')"
-      [subtitle]="currency() + ' · ' + t('Importaciones · Efectivo (FP 0)','Imports · Cash payment (FP 0)')"
-      type="line"
-      [labels]="labels()"
-      [series]="pairSeries('igiPaid','ivaPaid',[t('IGI · Importación','IGI · Import duty'),t('IVA · Valor agregado','IVA · VAT')])"
-    />
     <ds-analytics-chart
       [title]="t('Números de parte con mayor IGI','Top part numbers by import duty')"
       [subtitle]="currency() + ' · ' + t('10 principales · NP y fracción','Top 10 · Part number and tariff')"
@@ -410,8 +404,12 @@ r.partTaxes.invalidItemKeys > 0) {
         <tr>
           <th [class.unassigned]="!row.partNumber">
             {{ row.partNumber || t('Sin asignar · revisar NP','Unassigned ·
-            review part number') }}
-            @if (row.alternatePartNumbers?.length) { <small class="part-alias">{{ t('Alternativo:','Alternate:') }} {{ row.alternatePartNumbers!.join(' · ') }}</small> }
+            review part number') }} @if (row.alternatePartNumbers?.length) {
+            <small class="part-alias"
+              >{{ t('Alternativo:','Alternate:') }} {{
+              row.alternatePartNumbers!.join(' · ') }}</small
+            >
+            }
           </th>
           <td>{{ row.tariff }}</td>
           <td>{{ format(taxValue(row,first(),tax),currency()) }}</td>
@@ -459,14 +457,8 @@ r.partTaxes.invalidItemKeys > 0) {
       [series]="[{label:t('Rojo','Red'),color:'#b85b52',values:series('red','')[0].values},{label:t('Verde','Green'),color:'#138679',values:series('green','')[0].values}]"
       [stacked]="true"
     />
-    <ds-analytics-chart
-      [title]="t('Rectificaciones por mes y patente','Monthly amendments by broker license')"
-      [subtitle]="t('Registros 701 · Patente del agente aduanal','701 records · Customs broker license')"
-      [labels]="labels()"
-      [series]="rectificationSeries()"
-      [stacked]="true"
-    />
   </div>
+  <ng-container *ngTemplateOutlet="rectificationsTable" />
   <div class="section-heading">
     <h2>
       {{ t('Números de parte pendientes de corrección','Part numbers requiring
@@ -578,11 +570,13 @@ r.partTaxes.invalidItemKeys > 0) {
       <dt>{{ t('Contribuciones','Taxes') }}</dt>
       <dd>
         {{ t('Anexo 22, 15 enero 2026, apéndices 12 y 13: 1 = DTA, 3 = IVA, 6 =
-        IGI/IGE. IGI e IVA pagados incluyen importaciones con FormaPago 0 en
-        557. No se suman 510 y 557.','Anexo 22, January 15, 2026, appendices 12
-        and 13: 1 = customs processing fee, 3 = VAT, 6 = import/export duty.
-        Paid IGI and VAT include imports with payment method 0 in 557. Tables
-        510 and 557 are not added together.') }}
+        IGI/IGE. IGI e IVA en efectivo incluyen importaciones con FormaPago 0 en
+        557. La tabla mensual separa FP 0 y CERTIVA (FP 21). No se suman 510 y
+        557.','Anexo 22, January 15, 2026, appendices 12 and 13: 1 = customs
+        processing fee, 3 = VAT, 6 = import/export duty. Cash IGI and VAT
+        include imports with payment method 0 in 557. The monthly table
+        separates FP 0 and CERTIVA (FP 21). Tables 510 and 557 are not added
+        together.') }}
       </dd>
       <dt>{{ t('Moneda','Currency') }}</dt>
       <dd>
@@ -596,12 +590,14 @@ r.partTaxes.invalidItemKeys > 0) {
       <dt>{{ t('Número de parte','Part number') }}</dt>
       <dd>
         {{ t('Cruce por año, mes, patente, pedimento, aduana, fracción y
-        secuencia. NP es el principal; OTRO NP es un código alternativo del mismo artículo.
-        Se asigna el importe una sola vez al principal. Series y lotes no son NP.
-        Varios principales distintos requieren revisión.','Matched by year, month, broker, declaration, customs office,
-        tariff and item sequence. NP is the principal; OTRO NP is an alternate code for the same item.
-        The amount is assigned once to the principal. Serial and lot numbers are not parts.
-        Multiple distinct principals require review.') }}
+        secuencia. NP es el principal; OTRO NP es un código alternativo del
+        mismo artículo. Se asigna el importe una sola vez al principal. Series y
+        lotes no son NP. Varios principales distintos requieren
+        revisión.','Matched by year, month, broker, declaration, customs office,
+        tariff and item sequence. NP is the principal; OTRO NP is an alternate
+        code for the same item. The amount is assigned once to the principal.
+        Serial and lot numbers are not parts. Multiple distinct principals
+        require review.') }}
       </dd>
       <dt>{{ t('Mes y versiones','Month and versions') }}</dt>
       <dd>
@@ -622,9 +618,20 @@ r.partTaxes.invalidItemKeys > 0) {
       </dd>
       <dt>{{ t('Rectificaciones','Amendments') }}</dt>
       <dd>
-        {{ t('Registros 701 por mes y patente. No se infiere sustitución fiscal
-        de pedimentos.','701 records by month and broker license. Fiscal
-        replacement of declarations is not inferred.') }}
+        {{ t('R1 identifica pedimentos distintos en 701, sin exigir
+        ClaveDocumento R1: el archivo conserva claves AF, IN, RT y otras. Llave:
+        año, mes, patente, pedimento y aduana. % aduana = R1 / pedimentos 501 de
+        esa aduana × 100. % global = R1 de esa aduana / total 501 con los mismos
+        filtros × 100. El total recalcula la tasa, no promedia porcentajes.
+        Meses diferentes se cuentan por separado. Una rectificación no demuestra
+        por sí sola un error operativo.', 'R1 identifies distinct declarations
+        in 701 without requiring document code R1: files retain AF, IN, RT and
+        other codes. Key: year, month, broker, declaration and customs office. %
+        office = R1 / office declarations in 501 × 100. % global = office R1 /
+        all 501 declarations under the same filters × 100. The total
+        recalculates the rate rather than averaging percentages. Different
+        months are counted separately. An amendment alone is not proof of an
+        operational error.') }}
       </dd>
       <dt>{{ t('Referencia externa de IGI','External IGI reference') }}</dt>
       <dd>
@@ -718,4 +725,172 @@ r.partTaxes.invalidItemKeys > 0) {
     }}</span
   >
 </footer>
+<ng-template #paymentsTable>
+  <section class="report-data-section" aria-labelledby="payments-title">
+    <div class="section-heading">
+      <div>
+        <h2 id="payments-title">
+          {{ t('IGI e IVA por mes y forma de pago','Monthly IGI and VAT by
+          payment method') }}
+        </h2>
+        <p>
+          {{ currency() }} · {{ t('Importaciones · 551 / 557','Imports · 551 /
+          557') }}
+        </p>
+      </div>
+      <span class="data-source"
+        >{{ t('Efectivo y CERTIVA separados','Cash and CERTIVA separated')
+        }}</span
+      >
+    </div>
+    <div
+      class="table-scroll"
+      tabindex="0"
+      [attr.aria-label]="t('Contribuciones mensuales','Monthly taxes')"
+    >
+      <table class="analysis-table financial-table">
+        <thead>
+          <tr>
+            <th rowspan="2" scope="col">{{ t('Mes','Month') }}</th>
+            <th colspan="2" scope="colgroup" class="cash-heading">
+              {{ t('Efectivo','Cash') }} · FP 0
+            </th>
+            <th colspan="2" scope="colgroup" class="certiva-heading">
+              CERTIVA · FP 21
+            </th>
+          </tr>
+          <tr>
+            <th scope="col">IGI</th>
+            <th scope="col">IVA</th>
+            <th scope="col">IGI</th>
+            <th scope="col">IVA</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (m of selectedMonths(); track m.month) {
+          <tr>
+            <th scope="row">{{ i18n.month(m.month) }} {{ r.year }}</th>
+            <td>{{ format(m.paymentMethods.cash.igi, currency()) }}</td>
+            <td>{{ format(m.paymentMethods.cash.iva, currency()) }}</td>
+            <td>{{ format(m.paymentMethods.certiva.igi, currency()) }}</td>
+            <td>{{ format(m.paymentMethods.certiva.iva, currency()) }}</td>
+          </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total</th>
+            <td>{{ format(r.paymentMethods.cash.igi, currency()) }}</td>
+            <td>{{ format(r.paymentMethods.cash.iva, currency()) }}</td>
+            <td>{{ format(r.paymentMethods.certiva.igi, currency()) }}</td>
+            <td>{{ format(r.paymentMethods.certiva.iva, currency()) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    @if (r.paymentMethods.certiva.unmatchedRows) {
+    <p class="data-warning" role="status">
+      {{ r.paymentMethods.certiva.unmatchedRows }} {{ t('pagos CERTIVA sin
+      partida u operación verificable. Totales pendientes de
+      conciliación.','CERTIVA payments without a verified item or operation.
+      Totals require reconciliation.') }}
+    </p>
+    }
+    <p class="data-note">
+      {{ t('CERTIVA no representa salida de efectivo. Otras formas de pago
+      IGI/IVA excluidas (557):','CERTIVA does not represent cash outflow. Other
+      excluded IGI/VAT payment methods (557):') }} {{
+      format(r.paymentMethods.otherPaymentRows) }}. {{ t('Sin dato no equivale a
+      cero.','Unavailable does not mean zero.') }}
+    </p>
+  </section>
+</ng-template>
+<ng-template #rectificationsTable>
+  @let rect = r.rectificationsByCustoms;
+  <section class="report-data-section" aria-labelledby="rectifications-title">
+    <div class="section-heading">
+      <div>
+        <h2 id="rectifications-title">
+          {{ t('Rectificaciones por aduana','Amendments by customs office') }}
+        </h2>
+        <p>
+          {{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{
+          r.year }} · 501 / 701
+        </p>
+      </div>
+      <span class="data-source"
+        >{{ t('Base global filtrada:','Filtered global base:') }}
+        <b>{{ format(rect.globalDeclarations) }}</b> {{
+        t('pedimentos','declarations') }}</span
+      >
+    </div>
+    <div
+      class="table-scroll"
+      tabindex="0"
+      [attr.aria-label]="t('Rectificaciones por aduana','Amendments by customs office')"
+    >
+      <table class="analysis-table financial-table">
+        <thead>
+          <tr>
+            <th scope="col">
+              {{ t('Código y aduana','Code and customs office') }}
+            </th>
+            <th scope="col">R1</th>
+            <th scope="col">
+              {{ t('Total pedimentos','Total declarations') }}
+            </th>
+            <th scope="col">{{ t('% aduana','% office') }}</th>
+            <th scope="col">% global</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rect.rows; track row.customs) {
+          <tr>
+            <th scope="row" class="customs-name">
+              {{ category(row.customs, 'customs') }}
+            </th>
+            <td>{{ format(row.r1) }}</td>
+            <td>{{ format(row.declarations) }}</td>
+            <td>{{ percentage(row.officeRate) }}</td>
+            <td>{{ percentage(row.globalRate) }}</td>
+          </tr>
+          } @empty {
+          <tr>
+            <td colspan="5">
+              {{ t('Sin registros para esta selección.','No records for this
+              selection.') }}
+            </td>
+          </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total</th>
+            <td>{{ format(rect.totals.r1) }}</td>
+            <td>{{ format(rect.totals.declarations) }}</td>
+            <td>{{ percentage(rect.totals.officeRate) }}</td>
+            <td>{{ percentage(rect.totals.globalRate) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    @if (!rect.available || rect.unmatchedAmendments || rect.invalidKeys) {
+    <p class="data-warning" role="status">
+      {{ t('Pendiente de conciliación:','Reconciliation pending:') }} {{
+      t('cobertura 501/701','501/701 coverage') }} {{ rect.available ?
+      t('completa','complete') : t('incompleta','incomplete') }} · {{
+      rect.unmatchedAmendments }} {{ t('rectificaciones sin 501','amendments
+      without 501') }} · {{ rect.invalidKeys }} {{ t('llaves
+      incompletas','incomplete keys') }}.
+    </p>
+    }
+    <p class="data-note">
+      {{ t('R1: pedimentos distintos en 701. % aduana = R1 / total de la aduana.
+      % global = R1 / base global filtrada. Frecuencia de rectificación, no
+      atribución automática de error.','R1: distinct declarations in 701. %
+      office = R1 / office total. % global = R1 / filtered global base.
+      Amendment frequency, not automatic attribution of error.') }}
+    </p>
+  </section>
+</ng-template>
 }

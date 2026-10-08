@@ -10,6 +10,7 @@ import {
   effect,
 } from "@angular/core";
 import { RouterLink } from "@angular/router";
+import { FormsModule } from "@angular/forms";
 import { MatButtonModule } from "@angular/material/button";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
@@ -23,6 +24,7 @@ Chart.register(...registerables);
   selector: "ds-dashboard",
   imports: [
     TranslatePipe,
+    FormsModule,
     LocalizedNumberPipe,
     RouterLink,
     MatButtonModule,
@@ -40,7 +42,10 @@ Chart.register(...registerables);
         </h1>
         <p>
           {{
-            i18n.choose('Estado de cargas y versiones publicadas', 'Upload and published-version status')
+            i18n.choose(
+              "Estado de cargas y versiones publicadas",
+              "Upload and published-version status"
+            )
           }}
         </p>
       </div>
@@ -81,7 +86,19 @@ Chart.register(...registerables);
             <h2>{{ "Actividad por periodo" | t }}</h2>
             <p>{{ "Registros procesados en las cargas publicadas" | t }}</p>
           </div>
-          <span class="subtle-tag"> {{ "Mensual" | t }} </span>
+          <select
+            class="activity-limit"
+            [attr.aria-label]="i18n.choose('Meses visibles', 'Visible months')"
+            [ngModel]="monthLimit()"
+            (ngModelChange)="monthLimit.set(+$event)"
+          >
+            @for (count of [3, 6, 12]; track count) {
+              <option [ngValue]="count">
+                {{ i18n.choose("Últimos", "Latest") }} {{ count }}
+                {{ i18n.choose("meses publicados", "published months") }}
+              </option>
+            }
+          </select>
         </div>
         <div
           class="chart-container"
@@ -147,6 +164,24 @@ Chart.register(...registerables);
       <ds-run-list [runs]="overview()?.recentRuns || []" />
     </section>
   `,
+  styles: [
+    `
+      .activity-limit {
+        max-width: 100%;
+        min-height: 36px;
+        padding: 6px 28px 6px 10px;
+        border: 1px solid #b9c9cc;
+        border-radius: 4px;
+        background: white;
+        color: #234c57;
+        font-size: 12px;
+      }
+      .panel-heading {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+    `,
+  ],
 })
 export class Dashboard implements AfterViewInit {
   i18n = inject(I18n);
@@ -157,9 +192,15 @@ export class Dashboard implements AfterViewInit {
   overview = signal<Overview | null>(null);
   loading = signal(true);
   error = signal("");
+  monthLimit = signal(6);
+  visibleMonths() {
+    // The API returns published periods in ascending year/month order.
+    return (this.overview()?.monthly || []).slice(-this.monthLimit());
+  }
   constructor() {
     effect(() => {
       this.i18n.language();
+      this.monthLimit();
       this.render();
     });
     this.destroy.onDestroy(() => this.chart?.destroy());
@@ -218,7 +259,7 @@ export class Dashboard implements AfterViewInit {
   private render() {
     if (!this.canvas) return;
     this.chart?.destroy();
-    const rows = this.overview()?.monthly || [];
+    const rows = this.visibleMonths();
     this.chart = new Chart(this.canvas.nativeElement, {
       type: "bar",
       data: {

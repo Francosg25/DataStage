@@ -10,4 +10,3 @@ FP21 es CERTIVA. Se comento que para esta seccion -Se prefiere una tabla con mon
 
 
 
--Aplicar diseño con animaciones y glassmorpish

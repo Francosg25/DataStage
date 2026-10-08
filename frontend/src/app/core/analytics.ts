@@ -1,8 +1,20 @@
 export type MetricValues = Record<string, number | null>;
+export interface PaymentMethods {
+  cash: { igi: number | null; iva: number | null; unmatchedRows: number };
+  certiva: { igi: number | null; iva: number | null; unmatchedRows: number };
+  otherPaymentRows: number;
+}
+export interface RectificationRow {
+  r1: number | null;
+  declarations: number | null;
+  officeRate: number | null;
+  globalRate: number | null;
+}
 export interface AnalyticsMonth {
   month: number;
   available: boolean;
   metrics: MetricValues;
+  paymentMethods: PaymentMethods;
   rows: number | null;
   files: number | null;
   warnings: number | null;
@@ -17,6 +29,17 @@ export interface Ranking {
   rows: number;
 }
 export interface AnalyticsReport {
+  appliedFilters: AnalyticsFilters;
+  snapshotId: string;
+  paymentMethods: PaymentMethods;
+  rectificationsByCustoms: {
+    rows: (RectificationRow & { customs: string })[];
+    totals: RectificationRow;
+    globalDeclarations: number | null;
+    available: boolean;
+    unmatchedAmendments: number;
+    invalidKeys: number;
+  };
   currency: "USD" | "MXN";
   partTaxes: PartTaxes;
   rectifications: { patent: string; values: (number | null)[] }[];

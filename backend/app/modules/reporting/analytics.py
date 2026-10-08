@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from functools import lru_cache
 import json
+import hashlib
 from pathlib import Path
 
 from sqlalchemy import select
@@ -12,7 +13,8 @@ from app.core.errors import ApplicationError
 from app.persistence.business import BUSINESS_TABLES
 from app.persistence.models import Period, ProcessingTable, Run
 from .trade_values import KEY_FIELDS, identity, number, text_value, strict_sum
-from .part_taxes import convert, exchange_rates, paid_taxes, paid_totals
+from .part_taxes import convert, exchange_rates, paid_taxes, paid_totals, payment_method_totals
+from .rectifications import rectifications_by_customs
 
 FIELDS = {
     '501': (*KEY_FIELDS, 'tipo_operacion', 'clave_documento', 'tipo_pedimento',
@@ -170,7 +172,8 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
             'packingMxn': total(general, 'total_embalajes') if '501' in coverage else None,
             'incrementsMxn': total(general, 'total_incrementables') if '501' in coverage else None,
             'deductionsMxn': total(general, 'total_deducibles') if '501' in coverage else None,
-            'rectifications': len(tables['701']) if '701' in coverage else None,
+            'rectifications': len({identity(r) for r in tables['701']} - {None})
+            if '701' in coverage and all(identity(r) is not None for r in tables['701']) else None,
             'red': red if 'sel' in coverage else None, 'green': green if 'sel' in coverage else None,
             'redRate': round(red / (red + green) * 100, 2) if red + green else None,
             'simpleIncidents': sum(text_value(r.get('grado_incidencia')) == 'S' for r in tables['inci']) if 'inci' in coverage else None,
@@ -196,6 +199,7 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
         tables = {code: [r for r in rows if r['month'] == month] for code, rows in filtered.items()}
         m = metrics(tables, p['tables'] if p else {})
         monthly.append({'month': month, 'available': p is not None, 'metrics': m,
+                        'paymentMethods': payment_method_totals(tables, p['tables'] if p else {}, currency, rates),
                         'rows': p['rows'] if p else None, 'warnings': p.get('warnings') if p else None,
                         'errors': p.get('errors') if p else None, 'files': p.get('files') if p else None,
                         'tables': p['tables'] if p else {}, 'runId': p.get('runId') if p else None,
@@ -204,6 +208,11 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
     selected_periods = [p for n, p in periods.items() if start_month <= n <= end_month]
     coverage = {c for p in selected_periods for c in p['tables']}
     summary = metrics(selected, coverage)
+    rectification_summary = rectifications_by_customs(selected, selected_periods)
+    summary['rectifications'] = rectification_summary['totals']['r1']
+    payment_coverage = {'551', '557'} if selected_periods and all(
+        {'551', '557'}.issubset(p['tables']) for p in selected_periods) else set()
+    payment_summary = payment_method_totals(selected, payment_coverage, currency, rates)
     parts = paid_taxes(selected, coverage, currency, rates)
     parts['available'] = bool(selected_periods) and all({'551', '557'}.issubset(p['tables']) for p in selected_periods)
     parts['observationSourceAvailable'] = bool(selected_periods) and all('558' in p['tables'] for p in selected_periods)
@@ -251,7 +260,10 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
     rectifications = []
     for patent in sorted({text_value(r.get('patente')) for r in selected['701']}):
         rectifications.append({'patent': patent, 'values': [sum(text_value(r.get('patente')) == patent and r['month'] == m for r in selected['701']) if m in periods and '701' in periods[m]['tables'] else None for m in range(1, 13)]})
-    return {
+    result = {
+        'appliedFilters': {'source': source, 'year': year, 'startMonth': start_month, 'endMonth': end_month,
+                           'operation': operation, 'customs': customs, 'document': document, 'currency': currency},
+        'paymentMethods': payment_summary, 'rectificationsByCustoms': rectification_summary,
         'currency': currency, 'partTaxes': parts, 'rectifications': rectifications,
         'source': source, 'year': year, 'startMonth': start_month, 'endMonth': end_month,
         'generatedAt': datetime.now(timezone.utc).isoformat(), 'sources': data.get('sources', []),
@@ -266,3 +278,7 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
         'filters': {name: sorted({text_value(r.get(field)) for r in headers if text_value(r.get(field))})
                     for name, field in [('customs', 'seccion_aduanera'), ('documents', 'clave_documento'), ('operations', 'tipo_operacion')]},
     }
+    result['snapshotId'] = hashlib.sha256(json.dumps(
+        {k: v for k, v in result.items() if k != 'generatedAt'}, sort_keys=True,
+        separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()
+    return result

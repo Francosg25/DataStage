@@ -1,6 +1,6 @@
 # Guía de gráficas y cálculos de DataStage
 
-Documento funcional y técnico. Revisión del 6 de octubre de 2026.
+Documento funcional y técnico. Revisión del 8 de octubre de 2026. Esta fuente incorpora las tablas FP 0/21 y rectificaciones por aduana. El PDF anterior del 6 de octubre conserva la versión previa; el reporte PDF descargable de la aplicación incluye los criterios actuales junto a cada corte.
 
 Esta guía explica de dónde obtiene DataStage cada visualización, qué calcula y qué debe comprobarse al interpretar sus resultados. Cubre Resumen operativo, las cinco vistas de Análisis de operaciones y Comparativa mensual. Está dirigida al equipo que consulta los datos y a quienes deben conciliarlos con los archivos de origen.
 
@@ -40,7 +40,7 @@ En los Excel se usan encabezados como `ValorDolares`; en el servicio y SQL apare
 | 551 o ds_551 | Registro de partida | Fraccion, SecuenciaFraccion, TipoOperacion, ValorDolares, PaisOrigenDestino | Valor comercial analizado, países, fracciones y relación de pagos |
 | 557 o ds_557 | Registro de contribución por partida | ClaveContribucion, FormaPago, ImportePago y llave de partida | IGI e IVA pagados |
 | 558 o ds_558 | Observación de partida | SecuenciaObservacion, Observaciones y llave de partida | Número de parte principal y alternativos |
-| 701 o ds_701 | Registro de rectificación | Patente y llave de pedimento | Rectificaciones por mes y patente |
+| 701 o ds_701 | Registro de rectificación | Patente y llave de pedimento | Rectificaciones por aduana |
 | SEL o ds_sel | Evento de selección | SemaforoFiscal y llave de pedimento | Selecciones rojas y verdes |
 | 505 o ds_505 | Registro de factura | ValorDolares, ProveedorMercancia, TerminoFacturacion | Métricas adicionales de API y exportación |
 | 510 o ds_510 | Pago a nivel de pedimento | ClaveContribucion, FormaPago, ImportePago | Métricas generales separadas de pagos |
@@ -103,17 +103,17 @@ Algunas métricas auxiliares históricas del servicio utilizan una suma que omit
 
 **Lectura:** permite comparar valor declarado y su evolución. No mide utilidades, unidades físicas ni facturación de 505. La tarjeta «Valor de mercancías» suma todas las filas 551 elegibles; si hay tipos de operación diferentes de 1 o 2, la tarjeta puede superar la suma de las dos series. Las filas 551 no se deduplican silenciosamente.
 
-### IGI e IVA pagados por mes
+### IGI e IVA por mes y forma de pago
 
-**Origen:** 557 aporta contribución, forma de pago e importe; 551 identifica si la partida corresponde a importación; 501 aporta el tipo de cambio para USD. Se toma clave 6 para IGI y clave 3 para IVA, exclusivamente con `FormaPago = 0`. La clave 1 corresponde a DTA y no entra como IGI.
+**Origen:** 557 aporta contribución, forma de pago e importe; 551 identifica si la partida corresponde a importación; 501 aporta el tipo de cambio para USD. Se toma clave 6 para IGI y clave 3 para IVA, separando `FormaPago = 0` (efectivo) y `FormaPago = 21` (CERTIVA). La clave 1 corresponde a DTA y no entra como IGI.
 
-**Cálculo:** seleccionar los registros de pago de las claves indicadas y forma 0, relacionarlos con su llave completa de partida y comprobar que 551 tiene una única operación identificable igual a 1. Sumar `ImportePago` por mes y contribución. El importe original es MXN; para USD se divide cada registro entre su tipo de cambio.
+**Cálculo:** seleccionar por separado los registros de cada forma de pago, relacionarlos con su llave completa de partida y comprobar que 551 tiene una única operación identificable igual a 1. Sumar `ImportePago` por mes, contribución y forma. El importe original es MXN; para USD se divide cada registro entre su tipo de cambio.
 
 No se calculan los impuestos multiplicando una tasa estimada por un valor de mercancía. Se suman los pagos registrados. No se añade 510 a 557 y tampoco se añade 702. Otras formas de pago y exportaciones quedan fuera. Varios registros de pago de una partida se suman como registros distintos; no hay una deduplicación automática de pagos repetidos en origen.
 
 **Calidad:** si un pago candidato no tiene partida u operación verificable, se incrementa `unmatchedTaxRows`. Los totales de ambos impuestos para ese conjunto quedan sin dato, aunque el fallo se haya detectado en uno de ellos. Un tipo de cambio inválido afecta al agregado que necesita esa conversión. Sin NP verificable, el pago puede seguir entrando al total del impuesto si la partida y operación sí están verificadas.
 
-La misma métrica aparece como barras en Panorama general y como líneas en Contribuciones. Cambia la representación, no la fórmula. El nombre «pagado» se refiere al filtro de registros y forma de pago implementado; no es una conciliación bancaria.
+La tabla se reutiliza en Panorama general y Contribuciones. Cada forma tiene su propio conteo de pagos sin cruce verificable; una forma incompleta no invalida la otra. No se añade CERTIVA al efectivo. Las tarjetas y el análisis por NP siguen limitados a FP 0. No es una conciliación bancaria.
 
 ### Números de parte con mayor IGI
 
@@ -123,13 +123,13 @@ La misma métrica aparece como barras en Panorama general y como líneas en Cont
 
 Una misma parte en dos fracciones aparece como dos combinaciones. Las combinaciones fuera del Top 10 no se agrupan en «Otros» en esta gráfica. Los pagos sin NP, con NP ambiguo, IGI cero, negativo o no disponible tampoco forman parte del ranking. Por ello la suma de sus barras no debe equipararse al IGI total del rango. El ranking es el mismo en Panorama general y Contribuciones.
 
-### Rectificaciones por mes y patente
+### Rectificaciones por aduana
 
-**Origen:** registros 701. Para cada patente presente en la selección, contar las filas 701 de cada mes. La gráfica tiene una serie por patente y barras apiladas; la altura mensual es la suma de esos registros.
+**Origen:** pedimentos de 501 y rectificaciones de 701, agrupados por aduana. La tabla muestra código y nombre, R1, total de pedimentos, porcentaje por aduana y porcentaje global. R1 es la etiqueta operativa de las rectificaciones de 701, sin exigir que ClaveDocumento diga R1: el archivo conserva claves AF, IN, RT y otras.
 
-No se cuentan pedimentos rectificados distintos, sino filas de rectificación. Varias filas de una misma operación aumentan el conteo. No se interpreta que 701 sustituya fiscalmente a otro pedimento, ni se netean importes a partir de 702. Un mes con cobertura 701 y sin registros para una patente muestra cero; sin cobertura muestra sin dato. Una patente vacía no se completa con una suposición.
+Se cuentan llaves distintas (año, mes de carga, patente, pedimento y aduana). Repeticiones de la misma llave se cuentan una vez; apariciones en meses diferentes se conservan por separado. `% aduana = R1 de la aduana / pedimentos 501 de esa aduana * 100`. `% global = R1 de la aduana / total 501 de la selección * 100`. El total global respeta también el filtro de aduana y se muestra explícitamente. Los totales recalculan tasas, no promedian porcentajes. Base cero, llaves inválidas, 701 sin 501 o falta de cobertura producen tasas sin dato, no cero.
 
-La gráfica se repite en Control y calidad con la misma fuente y cálculo. Más rectificaciones no prueba por sí solo peor desempeño del agente: también puede variar el volumen de operaciones y el tipo de correcciones.
+La tabla se reutiliza en Control y calidad. Más rectificaciones no demuestra por sí solo un error operativo. No se infieren responsables logísticos, costos ni sustituciones fiscales, ni se netean importes de 702. La imagen muestra 1,105 pedimentos, pero los datos de referencia enero-junio con todas las operaciones arrojan 1,527 y 31 R1; 7/1,527 = 0.46%, consistente con su porcentaje global de Manzanillo. Se muestran todas las aduanas, incluidas las que no tienen rectificaciones. Los conteos por aduana proceden de 501, no se fuerzan a coincidir con la imagen.
 
 ## 6 Gráficas de comercio y mercancías
 
@@ -190,7 +190,7 @@ Las alertas se calculan sobre las llaves identificables de 551 de la selección,
 
 ### Indicadores del análisis
 
-Las seis tarjetas del dashboard muestran: pedimentos únicos de 501; valor de mercancías de 551; IGI pagado; IVA pagado; filas 701; y porcentaje rojo de SEL. El número principal corresponde al rango seleccionado. Para rojo es una proporción del conjunto, no una suma de porcentajes.
+Las seis tarjetas del dashboard muestran: pedimentos únicos de 501; valor de mercancías de 551; IGI en efectivo; IVA en efectivo; llaves distintas de 701; y porcentaje rojo de SEL. El número principal corresponde al rango seleccionado. Para rojo es una proporción del conjunto, no una suma de porcentajes.
 
 La variación pequeña de cada tarjeta compara el último mes disponible del rango contra el mes calendario inmediatamente anterior. No compara el total del rango contra otro total. El mes anterior puede quedar fuera del rango seleccionado; si falta o su valor base es cero, no hay porcentaje comparable. En enero esta tarjeta no busca automáticamente diciembre del año anterior.
 
