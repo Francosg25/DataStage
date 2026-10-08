@@ -1,0 +1,200 @@
+<section class="deletion" [attr.aria-busy]="busy() || loading()">
+  <div class="section-heading">
+    <div>
+      <h2>{{ t('Eliminar meses', 'Delete months') }}</h2>
+      <p>
+        {{ t('Selecciona los meses que quieres eliminar.', 'Select the months
+        you want to delete.') }}
+      </p>
+    </div>
+    @if (periods().length) {
+    <label class="year-filter">
+      <span>{{ t('Año', 'Year') }}</span>
+      <select
+        [ngModel]="activeYear()"
+        (ngModelChange)="activeYear.set($event)"
+        [disabled]="busy()"
+      >
+        @for (year of years(); track year) {
+        <option [ngValue]="year">{{ year }}</option>
+        }
+      </select>
+    </label>
+    }
+  </div>
+
+  @if (error()) {
+  <div class="error-message" role="alert">{{ error() }}</div>
+  } @if (message()) {
+  <div class="success-message" role="status">
+    <ds-icon name="check" />{{ message() }}
+  </div>
+  } @if (loading()) {
+  <div class="empty-state" role="status">
+    {{ t('Cargando meses…', 'Loading months…') }}
+  </div>
+  } @else if (loadFailed()) {
+  <button type="button" (click)="load()">
+    {{ t('Reintentar', 'Try again') }}
+  </button>
+  } @else if (!periods().length) {
+  <div class="empty-state">
+    <ds-icon name="calendar" /><strong
+      >{{ t('No hay meses cargados', 'No uploaded months') }}</strong
+    >
+  </div>
+  } @else {
+  <fieldset [disabled]="busy()">
+    <legend class="sr-only">
+      {{ t('Meses disponibles', 'Available months') }} {{ activeYear() }}
+    </legend>
+    <div class="month-grid">
+      @for (item of months(); track item.month) { @if (item.period; as p) {
+      <label
+        class="month-tile"
+        [class.is-selected]="selected().includes(p.id)"
+        [class.at-limit]="!selected().includes(p.id) && selected().length >= 24"
+      >
+        <input
+          type="checkbox"
+          [checked]="selected().includes(p.id)"
+          [disabled]="!selected().includes(p.id) && selected().length >= 24"
+          (change)="toggle(p.id)"
+          [attr.aria-label]="i18n.month(p.month) + ' ' + p.year"
+        />
+        <span class="month-icon"><ds-icon name="calendar" /></span>
+        <strong>{{ i18n.month(p.month) }}</strong>
+        <span class="month-detail"
+          >{{ selected().includes(p.id) ? t('Seleccionado', 'Selected') :
+          t('Disponible', 'Available') }} · v{{ p.version }}</span
+        >
+      </label>
+      } @else {
+      <div class="month-tile unavailable">
+        <span class="month-icon"><ds-icon name="calendar" /></span>
+        <strong>{{ i18n.month(item.month) }}</strong>
+        <span class="month-detail">{{ t('Sin datos', 'No data') }}</span>
+      </div>
+      } }
+    </div>
+
+    <div class="selection-bar">
+      <div class="selection-copy" aria-live="polite">
+        <strong
+          >{{ selected().length }} {{ t('meses seleccionados', 'months
+          selected') }}</strong
+        >
+        <span
+          >{{ t('Máximo 24 por operación', 'Up to 24 per operation') }}</span
+        >
+      </div>
+      <div class="actions">
+        @if (selected().length) {
+        <button class="text-button" type="button" (click)="clearSelection()">
+          {{ t('Limpiar selección', 'Clear selection') }}
+        </button>
+        }
+        <button
+          class="review-button"
+          type="button"
+          (click)="preview()"
+          [disabled]="!selected().length || busy()"
+        >
+          {{ busy() ? t('Procesando…', 'Processing…') : t('Revisar eliminación',
+          'Review deletion') }}<ds-icon name="arrow" />
+        </button>
+      </div>
+    </div>
+
+    @if (selected().length) {
+    <div
+      class="selected-months"
+      [attr.aria-label]="t('Selección de todos los años', 'Selection across all years')"
+    >
+      @for (p of selectedPeriods(); track p.id) {
+      <button
+        class="month-chip"
+        type="button"
+        (click)="toggle(p.id)"
+        [attr.aria-label]="t('Quitar ', 'Remove ') + i18n.month(p.month) + ' ' + p.year"
+        [title]="t('Quitar de la selección', 'Remove from selection')"
+      >
+        {{ i18n.month(p.month) }} {{ p.year }} <span aria-hidden="true">×</span>
+      </button>
+      }
+    </div>
+    } @if (impact(); as p) {
+    <section class="review" aria-labelledby="deletion-review-title">
+      <div class="review-heading">
+        <ds-icon name="alert" />
+        <h3 id="deletion-review-title">
+          {{ t('Confirma la eliminación', 'Confirm deletion') }}
+        </h3>
+      </div>
+      <p>
+        {{ t('Se eliminarán definitivamente los meses seleccionados y sus datos
+        relacionados. Esta acción no se puede deshacer.', 'The selected months
+        and their related data will be permanently deleted. This action cannot
+        be undone.') }}
+      </p>
+      <dl class="impact-stats" aria-live="polite">
+        <div>
+          <dt>{{ t('Registros', 'Records') }}</dt>
+          <dd>{{ i18n.number(p.impact.businessRows) }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('Versiones mensuales', 'Monthly versions') }}</dt>
+          <dd>{{ i18n.number(p.impact.monthlyRuns) }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('Consolidados', 'Consolidations') }}</dt>
+          <dd>{{ i18n.number(p.impact.annualRuns) }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('Documentos', 'Documents') }}</dt>
+          <dd>{{ i18n.number(p.impact.documents) }}</dd>
+        </div>
+      </dl>
+      <div class="confirmation-fields">
+        <label class="field"
+          ><span
+            >{{ t('Escribe para confirmar:', 'Type to confirm:') }}
+            <b>{{ p.confirmation }}</b></span
+          >
+          <input
+            [(ngModel)]="confirmation"
+            autocomplete="off"
+            spellcheck="false"
+            [placeholder]="p.confirmation"
+          />
+        </label>
+        <label class="field"
+          ><span>{{ t('Motivo de eliminación', 'Reason for deletion') }}</span>
+          <textarea
+            [(ngModel)]="reason"
+            minlength="8"
+            maxlength="1000"
+            rows="2"
+            [placeholder]="t('Mínimo 8 caracteres', 'At least 8 characters')"
+          ></textarea>
+        </label>
+      </div>
+      <div class="review-actions">
+        <button type="button" (click)="cancelPreview()">
+          {{ t('Cancelar', 'Cancel') }}
+        </button>
+        <button
+          type="button"
+          class="danger"
+          (click)="remove()"
+          [disabled]="confirmation !== p.confirmation || reason.trim().length < 8 || busy()"
+        >
+          <ds-icon name="alert" />{{ t('Eliminar definitivamente', 'Delete
+          permanently') }} ({{ p.periods.length }})
+        </button>
+      </div>
+    </section>
+    }
+  </fieldset>
+  }
+</section>
