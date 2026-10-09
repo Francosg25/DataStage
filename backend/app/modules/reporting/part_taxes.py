@@ -1,33 +1,74 @@
 """Paid import taxes at item grain, with conservative part-number attribution."""
 from collections import defaultdict
 from decimal import Decimal
+import json
+from pathlib import Path
 import re
 
 from .trade_values import identity, item_identity, normalized, number, strict_sum, text_value
 
-# Only explicit labels are evidence. Serial/lot numbers and arbitrary text are not parts.
-PART_LABEL = r'(?:N\s*[/\.]?\s*P\.?|P\s*/\s*N|PART\s*(?:NUMBER|NO\.?)|N[O\u00daU]MERO\s+DE\s+PARTE|NO\.?\s*PARTE)'
-PART = re.compile(r'(?<![\w])(?:(?P<alternate>OTRO|OTHER|ALTERNATE)\s+)?' + PART_LABEL + r'\s*[:=#]\s*(?P<part>[A-Z0-9][A-Z0-9._/\-]{0,79})', re.I)
-STANDALONE_LABEL = re.compile(r'^(?:(?P<alternate>OTRO|OTHER|ALTERNATE)\s+)?' + PART_LABEL + r'\s*[:=#]?$', re.I)
-TOKEN = re.compile(r'^[A-Z0-9][A-Z0-9._/\-]{0,79}$', re.I)
-INVALID_PARTS = {'NA', 'N/A', 'ND', 'N/D', 'NONE', 'NULL', 'S/N', 'SIN', 'NO'}
+KNOWN_PARTS = frozenset(json.loads(
+    Path(__file__).with_name("part_numbers.json").read_text(encoding="utf-8")
+))
+
+# Etiquetas explícitas; los modelos, series y lotes no son NP por sí solos.
+PART_LABEL = (
+    r'(?:N\s*[/\.]?\s*P\.?|P\s*/\s*N|PART\s*(?:NUMBER|NO\.?)|'
+    r'N[ÚU]MERO\s+DE\s+PARTE|NO\.?\s*(?:DE\s+)?PARTE)'
+    r'(?:\s+INTERNO)?'
+)
+PART_CODE = r'[A-Z0-9][A-Z0-9._/+\-]{0,79}'
+PREFIX = r'(?:(?P<alternate>OTRO|OTHER|ALTERNATE)\s+)?'
+PART = re.compile(
+    r'(?<![\w])' + PREFIX + PART_LABEL
+    + r'(?:\s*[:=#]\s*|\s+)(?P<part>' + PART_CODE + r')'
+    + r'(?=$|[\s,;:()\[\]{}])', re.I,
+)
+STANDALONE_LABEL = re.compile(
+    r'^' + PREFIX + PART_LABEL + r'\s*[:=#]?$', re.I,
+)
+TOKEN = re.compile(r'^' + PART_CODE + r'$', re.I)
+ORDER_CONTEXT = re.compile(r'\bORDEN\s+DE\s*$', re.I)
+PO = re.compile(r'^P\.?\s*O\.?(?:\s*[:=#]\s*|\s+)' + PART_CODE + r'$', re.I)
+# Regla limitada al prefijo confirmado por el usuario y al contexto P.O | NP.
+PO_PART = re.compile(r'^1905-[A-Z0-9]{4,30}$', re.I)
+INVALID_PARTS = {
+    'NA', 'N/A', 'ND', 'N/D', 'NONE', 'NULL', 'S/N', 'SIN', 'NO',
+    'FACTURA', 'ORDEN', 'DESCRIPCION', 'DESCRIPCIÓN', 'MODELO', 'INTERNO',
+}
 
 
 def part_numbers(observations):
     primary, aliases = set(), set()
-    previous = None
+    pending, previous_seq = None, None
     for row in sorted(observations, key=lambda r: number(r.get('secuencia_observacion')) or Decimal(0)):
-        text = text_value(row.get('observaciones'))
-        for match in PART.finditer(text):
-            target = aliases if match.group('alternate') else primary
-            target.add(match.group('part').upper())
         seq = number(row.get('secuencia_observacion'))
-        if previous is not None and seq == previous[0] + 1 and TOKEN.fullmatch(text):
-            (aliases if previous[1] else primary).add(text.upper())
-        label = STANDALONE_LABEL.fullmatch(text)
-        previous = (seq, bool(label.group('alternate'))) if label and seq is not None else None
-    return sorted(primary - INVALID_PARTS), sorted(aliases - INVALID_PARTS - primary)
-
+        if seq is None or previous_seq is None or seq != previous_seq + 1:
+            pending = None
+        for text in re.split(r'[|\r\n]+', text_value(row.get('observaciones'))):
+            text = text.strip()
+            if not text:
+                continue
+            code = text.upper()
+            if pending and TOKEN.fullmatch(text) and code not in INVALID_PARTS:
+                if pending != 'po' or code in KNOWN_PARTS or PO_PART.fullmatch(text):
+                    (aliases if pending == 'alias' else primary).add(code)
+            elif code in KNOWN_PARTS:
+                primary.add(code)
+            pending = None
+            for match in PART.finditer(text):
+                if ORDER_CONTEXT.search(text[:match.start()]):
+                    continue
+                code = match.group('part').upper()
+                if code not in INVALID_PARTS:
+                    (aliases if match.group('alternate') else primary).add(code)
+            label = STANDALONE_LABEL.fullmatch(text)
+            if label:
+                pending = 'alias' if label.group('alternate') else 'primary'
+            elif PO.fullmatch(text):
+                pending = 'po'
+        previous_seq = seq
+    return sorted(primary), sorted(aliases - primary)
 
 def extract_parts(observations):
     primary, aliases = part_numbers(observations)

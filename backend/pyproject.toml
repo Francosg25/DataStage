@@ -23,7 +23,7 @@ where = ["."]
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["resources/project-maps/*.json", "resources/project-maps/*.png"]
+app = ["resources/project-maps/*.json", "resources/project-maps/*.png", "modules/reporting/part_numbers.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
