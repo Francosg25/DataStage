@@ -6,7 +6,7 @@ import {
 } from "@angular/common/http/testing";
 import { firstValueFrom } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Api } from "./api";
+import { Api, BulkPeriodPreview } from "./api";
 import { Auth, bearerInterceptor } from "./auth";
 describe("contratos de la API", () => {
   let api: Api;
@@ -29,6 +29,26 @@ describe("contratos de la API", () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it("deletes months with the reviewed token and confirmation without a reason", async () => {
+    const preview = {
+      periods: [{ periodId: "april" }, { periodId: "may" }],
+      token: "a".repeat(64),
+      confirmation: "DELETE 2 MONTHS",
+    } as BulkPeriodPreview;
+    const promise = firstValueFrom(
+      api.deletePeriods(preview, preview.confirmation),
+    );
+    await Promise.resolve();
+    const request = http.expectOne("/api/v1/periods/bulk-delete");
+    expect(request.request.method).toBe("POST");
+    expect(JSON.parse(request.request.serializeBody() as string)).toEqual({
+      periodIds: ["april", "may"],
+      expectedToken: preview.token,
+      confirmation: preview.confirmation,
+    });
+    request.flush({ storageCleanupFailures: 0 });
+    expect((await promise).storageCleanupFailures).toBe(0);
+  });
   it("downloads filtered PDF reports with a corporate token and snapshot", async () => {
     const promise = firstValueFrom(
       api.analyticsPdf(

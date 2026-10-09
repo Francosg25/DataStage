@@ -97,7 +97,7 @@ class ReprocessRequest(StrictModel):
 class DeletePeriodRequest(StrictModel):
     expectedVersion: int = Field(ge=0)
     confirmation: str = Field(min_length=1, max_length=100)
-    reason: str = Field(min_length=8, max_length=1000)
+    reason: str | None = Field(default=None, max_length=1000)
     expectedMonthlyRuns: int = Field(ge=0)
     expectedAnnualRuns: int = Field(ge=0)
     expectedBusinessRows: int = Field(ge=0)
@@ -114,7 +114,7 @@ class BulkPeriodSelection(StrictModel):
 class BulkDeleteRequest(BulkPeriodSelection):
     expectedToken: str = Field(min_length=64, max_length=64)
     confirmation: str = Field(min_length=1, max_length=100)
-    reason: str = Field(min_length=8, max_length=1000)
+    reason: str | None = Field(default=None, max_length=1000)
 
 def _leaf(name):
     result = PurePosixPath((name or "").replace("\\", "/")).name
@@ -179,7 +179,7 @@ def remove_period(
         period_id,
         body.expectedVersion,
         body.confirmation,
-        body.reason,
+        (body.reason or "").strip() or None,
         {
             "monthlyRuns": body.expectedMonthlyRuns,
             "annualRuns": body.expectedAnnualRuns,
@@ -212,9 +212,8 @@ def bulk_period_preview(body: BulkPeriodSelection, session: DB, principal: Ident
 
 @router.post('/periods/bulk-delete')
 def remove_periods(body: BulkDeleteRequest, request: Request, session: DB, principal: Identity):
-    if len(body.reason.strip()) < 8:
-        raise ApplicationError(400, 'REASON_REQUIRED', 'Indica un motivo de al menos 8 caracteres')
-    preview, keys = delete_periods(session, principal, body.periodIds, body.expectedToken, body.confirmation, body.reason.strip())
+    preview, keys = delete_periods(session, principal, body.periodIds, body.expectedToken,
+                                  body.confirmation, (body.reason or "").strip() or None)
     commit_or_conflict(session)
     failures = 0
     for key in keys:
@@ -528,3 +527,4 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
     audit(session, principal.scope_id, principal.id, "agent.message", conversationId=conversation_id)
     session.commit()
     return answer
+

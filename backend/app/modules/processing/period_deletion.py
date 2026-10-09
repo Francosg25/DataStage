@@ -133,7 +133,7 @@ def delete_period(
     period_id: str,
     expected_version: int,
     confirmation: str,
-    reason: str,
+    reason: str | None,
     expected_impact: dict[str, int],
 ) -> tuple[dict, list[str]]:
     period, preview, runs = deletion_preview(
@@ -312,3 +312,4 @@ def delete_periods(session, principal, period_ids, expected_token, confirmation,
                                         {k: impact[k] for k in ('monthlyRuns', 'annualRuns', 'businessRows', 'documents')})
         keys.extend(deleted_keys)
     return preview, sorted(set(keys))
+

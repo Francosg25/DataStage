@@ -28,16 +28,14 @@ export class MonthDeletion {
   loading = signal(true);
   loadFailed = signal(false);
   activeYear = signal<number | null>(null);
+  pickerOpen = signal(false);
   years = computed(() =>
     [...new Set(this.periods().map((p) => p.year))].sort((a, b) => b - a),
   );
   months = computed(() =>
-    Array.from({ length: 12 }, (_, index) => ({
-      month: index + 1,
-      period: this.periods().find(
-        (p) => p.year === this.activeYear() && p.month === index + 1,
-      ),
-    })),
+    this.periods()
+      .filter((p) => p.year === this.activeYear())
+      .sort((a, b) => a.month - b.month),
   );
   selectedPeriods = computed(() =>
     this.periods()
@@ -45,12 +43,30 @@ export class MonthDeletion {
       .sort((a, b) => b.year - a.year || a.month - b.month),
   );
   selected = signal<string[]>([]);
+  selectedByYear = computed(() =>
+    this.years()
+      .map((year) => ({
+        year,
+        periods: this.selectedPeriods().filter((p) => p.year === year),
+      }))
+      .filter((group) => group.periods.length),
+  );
+  allYearSelected = computed(
+    () =>
+      this.months().length > 0 &&
+      this.months().every((p) => this.selected().includes(p.id)),
+  );
+  canSelectYear = computed(
+    () =>
+      this.selected().length +
+        this.months().filter((p) => !this.selected().includes(p.id)).length <=
+      24,
+  );
   impact = signal<BulkPeriodPreview | null>(null);
   busy = signal(false);
   error = signal("");
   message = signal("");
   confirmation = "";
-  reason = "";
   t(es: string, en: string) {
     return this.i18n.choose(es, en);
   }
@@ -81,31 +97,55 @@ export class MonthDeletion {
   toggle(id: string) {
     if (
       this.busy() ||
+      this.loading() ||
+      !this.periods().some((p) => p.id === id) ||
       (!this.selected().includes(id) && this.selected().length >= 24)
     )
       return;
     this.selected.update((ids) =>
       ids.includes(id) ? ids.filter((p) => p !== id) : [...ids, id],
     );
-    this.impact.set(null);
-    this.confirmation = "";
+    this.selectionChanged();
+  }
+  togglePicker() {
+    if (!this.busy()) this.pickerOpen.update((open) => !open);
+  }
+  showYear(year: number) {
+    if (this.busy()) return;
+    this.activeYear.set(year);
+    this.pickerOpen.set(true);
+  }
+  toggleYear() {
+    if (this.busy() || this.loading() || !this.months().length) return;
+    const ids = this.months().map((p) => p.id);
+    if (this.allYearSelected()) {
+      this.selected.update((selected) =>
+        selected.filter((id) => !ids.includes(id)),
+      );
+    } else {
+      // Select the entire year or none of it; never silently select a partial year.
+      if (!this.canSelectYear()) return;
+      this.selected.update((selected) => [...new Set([...selected, ...ids])]);
+    }
+    this.selectionChanged();
+  }
+  private selectionChanged() {
+    this.cancelPreview();
     this.error.set("");
     this.message.set("");
   }
   clearSelection() {
     if (this.busy()) return;
     this.selected.set([]);
-    this.cancelPreview();
-    this.error.set("");
+    this.selectionChanged();
   }
   cancelPreview() {
     if (this.busy()) return;
     this.impact.set(null);
     this.confirmation = "";
-    this.reason = "";
   }
   preview() {
-    if (this.busy() || !this.selected().length) return;
+    if (this.busy() || this.loading() || !this.selected().length) return;
     this.busy.set(true);
     this.error.set("");
     this.impact.set(null);
@@ -116,6 +156,7 @@ export class MonthDeletion {
       .subscribe({
         next: (p) => {
           this.impact.set(p);
+          this.pickerOpen.set(false);
           this.busy.set(false);
         },
         error: (e) => {
@@ -126,17 +167,11 @@ export class MonthDeletion {
   }
   remove() {
     const p = this.impact();
-    if (
-      this.busy() ||
-      !p ||
-      this.confirmation !== p.confirmation ||
-      this.reason.trim().length < 8
-    )
-      return;
+    if (this.busy() || !p || this.confirmation !== p.confirmation) return;
     this.busy.set(true);
     this.error.set("");
     this.api
-      .deletePeriods(p, this.confirmation, this.reason.trim())
+      .deletePeriods(p, this.confirmation)
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({
         next: (r) => {
@@ -144,7 +179,7 @@ export class MonthDeletion {
           this.impact.set(null);
           this.selected.set([]);
           this.confirmation = "";
-          this.reason = "";
+          this.pickerOpen.set(false);
           this.message.set(
             r.storageCleanupFailures
               ? this.t(

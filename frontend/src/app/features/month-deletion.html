@@ -3,23 +3,25 @@
     <div>
       <h2>{{ t('Eliminar meses', 'Delete months') }}</h2>
       <p>
-        {{ t('Selecciona los meses que quieres eliminar.', 'Select the months
-        you want to delete.') }}
+        {{ t('Selecciona meses cargados y revisa el impacto antes de
+        eliminarlos.', 'Select uploaded months and review the impact before
+        deleting them.') }}
       </p>
     </div>
-    @if (periods().length) {
-    <label class="year-filter">
-      <span>{{ t('Año', 'Year') }}</span>
-      <select
-        [ngModel]="activeYear()"
-        (ngModelChange)="activeYear.set($event)"
-        [disabled]="busy()"
-      >
-        @for (year of years(); track year) {
-        <option [ngValue]="year">{{ year }}</option>
-        }
-      </select>
-    </label>
+    @if (periods().length && !loading() && !loadFailed()) {
+    <button
+      type="button"
+      class="picker-toggle"
+      (click)="togglePicker()"
+      [disabled]="busy()"
+      [attr.aria-expanded]="pickerOpen()"
+      aria-controls="month-picker"
+    >
+      <ds-icon name="calendar" />
+      {{ pickerOpen() ? t('Ocultar meses', 'Hide months') : t('Seleccionar
+      meses', 'Select months') }}
+      <ds-icon name="chevron" [class.is-open]="pickerOpen()" />
+    </button>
     }
   </div>
 
@@ -46,42 +48,75 @@
   } @else {
   <fieldset [disabled]="busy()">
     <legend class="sr-only">
-      {{ t('Meses disponibles', 'Available months') }} {{ activeYear() }}
+      {{ t('Meses para eliminar', 'Months to delete') }}
     </legend>
-    <div class="month-grid">
-      @for (item of months(); track item.month) { @if (item.period; as p) {
-      <label
-        class="month-tile"
-        [class.is-selected]="selected().includes(p.id)"
-        [class.at-limit]="!selected().includes(p.id) && selected().length >= 24"
-      >
-        <input
-          type="checkbox"
-          [checked]="selected().includes(p.id)"
-          [disabled]="!selected().includes(p.id) && selected().length >= 24"
-          (change)="toggle(p.id)"
-          [attr.aria-label]="i18n.month(p.month) + ' ' + p.year"
-        />
-        <span class="month-icon"><ds-icon name="calendar" /></span>
-        <strong>{{ i18n.month(p.month) }}</strong>
-        <span class="month-detail"
-          >{{ selected().includes(p.id) ? t('Seleccionado', 'Selected') :
-          t('Disponible', 'Available') }} · v{{ p.version }}</span
+    @if (pickerOpen()) {
+    <div class="month-picker" id="month-picker">
+      <div class="picker-toolbar">
+        <label class="year-filter">
+          <span>{{ t('Año', 'Year') }}</span>
+          <select
+            [ngModel]="activeYear()"
+            (ngModelChange)="activeYear.set($event)"
+          >
+            @for (year of years(); track year) {
+            <option [ngValue]="year">{{ year }}</option>
+            }
+          </select>
+        </label>
+        <span class="available-count"
+          >{{ months().length }} {{ months().length === 1 ? t('mes cargado',
+          'uploaded month') : t('meses cargados', 'uploaded months') }}</span
         >
-      </label>
-      } @else {
-      <div class="month-tile unavailable">
-        <span class="month-icon"><ds-icon name="calendar" /></span>
-        <strong>{{ i18n.month(item.month) }}</strong>
-        <span class="month-detail">{{ t('Sin datos', 'No data') }}</span>
+        <button
+          type="button"
+          class="text-button year-action"
+          (click)="toggleYear()"
+          [disabled]="!canSelectYear()"
+        >
+          {{ allYearSelected() ? t('Quitar año', 'Clear year') : t('Seleccionar
+          año', 'Select year') }} {{ activeYear() }}
+        </button>
       </div>
-      } }
+      <div
+        class="month-grid"
+        role="group"
+        [attr.aria-label]="t('Meses disponibles de ', 'Available months in ') + activeYear()"
+      >
+        @for (p of months(); track p.id) {
+        <label
+          class="month-option"
+          [class.is-selected]="selected().includes(p.id)"
+          [class.at-limit]="!selected().includes(p.id) && selected().length >= 24"
+        >
+          <input
+            type="checkbox"
+            [checked]="selected().includes(p.id)"
+            [disabled]="!selected().includes(p.id) && selected().length >= 24"
+            (change)="toggle(p.id)"
+            [attr.aria-label]="i18n.month(p.month) + ' ' + p.year"
+          />
+          <strong>{{ i18n.month(p.month) }}</strong>
+          <small>v{{ p.version }}</small>
+        </label>
+        }
+      </div>
+      @if (!canSelectYear()) {
+      <p class="limit-note" role="status">
+        {{ t('El año completo supera el límite de 24 meses. Selecciona meses
+        individuales o quita otros de la selección.', 'The full year exceeds the
+        24-month limit. Select individual months or remove others from your
+        selection.') }}
+      </p>
+      }
     </div>
+    }
 
     <div class="selection-bar">
       <div class="selection-copy" aria-live="polite">
         <strong
-          >{{ selected().length }} {{ t('meses seleccionados', 'months
+          >{{ selected().length }} {{ selected().length === 1 ? t('mes
+          seleccionado', 'month selected') : t('meses seleccionados', 'months
           selected') }}</strong
         >
         <span
@@ -101,25 +136,28 @@
           [disabled]="!selected().length || busy()"
         >
           {{ busy() ? t('Procesando…', 'Processing…') : t('Revisar eliminación',
-          'Review deletion') }}<ds-icon name="arrow" />
+          'Review deletion') }}
+          <ds-icon name="arrow" />
         </button>
       </div>
     </div>
 
     @if (selected().length) {
     <div
-      class="selected-months"
+      class="selected-years"
       [attr.aria-label]="t('Selección de todos los años', 'Selection across all years')"
     >
-      @for (p of selectedPeriods(); track p.id) {
+      @for (group of selectedByYear(); track group.year) {
       <button
-        class="month-chip"
+        class="year-chip"
         type="button"
-        (click)="toggle(p.id)"
-        [attr.aria-label]="t('Quitar ', 'Remove ') + i18n.month(p.month) + ' ' + p.year"
-        [title]="t('Quitar de la selección', 'Remove from selection')"
+        (click)="showYear(group.year)"
+        [attr.aria-label]="t('Revisar selección de ', 'Review selection for ') + group.year"
+        [title]="t('Ver meses seleccionados', 'View selected months')"
       >
-        {{ i18n.month(p.month) }} {{ p.year }} <span aria-hidden="true">×</span>
+        <b>{{ group.year }}</b> · {{ group.periods.length }} {{
+        group.periods.length === 1 ? t('mes', 'month') : t('meses', 'months') }}
+        <ds-icon name="chevron" />
       </button>
       }
     </div>
@@ -137,6 +175,20 @@
         and their related data will be permanently deleted. This action cannot
         be undone.') }}
       </p>
+      <dl
+        class="review-months"
+        [attr.aria-label]="t('Meses que se eliminarán', 'Months that will be deleted')"
+      >
+        @for (group of selectedByYear(); track group.year) {
+        <div>
+          <dt>{{ group.year }}</dt>
+          <dd>
+            @for (month of group.periods; track month.id; let last = $last) { {{
+            i18n.month(month.month) }}{{ last ? '' : ', ' }} }
+          </dd>
+        </div>
+        }
+      </dl>
       <dl class="impact-stats" aria-live="polite">
         <div>
           <dt>{{ t('Registros', 'Records') }}</dt>
@@ -155,30 +207,18 @@
           <dd>{{ i18n.number(p.impact.documents) }}</dd>
         </div>
       </dl>
-      <div class="confirmation-fields">
-        <label class="field"
-          ><span
-            >{{ t('Escribe para confirmar:', 'Type to confirm:') }}
-            <b>{{ p.confirmation }}</b></span
-          >
-          <input
-            [(ngModel)]="confirmation"
-            autocomplete="off"
-            spellcheck="false"
-            [placeholder]="p.confirmation"
-          />
-        </label>
-        <label class="field"
-          ><span>{{ t('Motivo de eliminación', 'Reason for deletion') }}</span>
-          <textarea
-            [(ngModel)]="reason"
-            minlength="8"
-            maxlength="1000"
-            rows="2"
-            [placeholder]="t('Mínimo 8 caracteres', 'At least 8 characters')"
-          ></textarea>
-        </label>
-      </div>
+      <label class="field">
+        <span
+          >{{ t('Escribe para confirmar:', 'Type to confirm:') }}
+          <b>{{ p.confirmation }}</b></span
+        >
+        <input
+          [(ngModel)]="confirmation"
+          autocomplete="off"
+          spellcheck="false"
+          [placeholder]="p.confirmation"
+        />
+      </label>
       <div class="review-actions">
         <button type="button" (click)="cancelPreview()">
           {{ t('Cancelar', 'Cancel') }}
@@ -187,7 +227,7 @@
           type="button"
           class="danger"
           (click)="remove()"
-          [disabled]="confirmation !== p.confirmation || reason.trim().length < 8 || busy()"
+          [disabled]="confirmation !== p.confirmation || busy()"
         >
           <ds-icon name="alert" />{{ t('Eliminar definitivamente', 'Delete
           permanently') }} ({{ p.periods.length }})

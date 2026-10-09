@@ -67,7 +67,7 @@ export class Api {
   deletePeriods(
     preview: BulkPeriodPreview,
     confirmation: string,
-    reason: string,
+    reason?: string,
   ) {
     return this.http.post<
       BulkPeriodPreview & { storageCleanupFailures: number }
@@ -87,7 +87,7 @@ export class Api {
   deletePeriod(
     impact: PeriodDeletionPreview,
     confirmation: string,
-    reason: string,
+    reason?: string,
   ) {
     return this.http.delete<PeriodDeletionPreview>(
       `${this.base}/periods/${encodeURIComponent(impact.periodId)}`,
