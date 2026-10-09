@@ -1025,3 +1025,22 @@ select {
     font-size: 9px;
   }
 }
+
+/* Keep full month names clear of the native select arrow at every width. */
+.filterbar label.month-filter,
+.compare-selectors label {
+  flex: 1 0 160px;
+  min-width: 160px;
+}
+.filterbar select,
+.compare-selectors select {
+  box-sizing: border-box;
+  padding-inline: 12px 36px;
+  min-height: 40px;
+}
+@media (max-width: 760px) {
+  .filterbar {
+    grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  }
+  .filterbar label.month-filter { min-width: 0; }
+}

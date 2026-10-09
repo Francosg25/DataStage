@@ -85,7 +85,7 @@
       } } }
     </select></label
   >
-  <label
+  <label class="month-filter"
     >{{ t('Desde','From') }}<select
       [(ngModel)]="filters.startMonth"
       (ngModelChange)="load()"
@@ -95,7 +95,7 @@
       }
     </select></label
   >
-  <label
+  <label class="month-filter"
     >{{ t('Hasta','Through') }}<select
       [(ngModel)]="filters.endMonth"
       (ngModelChange)="load()"

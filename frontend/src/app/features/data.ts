@@ -1,4 +1,4 @@
-import { TranslatePipe } from "../core/i18n";
+import { I18n, TranslatePipe } from "../core/i18n";
 import { Component, DestroyRef, inject, signal } from "@angular/core";
 import { ReactiveFormsModule, FormBuilder } from "@angular/forms";
 import { MatFormFieldModule } from "@angular/material/form-field";
@@ -40,7 +40,7 @@ import { DataTable, Icon } from "../shared/ui";
           ><mat-select formControlName="table">
             @for (table of catalog(); track table.code) {
               <mat-option [value]="table.code"
-                >{{ table.code | t }} · {{ table.name | t }}</mat-option
+                >{{ tableLabel(table) }}</mat-option
               >
             }
           </mat-select></mat-form-field
@@ -96,6 +96,7 @@ import { DataTable, Icon } from "../shared/ui";
     </section>`,
 })
 export class DataBrowser {
+  i18n = inject(I18n);
   api = inject(Api);
   destroy = inject(DestroyRef);
   fb = inject(FormBuilder);
@@ -122,9 +123,13 @@ export class DataBrowser {
         },
       });
   }
+  tableLabel(table: CatalogTable): string {
+    const name = table.name.replace(new RegExp(`^${table.code}\\s+`, "i"), "");
+    return `${table.code.toUpperCase()} · ${this.i18n.t(name)}`;
+  }
   selectedName() {
     const t = this.catalog().find((t) => t.code === this.selection.table);
-    return t ? `${t.code} · ${t.name}` : "Registros publicados";
+    return t ? this.tableLabel(t) : this.i18n.t("Registros publicados");
   }
   search() {
     this.page.set(0);

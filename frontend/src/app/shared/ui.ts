@@ -1,9 +1,10 @@
 import {
+  I18n,
   TranslatePipe,
   LocalizedNumberPipe,
   LocalizedDatePipe,
 } from "../core/i18n";
-import { Component, input, computed } from "@angular/core";
+import { Component, input, computed, inject } from "@angular/core";
 import { LucideChartColumnIncreasing, LucideMap } from "@lucide/angular";
 import { RouterLink } from "@angular/router";
 import { Run, DataRow, runLabel } from "../core/models";
@@ -236,8 +237,8 @@ export class RunList {
             @for (row of rows(); track $index) {
               <tr>
                 @for (key of columns(); track key) {
-                  <td [title]="display(row[key]) | t">
-                    {{ display(row[key]) }}
+                  <td [title]="cell(key, row[key])">
+                    {{ cell(key, row[key]) }}
                   </td>
                 }
               </tr>
@@ -253,6 +254,11 @@ export class RunList {
     }`,
 })
 export class DataTable {
+  private i18n = inject(I18n);
+  cell(key: string, value: unknown): string {
+    const text = this.display(value);
+    return key === "Periodo" ? this.i18n.t(text) : text;
+  }
   rows = input<DataRow[]>([]);
   headers = input<string[]>([]);
   emptyTitle = input("Sin registros");
