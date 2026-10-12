@@ -37,19 +37,40 @@ export class Analytics {
   pdfError = signal("");
   tab = signal("overview");
   partSearch = signal("");
+  partTariff = signal("");
   partPage = signal(0);
   alertPage = signal(0);
   readonly pageSize = 25;
   readonly taxTypes = ["igi", "iva"] as const;
   taxRows = computed(() => {
     const search = this.partSearch().trim().toLowerCase();
+    const tariff = this.partTariff();
     return (this.report()?.partTaxes?.rows || []).filter(
       (r) =>
-        !search ||
-        `${r.partNumber || ""} ${(r.alternatePartNumbers || []).join(" ")} ${r.tariff}`
-          .toLowerCase()
-          .includes(search),
+        (!tariff || r.tariff === tariff) &&
+        (!search ||
+          [r.partNumber || "", ...(r.alternatePartNumbers || [])].some((pn) =>
+            pn.toLowerCase().includes(search),
+          )),
     );
+  });
+  identifiedTaxRows = computed(() =>
+    this.taxRows().filter((r) => !!r.partNumber),
+  );
+  tariffCodes = computed(() =>
+    [...new Set((this.report()?.partTaxes?.rows || []).map((r) => r.tariff))]
+      .filter(Boolean)
+      .sort(),
+  );
+  partNumberOptions = computed(() => {
+    const tariff = this.partTariff();
+    return [
+      ...new Set(
+        (this.report()?.partTaxes?.rows || [])
+          .filter((r) => r.partNumber && (!tariff || r.tariff === tariff))
+          .flatMap((r) => [r.partNumber!, ...(r.alternatePartNumbers || [])]),
+      ),
+    ].sort();
   });
   visibleTaxRows = computed(() =>
     this.taxRows().slice(
@@ -89,6 +110,26 @@ export class Analytics {
   activeMonths = computed(() =>
     this.selectedMonths().filter((m) => m.available),
   );
+  partMonthlyTotals = computed(() => {
+    const rows = this.identifiedTaxRows();
+    return this.selectedMonths().map((month) => {
+      const covered =
+        month.available &&
+        ["551", "557", "558"].every((code) =>
+          Object.hasOwn(month.tables, code),
+        );
+      const sum = (tax: "igi" | "iva") => {
+        if (!covered || !rows.length) return null;
+        const values = rows.map((row) => this.taxValue(row, month.month, tax));
+        return values.some((value) => value == null)
+          ? null
+          : Math.round(
+              values.reduce<number>((total, value) => total + value!, 0) * 100,
+            ) / 100;
+      };
+      return { igi: sum("igi"), iva: sum("iva") };
+    });
+  });
   years = computed(
     () =>
       this.options()?.sources.find((s) => s.id === this.filters.source)
@@ -243,6 +284,7 @@ export class Analytics {
     this.options() ? this.load() : this.initialize();
   }
   sourceChanged() {
+    this.clearPartFilters();
     this.filters.year =
       this.options()?.sources.find((s) => s.id === this.filters.source)
         ?.years[0] || new Date().getFullYear();
@@ -252,6 +294,7 @@ export class Analytics {
     this.load();
   }
   reset() {
+    this.clearPartFilters();
     this.filters = {
       ...this.filters,
       startMonth: 1,
@@ -414,8 +457,9 @@ export class Analytics {
     }));
   }
   topParts() {
-    return (this.report()?.partTaxes?.rows || [])
-      .filter((r) => r.partNumber && r.igi != null && r.igi > 0)
+    return this.identifiedTaxRows()
+      .filter((r) => r.igi != null && r.igi > 0)
+      .sort((a, b) => b.igi! - a.igi!)
       .slice(0, 10);
   }
   partLabels() {
@@ -427,6 +471,20 @@ export class Analytics {
         label: this.currency(),
         color: "#2877b5",
         values: this.topParts().map((r) => r.igi),
+      },
+    ];
+  }
+  partTrendSeries(): ChartSeries[] {
+    return [
+      {
+        label: this.t("IGI", "IMPORT DUTY"),
+        color: "#2877b5",
+        values: this.partMonthlyTotals().map((m) => m.igi),
+      },
+      {
+        label: this.t("IVA", "VAT"),
+        color: "#9b6520",
+        values: this.partMonthlyTotals().map((m) => m.iva),
       },
     ];
   }
@@ -461,6 +519,15 @@ export class Analytics {
   }
   searchParts(value: string) {
     this.partSearch.set(value);
+    this.partPage.set(0);
+  }
+  selectPartTariff(value: string) {
+    this.partTariff.set(value);
+    this.partPage.set(0);
+  }
+  clearPartFilters() {
+    this.partSearch.set("");
+    this.partTariff.set("");
     this.partPage.set(0);
   }
   exportParts() {

@@ -114,7 +114,6 @@
   border-left: 3px solid #aa6413;
   color: #71440f;
 }
-.part-search,
 .pagination,
 .comparison-links {
   display: flex;
@@ -124,18 +123,58 @@
   margin: 18px 0;
   flex-wrap: wrap;
 }
-.part-search label {
+.part-filters {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  background: #f2f6f7;
+  border: 1px solid #e1e6e9;
+  border-radius: 6px;
+}
+.part-filters label {
   display: grid;
   gap: 6px;
   font-size: 12px;
-  min-width: 220px;
+  font-weight: 600;
+  color: #435d67;
+  flex: 1 1 220px;
+  min-width: 0;
 }
-.part-search input {
+.part-filters input,
+.part-filters select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
   border: 1px solid #b9c9cc;
   border-radius: 4px;
-  padding: 9px;
+  padding: 9px 12px;
+  color: #25343d;
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
 }
-.part-search button,
+.part-filters select {
+  padding-right: 36px;
+}
+.part-filters > button {
+  min-height: 40px;
+}
+.part-filter-status {
+  margin: 10px 0 16px;
+  color: #526570;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.part-analysis .section-heading {
+  margin-top: 0;
+}
+.part-analysis .section-heading > button {
+  flex-shrink: 0;
+}
+.part-filters button,
 .pagination button,
 .section-heading > button {
   display: inline-flex;
@@ -147,7 +186,6 @@
   padding: 8px 12px;
   color: #234c57;
 }
-.part-search ds-icon,
 .section-heading > button ds-icon {
   width: 16px;
   height: 16px;
@@ -251,10 +289,6 @@
   }
   .compare-selectors {
     flex-wrap: wrap;
-  }
-  .part-search label {
-    min-width: 0;
-    width: 100%;
   }
 }
 .analytics-heading {

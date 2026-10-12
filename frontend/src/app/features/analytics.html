@@ -273,25 +273,16 @@ r.partTaxes.invalidItemKeys > 0) {
     >
   </div>
   } } @if (tab() === 'overview') {
-  <div class="chart-grid">
-    <ds-analytics-chart
-      [title]="t('Valor de mercancías por mes','Monthly trade value')"
-      [subtitle]="currency() + ' · 551'"
-      type="line"
-      [labels]="labels()"
-      [series]="pairSeries(moneyKey('import'),moneyKey('export'),[t('Importaciones','Imports'),t('Exportaciones','Exports')])"
-      [footnote]="t('Meses sin fuente: sin dato.','Months without a source: unavailable.')"
-      (selected)="selectMonth($event)"
-    />
-    <ds-analytics-chart
-      [title]="t('Números de parte con mayor IGI','Top part numbers by import duty')"
-      [subtitle]="currency() + ' · ' + t('10 principales · NP y fracción','Top 10 · Part number and tariff')"
-      [horizontal]="true"
-      [labels]="partLabels()"
-      [series]="partSeries()"
-      [footnote]="t('Solo NP identificados sin ambigüedad.','Only unambiguously identified part numbers.')"
-    />
-  </div>
+  <ds-analytics-chart
+    [title]="t('Valor de mercancías por mes','Monthly trade value')"
+    [subtitle]="currency() + ' · 551'"
+    type="line"
+    [labels]="labels()"
+    [series]="pairSeries(moneyKey('import'),moneyKey('export'),[t('Importaciones','Imports'),t('Exportaciones','Exports')])"
+    [footnote]="t('Meses sin fuente: sin dato.','Months without a source: unavailable.')"
+    (selected)="selectMonth($event)"
+  />
+  <ng-container *ngTemplateOutlet="partAnalysis" />
   <ng-container *ngTemplateOutlet="paymentsTable" />
   <ng-container *ngTemplateOutlet="rectificationsTable" />
   } @if (tab() === 'trade') {
@@ -329,15 +320,7 @@ r.partTaxes.invalidItemKeys > 0) {
   </div>
   } @if (tab() === 'taxes') {
   <ng-container *ngTemplateOutlet="paymentsTable" />
-  <div class="chart-grid">
-    <ds-analytics-chart
-      [title]="t('Números de parte con mayor IGI','Top part numbers by import duty')"
-      [subtitle]="currency() + ' · ' + t('10 principales · NP y fracción','Top 10 · Part number and tariff')"
-      [horizontal]="true"
-      [labels]="partLabels()"
-      [series]="partSeries()"
-    />
-  </div>
+  <ng-container *ngTemplateOutlet="partAnalysis" />
   <div class="section-heading tax-toolbar">
     <h2>
       {{ t('Comparativa IGI / IVA por número de parte','Import duty / VAT
@@ -365,21 +348,6 @@ r.partTaxes.invalidItemKeys > 0) {
         </select></label
       >
     </div>
-  </div>
-  <div class="part-search">
-    <label
-      >{{ t('NP o fracción','Part number or tariff') }}<input
-        type="search"
-        [ngModel]="partSearch()"
-        (ngModelChange)="searchParts($event)"
-    /></label>
-    <button
-      type="button"
-      (click)="exportParts()"
-      [disabled]="loading() || !taxRows().length"
-    >
-      <ds-icon name="download" /> CSV
-    </button>
   </div>
   @for (tax of taxTypes; track tax) {
   <h3 class="tax-table-heading">
@@ -725,13 +693,111 @@ r.partTaxes.invalidItemKeys > 0) {
     }}</span
   >
 </footer>
+<ng-template #partAnalysis>
+  <section
+    class="report-data-section part-analysis"
+    aria-labelledby="part-analysis-title"
+  >
+    <div class="section-heading">
+      <div>
+        <h2 id="part-analysis-title">
+          {{ t('Números de parte','Part Numbers') }}
+        </h2>
+        <p id="part-filter-help">
+          {{ t('Filtra las gráficas, tablas y CSV de PN por número de parte y
+          fracción arancelaria.','Filter PN charts, tables and CSV by part
+          number and tariff code.') }}
+        </p>
+      </div>
+      <button
+        type="button"
+        (click)="exportParts()"
+        [disabled]="loading() || !taxRows().length"
+      >
+        <ds-icon name="download" /> {{ t('CSV de PN','PN CSV') }}
+      </button>
+    </div>
+    <div class="part-filters" role="group" aria-describedby="part-filter-help">
+      <label for="part-number-filter"
+        >PN
+        <input
+          id="part-number-filter"
+          type="search"
+          list="part-number-options"
+          autocomplete="off"
+          [placeholder]="t('Buscar PN principal o alternativo','Search primary or alternate PN')"
+          [ngModel]="partSearch()"
+          (ngModelChange)="searchParts($event)"
+          [disabled]="loading()"
+        />
+      </label>
+      <datalist id="part-number-options">
+        @for (pn of partNumberOptions(); track pn) {
+        <option [value]="pn"></option>
+        }
+      </datalist>
+      <label for="part-tariff-filter"
+        >{{ t('Fracción arancelaria','Tariff code') }}
+        <select
+          id="part-tariff-filter"
+          [ngModel]="partTariff()"
+          (ngModelChange)="selectPartTariff($event)"
+          [disabled]="loading()"
+        >
+          <option value="">
+            {{ t('Todas las fracciones','All tariff codes') }}
+          </option>
+          @if (partTariff() && !tariffCodes().includes(partTariff())) {
+          <option [value]="partTariff()">
+            {{ partTariff() }} · {{ t('Sin coincidencias','No matches') }}
+          </option>
+          } @for (tariff of tariffCodes(); track tariff) {
+          <option [value]="tariff">{{ tariff }}</option>
+          }
+        </select>
+      </label>
+      <button
+        type="button"
+        (click)="clearPartFilters()"
+        [disabled]="!partSearch() && !partTariff()"
+      >
+        {{ t('Limpiar filtros','Clear filters') }}
+      </button>
+    </div>
+    <p class="part-filter-status" role="status">
+      {{ format(identifiedTaxRows().length) }} {{ t('combinaciones PN /
+      fracción','PN / tariff combinations') }} @if (taxRows().length >
+      identifiedTaxRows().length) { · {{ format(taxRows().length -
+      identifiedTaxRows().length) }} {{ t('sin PN asignado, disponibles en
+      tablas y CSV','without an assigned PN, available in tables and CSV') }} }
+    </p>
+    <div class="chart-grid">
+      <ds-analytics-chart
+        [title]="t('Números de parte con mayor IGI','Top part numbers by import duty')"
+        [subtitle]="currency() + ' · ' + t('10 principales de la selección · PN y fracción','Top 10 in selection · PN and tariff')"
+        [horizontal]="true"
+        [labels]="partLabels()"
+        [series]="partSeries()"
+        [footnote]="t('Solo PN identificados sin ambigüedad · IGI pagado con FP 0.','Only unambiguously identified part numbers · Import duty paid with FP 0.')"
+      />
+      <ds-analytics-chart
+        [title]="t('IGI e IVA mensual por PN','Monthly import duty and VAT by PN')"
+        [subtitle]="currency() + ' · ' + t('Suma de todos los PN de la selección','Sum of all matching part numbers')"
+        type="line"
+        [labels]="labels()"
+        [series]="partTrendSeries()"
+        [footnote]="t('PN identificados · FP 0 · Meses sin cobertura: sin dato.','Identified part numbers · FP 0 · Months without coverage: unavailable.')"
+      />
+    </div>
+  </section>
+</ng-template>
 <ng-template #paymentsTable>
   <section class="report-data-section" aria-labelledby="payments-title">
     <div class="section-heading">
       <div>
         <h2 id="payments-title">
-          {{ t('IGI e IVA por mes y forma de pago','Monthly IMPORT DUTY and VAT by
-          payment method') }}
+          {{ t('IGI e IVA por mes y forma de pago','Monthly IMPORT DUTY and VAT
+          by payment method') }}
         </h2>
         <p>
           {{ currency() }} · {{ t('Importaciones · 551 / 557','Imports · 551 /
