@@ -1,5 +1,15 @@
 import { TranslatePipe } from "./core/i18n";
-import { Component, inject, signal } from "@angular/core";
+import {
+  Component,
+  ElementRef,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from "@angular/core";
+import { BreakpointObserver } from "@angular/cdk/layout";
+import { toSignal } from "@angular/core/rxjs-interop";
+import { map } from "rxjs";
 import { RouterLink, RouterLinkActive, RouterOutlet } from "@angular/router";
 import { MatButtonModule } from "@angular/material/button";
 import { Auth } from "./core/auth";
@@ -20,10 +30,17 @@ import { I18n } from "./core/i18n";
       {{ "Saltar al contenido" | t }}
     </a>
     @if (auth.user()) {
-      <div class="app-shell">
+      <div
+        class="app-shell"
+        [class.sidebar-collapsed]="sidebarCollapsed()"
+        (keydown.escape)="closeMobileNavigation()"
+      >
         <aside
+          id="primary-navigation"
           class="sidebar"
           [class.sidebar-open]="navOpen()"
+          [inert]="!navigationExpanded()"
+          [attr.aria-hidden]="!navigationExpanded()"
           [attr.aria-label]="'Navegación principal' | t"
         >
           <a
@@ -44,7 +61,7 @@ import { I18n } from "./core/i18n";
                 [routerLink]="item.path"
                 routerLinkActive="nav-active"
                 [routerLinkActiveOptions]="{ exact: item.path === '/' }"
-                (click)="navOpen.set(false)"
+                (click)="closeMobileNavigation()"
                 ><ds-icon [name]="item.icon" /><span>{{ item.label | t }}</span>
                 @if (item.path === "/agent") {
                   <span class="nav-tag"> {{ "AI" | t }} </span>
@@ -66,23 +83,29 @@ import { I18n } from "./core/i18n";
             >
           </div>
         </aside>
-        @if (navOpen()) {
+        @if (isMobile() && navOpen()) {
           <button
             class="nav-scrim"
             [attr.aria-label]="'Cerrar navegación' | t"
-            (click)="navOpen.set(false)"
+            (click)="closeMobileNavigation()"
           ></button>
         }
         <div class="main-shell">
           <header class="topbar">
             <div class="topbar-start">
               <button
+                #navigationToggle
                 mat-icon-button
-                class="mobile-menu"
-                (click)="navOpen.set(!navOpen())"
-                [attr.aria-label]="'Abrir navegación' | t"
+                class="navigation-toggle"
+                (click)="toggleNavigation()"
+                [attr.aria-label]="navigationLabel()"
+                [title]="navigationLabel()"
+                aria-controls="primary-navigation"
+                [attr.aria-expanded]="navigationExpanded()"
               >
-                <ds-icon name="menu" /></button
+                <span class="menu-lines" aria-hidden="true"
+                  ><span></span><span></span
+                ></span></button
               ><span class="breadcrumb">
                 {{ "Operaciones" | t }} <span>/</span> {{ "DataStage" | t }}
               </span>
@@ -154,6 +177,55 @@ export class App {
   i18n = inject(I18n);
   auth = inject(Auth);
   navOpen = signal(false);
+  sidebarCollapsed = signal(this.savedSidebarCollapsed());
+  isMobile = toSignal(
+    inject(BreakpointObserver)
+      .observe("(max-width: 900px)")
+      .pipe(map((state) => state.matches)),
+    { initialValue: false },
+  );
+  navigationExpanded = computed(() =>
+    this.isMobile() ? this.navOpen() : !this.sidebarCollapsed(),
+  );
+  private navigationToggle =
+    viewChild<ElementRef<HTMLButtonElement>>("navigationToggle");
+  private savedSidebarCollapsed() {
+    try {
+      return localStorage.getItem("datastage.sidebarCollapsed") === "true";
+    } catch {
+      return false;
+    }
+  }
+  navigationLabel() {
+    if (this.isMobile()) {
+      return this.navOpen()
+        ? this.i18n.choose("Cerrar navegación", "Close navigation")
+        : this.i18n.choose("Abrir navegación", "Open navigation");
+    }
+    return this.sidebarCollapsed()
+      ? this.i18n.choose("Expandir menú lateral", "Expand sidebar")
+      : this.i18n.choose("Minimizar menú lateral", "Collapse sidebar");
+  }
+  toggleNavigation() {
+    if (this.isMobile()) {
+      this.navOpen.update((open) => !open);
+      return;
+    }
+    this.sidebarCollapsed.update((collapsed) => !collapsed);
+    try {
+      localStorage.setItem(
+        "datastage.sidebarCollapsed",
+        String(this.sidebarCollapsed()),
+      );
+    } catch {
+      // Keep the current choice even when browser storage is unavailable.
+    }
+  }
+  closeMobileNavigation() {
+    if (!this.isMobile() || !this.navOpen()) return;
+    this.navOpen.set(false);
+    this.navigationToggle()?.nativeElement.focus();
+  }
   allowedNavigation() {
     return this.navigation.filter(
       (item) =>

@@ -1280,8 +1280,33 @@ mat-form-field {
   color: #5c7280;
   margin-top: 22px;
 }
-.mobile-menu {
-  display: none !important;
+.navigation-toggle {
+  flex-shrink: 0;
+  color: var(--ink) !important;
+}
+.menu-lines {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 20px;
+  height: 10px;
+  vertical-align: middle;
+}
+.menu-lines > span {
+  height: 2px;
+  width: 100%;
+  border-radius: 2px;
+  background: currentColor;
+}
+@media (min-width: 901px) {
+  .app-shell.sidebar-collapsed .sidebar {
+    transform: translateX(-100%);
+    visibility: hidden;
+  }
+  .app-shell.sidebar-collapsed .main-shell {
+    margin-left: 0;
+    width: 100%;
+  }
 }
 .nav-scrim {
   display: none;
@@ -1385,11 +1410,13 @@ mat-form-field {
 @media (max-width: 900px) {
   .sidebar {
     transform: translateX(-100%);
+    visibility: hidden;
     transition: transform 0.2s;
     width: 240px;
   }
   .sidebar.sidebar-open {
     transform: translateX(0);
+    visibility: visible;
   }
   .nav-scrim {
     display: block;
@@ -1402,9 +1429,6 @@ mat-form-field {
   .main-shell {
     margin-left: 0;
     width: 100%;
-  }
-  .mobile-menu {
-    display: inline-flex !important;
   }
   .topbar {
     height: 65px;
