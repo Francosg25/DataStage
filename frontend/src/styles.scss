@@ -18,6 +18,10 @@ html {
   --line: #e4eaed;
   --background: #f5f7f9;
   --navy: #142b38;
+  --motion-fast: 160ms;
+  --motion-standard: 240ms;
+  --motion-navigation: 320ms;
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --mat-sys-primary: #0a7c74;
   --mat-sys-on-primary: #fff;
   --mat-sys-outline: #ccd7dc;
@@ -139,6 +143,9 @@ p {
   color: #cad7df;
   z-index: 40;
   padding: 36px 19px 25px;
+  transition:
+    transform var(--motion-navigation) var(--motion-ease),
+    visibility 0s;
 }
 .brand {
   display: flex;
@@ -204,6 +211,10 @@ p {
   border-radius: 7px;
   font-size: 12px;
   font-weight: 500;
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    box-shadow var(--motion-standard) var(--motion-ease);
 }
 .sidebar nav a:hover {
   background: #203a47;
@@ -249,9 +260,10 @@ p {
 .main-shell {
   margin-left: 240px;
   min-width: 0;
-  width: calc(100% - 240px);
+  flex: 1;
   display: flex;
   flex-direction: column;
+  transition: margin-left var(--motion-navigation) var(--motion-ease);
 }
 .topbar {
   height: 80px;
@@ -1285,27 +1297,69 @@ mat-form-field {
   color: var(--ink) !important;
 }
 .menu-lines {
-  display: inline-flex;
-  flex-direction: column;
-  justify-content: space-between;
+  display: inline-block;
+  position: relative;
   width: 20px;
-  height: 10px;
+  height: 16px;
   vertical-align: middle;
 }
 .menu-lines > span {
+  position: absolute;
+  top: 50%;
+  left: 0;
   height: 2px;
   width: 100%;
   border-radius: 2px;
   background: currentColor;
+  transform-origin: right center;
+  transition:
+    transform var(--motion-navigation) var(--motion-ease),
+    width var(--motion-navigation) var(--motion-ease),
+    left var(--motion-navigation) var(--motion-ease);
+}
+.menu-lines > span:first-child {
+  transform: translateY(-5px);
+}
+.menu-lines > span:last-child {
+  transform: translateY(3px);
+}
+.navigation-toggle:not(.navigation-mobile)[aria-expanded="false"]
+  .menu-lines
+  > span {
+  width: 12px;
+  left: 4px;
+}
+.navigation-toggle.navigation-mobile .menu-lines > span {
+  transform-origin: center;
+}
+.navigation-toggle:not(.navigation-mobile)[aria-expanded="false"]
+  .menu-lines
+  > span:first-child {
+  transform: translateY(-50%) rotate(45deg);
+}
+.navigation-toggle:not(.navigation-mobile)[aria-expanded="false"]
+  .menu-lines
+  > span:last-child {
+  transform: translateY(-50%) rotate(-45deg);
+}
+.navigation-toggle.navigation-mobile[aria-expanded="true"]
+  .menu-lines
+  > span:first-child {
+  transform: translateY(-50%) rotate(45deg);
+}
+.navigation-toggle.navigation-mobile[aria-expanded="true"]
+  .menu-lines
+  > span:last-child {
+  transform: translateY(-50%) rotate(-45deg);
 }
 @media (min-width: 901px) {
   .app-shell.sidebar-collapsed .sidebar {
     transform: translateX(-100%);
     visibility: hidden;
+    transition-delay: 0s, var(--motion-navigation);
   }
   .app-shell.sidebar-collapsed .main-shell {
     margin-left: 0;
-    width: 100%;
   }
 }
 .nav-scrim {
@@ -1354,7 +1408,6 @@ mat-form-field {
   }
   .main-shell {
     margin-left: 210px;
-    width: calc(100% - 210px);
   }
   main#main-content {
     padding: 28px;
@@ -1411,12 +1464,13 @@ mat-form-field {
   .sidebar {
     transform: translateX(-100%);
     visibility: hidden;
-    transition: transform 0.2s;
+    transition-delay: 0s, var(--motion-navigation);
     width: 240px;
   }
   .sidebar.sidebar-open {
     transform: translateX(0);
     visibility: visible;
+    transition-delay: 0s, 0s;
   }
   .nav-scrim {
     display: block;
@@ -1425,10 +1479,22 @@ mat-form-field {
     border: 0;
     background: #152d3960;
     z-index: 30;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity var(--motion-standard) ease,
+      visibility 0s var(--motion-standard);
+  }
+  .nav-scrim.scrim-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s, 0s;
   }
   .main-shell {
     margin-left: 0;
-    width: 100%;
+    transition: none;
   }
   .topbar {
     height: 65px;
@@ -1706,8 +1772,133 @@ mat-form-field {
     font-size: 9px;
   }
 }
+/* Shared motion stays brief and leaves charts and table geometry stable. */
+main#main-content > router-outlet + *,
+ds-uploads mat-tab-nav-panel > router-outlet + * {
+  display: block;
+  min-width: 0;
+}
+@media screen and (prefers-reduced-motion: no-preference) {
+  main#main-content > router-outlet + *,
+  ds-uploads mat-tab-nav-panel > router-outlet + * {
+    animation: view-enter var(--motion-standard) ease-out;
+  }
+  .page-heading,
+  .analytics-heading,
+  .login-card {
+    animation: surface-enter var(--motion-navigation) var(--motion-ease);
+  }
+  .stats-grid > .stat-card,
+  .kpi-grid > .kpi {
+    animation: surface-enter var(--motion-navigation) var(--motion-ease)
+      backwards;
+  }
+  @for $index from 2 through 6 {
+    .stats-grid > .stat-card:nth-child(#{$index}),
+    .kpi-grid > .kpi:nth-child(#{$index}) {
+      animation-delay: #{($index - 1) * 25}ms;
+    }
+  }
+  .panel,
+  .form-panel,
+  .info-panel,
+  .report-data-section {
+    animation: view-enter var(--motion-navigation) ease-out;
+  }
+  .panel {
+    transition:
+      box-shadow var(--motion-standard) var(--motion-ease),
+      border-color var(--motion-standard) ease;
+  }
+  .stat-card,
+  .kpi,
+  .period-tile {
+    transition:
+      transform var(--motion-standard) var(--motion-ease),
+      box-shadow var(--motion-standard) var(--motion-ease),
+      border-color var(--motion-standard) ease;
+  }
+  .navigation-toggle,
+  main#main-content button,
+  main#main-content a.mat-mdc-button-base,
+  .language-select,
+  main#main-content :is(input, select, textarea) {
+    transition:
+      color var(--motion-fast) ease,
+      background-color var(--motion-fast) ease,
+      border-color var(--motion-fast) ease,
+      box-shadow var(--motion-fast) ease,
+      transform var(--motion-fast) var(--motion-ease);
+  }
+  .report-tabs button {
+    transition:
+      color var(--motion-fast) ease,
+      border-color var(--motion-standard) ease;
+  }
+  .data-table td,
+  .financial-table tbody tr {
+    transition: background-color var(--motion-fast) ease;
+  }
+  .text-link ds-icon,
+  .sidebar nav a > ds-icon {
+    transition: transform var(--motion-standard) var(--motion-ease);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .sidebar nav a:hover > ds-icon,
+    .text-link:hover ds-icon {
+      transform: translateX(2px);
+    }
+    .stat-card:hover,
+    .kpi:hover,
+    .period-tile:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px #142b380c;
+    }
+    .panel:hover {
+      box-shadow: 0 4px 16px #142b3808;
+    }
+    .navigation-toggle:hover {
+      background-color: #eef7f5;
+    }
+    main#main-content .mat-mdc-unelevated-button:not(:disabled):hover,
+    .heading-actions > button:not(:disabled):hover,
+    .part-filters > button:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 10px #142b3812;
+    }
+    .report-tabs button:hover {
+      color: var(--teal);
+    }
+  }
+  .navigation-toggle:active,
+  main#main-content .mat-mdc-unelevated-button:not(:disabled):active,
+  .heading-actions > button:not(:disabled):active,
+  .part-filters > button:not(:disabled):active {
+    transform: translateY(0) scale(0.98);
+  }
+}
+@keyframes view-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     scroll-behavior: auto !important;
     transition: none !important;
     animation: none !important;

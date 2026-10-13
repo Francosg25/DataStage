@@ -83,9 +83,13 @@ import { I18n } from "./core/i18n";
             >
           </div>
         </aside>
-        @if (isMobile() && navOpen()) {
+        @if (isMobile()) {
           <button
             class="nav-scrim"
+            [class.scrim-visible]="navOpen()"
+            [inert]="!navOpen()"
+            [attr.aria-hidden]="!navOpen()"
+            tabindex="-1"
             [attr.aria-label]="'Cerrar navegación' | t"
             (click)="closeMobileNavigation()"
           ></button>
@@ -97,6 +101,7 @@ import { I18n } from "./core/i18n";
                 #navigationToggle
                 mat-icon-button
                 class="navigation-toggle"
+                [class.navigation-mobile]="isMobile()"
                 (click)="toggleNavigation()"
                 [attr.aria-label]="navigationLabel()"
                 [title]="navigationLabel()"
