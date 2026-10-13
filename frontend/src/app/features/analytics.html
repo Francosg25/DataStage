@@ -718,8 +718,8 @@ r.partTaxes.invalidItemKeys > 0) {
       </button>
     </div>
     <div class="part-filters" role="group" aria-describedby="part-filter-help">
-      <label for="part-number-filter"
-        >PN
+      <label for="part-number-filter">
+        <span>PN</span>
         <input
           id="part-number-filter"
           type="search"
@@ -736,8 +736,8 @@ r.partTaxes.invalidItemKeys > 0) {
         <option [value]="pn"></option>
         }
       </datalist>
-      <label for="part-tariff-filter"
-        >{{ t('Fracción arancelaria','Tariff code') }}
+      <label for="part-tariff-filter">
+        <span>{{ t('Fracción arancelaria','Tariff code') }}</span>
         <select
           id="part-tariff-filter"
           [ngModel]="partTariff()"
