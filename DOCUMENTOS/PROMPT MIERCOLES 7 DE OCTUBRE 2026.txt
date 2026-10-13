@@ -1,0 +1,15 @@
+Trabaja sobre mi repositorio DataStage (Angular + FastAPI). Revisa primero el código, el esquema de datos y el flujo de importación; después implementa estas mejoras sin alterar las funciones existentes que no estén relacionadas:
+
+Actividad por mes: limita las barras visibles inicialmente a una cantidad razonable de meses recientes y permite consultar períodos anteriores sin saturar la gráfica. Respeta los filtros actuales.
+
+Reporte general en PDF: agrega una acción sencilla para descargar un reporte de los meses seleccionados en los filtros. Debe mostrar el período, los indicadores y tablas relevantes, con cifras coherentes con lo que presenta la aplicación. Maneja correctamente el caso sin datos.
+
+Microsoft Entra ID: da los primeros pasos reales de integración para autenticación corporativa. Identifica qué datos debe proporcionar TI (tenant ID, client ID, redirect URI, configuración de la API, grupos o roles) y deja la configuración documentada mediante variables de entorno. No incluyas secretos en el repositorio ni simules que el inicio de sesión ya protege la API si aún falta configuración externa. Explica claramente qué queda pendiente de TI.
+
+Datos de 2020 a 2026: prepara y ejecuta la carga histórica solo si los archivos fuente están disponibles y se puede verificar el destino. Antes de modificar datos, revisa respaldos, duplicados, claves y reglas del importador. Haz la operación repetible y valida cantidades por año y mes. Si faltan archivos, acceso o una decisión de negocio, no inventes registros: deja el procedimiento y los pendientes concretos.
+
+IGI e IVA pagados por mes: revisa la interpretación de las columnas J, K y L del archivo fuente. La columna K distingue la forma de pago: FP0 = efectivo y FP21 = CERTIVA. Incorpórala en los cálculos y sustituye esas gráficas por una tabla de montos clara, desglosada por mes, impuesto y forma de pago, con totales. Comprueba las reglas exactas del archivo y evita contar dos veces un importe.
+
+Rectificaciones: rediseña la tabla tomando como referencia la imagen adjunta. Para cada aduana muestra código y nombre, responsable de Logistics si existe en los datos, cantidad de R1, total de pedimentos de esa aduana, porcentaje de error respecto a sus pedimentos y porcentaje de error global. Incluye totales y filtros de período coherentes con el resto de la aplicación. Define explícitamente los denominadores y si se cuentan pedimentos únicos; no deduzcas la fórmula del porcentaje global únicamente a partir de los números de la imagen. Muestra el costo aproximado solo si existe una tarifa o regla verificable y configurable; no fijes $2,500 por R1 basándote solo en el ejemplo.
+
+Mantén la interfaz limpia, compacta y fácil de usar. Implementa cambios de backend y frontend donde correspondan, añade pruebas para los cálculos y filtros, ejecuta las verificaciones disponibles y al terminar indícame: archivos modificados, fórmulas utilizadas, pruebas realizadas y cualquier dato o autorización que todavía necesites. Si encuentras una ambigüedad que impide calcular cifras fiables, pregúntame antes de adoptar una regla arbitraria.
