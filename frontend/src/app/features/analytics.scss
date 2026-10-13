@@ -124,22 +124,22 @@
   flex-wrap: wrap;
 }
 .part-filters {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 16px 18px;
   background: #f2f6f7;
   border: 1px solid #e1e6e9;
   border-radius: 6px;
 }
 .part-filters label {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
   font-size: 12px;
   font-weight: 600;
   color: #435d67;
-  flex: 1 1 220px;
   min-width: 0;
 }
 .part-filters input,
@@ -161,6 +161,21 @@
 }
 .part-filters > button {
   min-height: 40px;
+  white-space: nowrap;
+}
+@media (max-width: 780px) {
+  .part-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .part-filters > button {
+    justify-self: start;
+  }
+}
+@media (max-width: 520px) {
+  .part-filters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+  }
 }
 .part-filter-status {
   margin: 10px 0 16px;
