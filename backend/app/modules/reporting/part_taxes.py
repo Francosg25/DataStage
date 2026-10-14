@@ -7,14 +7,14 @@ import re
 
 from .trade_values import identity, item_identity, normalized, number, strict_sum, text_value
 
-KNOWN_PARTS = frozenset(json.loads(
+KNOWN_PARTS = frozenset(text_value(part).upper() for part in json.loads(
     Path(__file__).with_name("part_numbers.json").read_text(encoding="utf-8")
-))
+) if text_value(part))
 
 # Etiquetas explícitas; los modelos, series y lotes no son NP por sí solos.
 PART_LABEL = (
     r'(?:N\s*[/\.]?\s*P\.?|P\s*/\s*N|PART\s*(?:NUMBER|NO\.?)|'
-    r'N[ÚU]MERO\s+DE\s+PARTE|NO\.?\s*(?:DE\s+)?PARTE)'
+    r'N[ÚU]MERO\s+DE\s+PARTE|NO\.?\s*(?:DE\s+)?PARTE|N\.\s*(?:DE\s+)?PARTE)'
     r'(?:\s+INTERNO)?'
 )
 PART_CODE = r'[A-Z0-9][A-Z0-9._/+\-]{0,79}'
@@ -28,6 +28,16 @@ STANDALONE_LABEL = re.compile(
     r'^' + PREFIX + PART_LABEL + r'\s*[:=#]?$', re.I,
 )
 TOKEN = re.compile(r'^' + PART_CODE + r'$', re.I)
+CATALOG_TOKEN = re.compile(r'(?<![\w./+\-])[A-Z0-9][A-Z0-9._/+\-]*(?![\w./+\-])', re.I)
+CONTEXT_LABEL = re.compile(
+    r'(?<![\w])(?:'
+    r'(?P<blocked>SERIES?|SERIAL(?:\s+NUMBER)?|MODELOS?|MODELS?|LOTES?|LOTS?|'
+    r'FACTURAS?|INVOICES?|P\.?\s*O\.?)|'
+    r'(?P<ordinary>DESCRIPCI[ÓO]N(?:\s+FACTURA)?|DESCRIPTION|OBSERVACI[ÓO]N(?:ES)?|'
+    r'ART[IÍ]CULO|MERCANC[IÍ]A|PRODUCTO|ITEM|MARCA|BRAND))'
+    r'(?:\s*[:=#]\s*|\s+)', re.I,
+)
+PACKAGING_SUFFIXES = ('EN', 'N')
 ORDER_CONTEXT = re.compile(r'\bORDEN\s+DE\s*$', re.I)
 PO = re.compile(r'^P\.?\s*O\.?(?:\s*[:=#]\s*|\s+)' + PART_CODE + r'$', re.I)
 # Regla limitada al prefijo confirmado por el usuario y al contexto P.O | NP.
@@ -38,8 +48,49 @@ INVALID_PARTS = {
 }
 
 
+def _clean_part(value):
+    code = text_value(value).upper()
+    # Preserve an exact catalog entry; otherwise a final dot is sentence punctuation.
+    return code if code in KNOWN_PARTS else code.rstrip('.')
+
+
+def _catalog_part(value):
+    code = _clean_part(value)
+    if code in KNOWN_PARTS:
+        return code
+    for suffix in PACKAGING_SUFFIXES:
+        if code.endswith(suffix) and (base := code[:-len(suffix)]) in KNOWN_PARTS:
+            return base
+    return None
+
+
+def _catalog_mentions(text, explicit_spans):
+    """Find whole catalog tokens in prose while respecting other field labels."""
+    contexts = list(CONTEXT_LABEL.finditer(text))
+    context_index, blocked = 0, False
+    for token in CATALOG_TOKEN.finditer(text):
+        while context_index < len(contexts) and contexts[context_index].end() <= token.start():
+            blocked = contexts[context_index].group('blocked') is not None
+            context_index += 1
+        if blocked or any(start <= token.start() < end for start, end in explicit_spans):
+            continue
+        code = _clean_part(token.group())
+        if len(code) <= 80 and _catalog_part(code):
+            yield code
+
+
 def part_numbers(observations):
     primary, aliases = set(), set()
+
+    def add_part(value, alternate=False):
+        code = _clean_part(value)
+        if not code or code in INVALID_PARTS or len(code) > 80:
+            return
+        canonical = _catalog_part(code) or code
+        (aliases if alternate else primary).add(canonical)
+        if canonical != code:
+            aliases.add(code)
+
     pending, previous_seq = None, None
     for row in sorted(observations, key=lambda r: number(r.get('secuencia_observacion')) or Decimal(0)):
         seq = number(row.get('secuencia_observacion'))
@@ -49,19 +100,22 @@ def part_numbers(observations):
             text = text.strip()
             if not text:
                 continue
-            code = text.upper()
-            if pending and TOKEN.fullmatch(text) and code not in INVALID_PARTS:
-                if pending != 'po' or code in KNOWN_PARTS or PO_PART.fullmatch(text):
-                    (aliases if pending == 'alias' else primary).add(code)
-            elif code in KNOWN_PARTS:
-                primary.add(code)
+            code = _clean_part(text)
+            consumed = False
+            if pending and TOKEN.fullmatch(code) and code not in INVALID_PARTS:
+                if pending != 'po' or _catalog_part(code) or PO_PART.fullmatch(code):
+                    add_part(code, pending == 'alias')
+                    consumed = True
             pending = None
+            spans = []
             for match in PART.finditer(text):
+                spans.append(match.span())
                 if ORDER_CONTEXT.search(text[:match.start()]):
                     continue
-                code = match.group('part').upper()
-                if code not in INVALID_PARTS:
-                    (aliases if match.group('alternate') else primary).add(code)
+                add_part(match.group('part'), bool(match.group('alternate')))
+            if not consumed:
+                for code in _catalog_mentions(text, spans):
+                    add_part(code)
             label = STANDALONE_LABEL.fullmatch(text)
             if label:
                 pending = 'alias' if label.group('alternate') else 'primary'

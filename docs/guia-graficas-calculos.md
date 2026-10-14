@@ -171,7 +171,7 @@ La tarjeta «Selecciones en rojo» se obtiene como 100 multiplicado por eventos 
 
 ### Resolución del número de parte
 
-El extractor lee 558 en orden de `SecuenciaObservacion`. Reconoce etiquetas explícitas NP, N/P, P/N, Part Number, No. Parte y Número de parte, seguidas de los separadores admitidos por el patrón. También admite una etiqueta sola y un token en la secuencia inmediatamente siguiente. Los códigos se normalizan a mayúsculas. Textos como NA, N/A, NULL o SIN no se aceptan como parte verificable.
+El extractor lee 558 en orden de `SecuenciaObservacion`. Reconoce etiquetas explícitas NP, N/P, P/N, Part Number, No. Parte, N. DE PARTE y Número de parte, seguidas de los separadores admitidos por el patrón. También admite una etiqueta sola y un token en la secuencia inmediatamente siguiente. Los códigos se normalizan a mayúsculas. También busca tokens completos del catálogo dentro de descripciones, sin promover campos etiquetados como modelo, serie, factura, lote u orden de compra. Los puntos de oración se retiran; los puntos internos del código se conservan. Textos como NA, N/A, NULL o SIN no se aceptan como parte verificable.
 
 `NP: 1200-1030847AN OTRO NP: 1200-1030847AND` representa un principal y un alternativo del mismo artículo. El importe se asigna una sola vez al principal; el alternativo se muestra y permite localizarlo. Repetir el mismo NP en varias observaciones no multiplica el pago. No se deduce que partes de artículos distintos sean equivalentes solo porque sus códigos se parezcan.
 
@@ -318,3 +318,7 @@ Los importes, valores, cantidades, pesos, tasas y conteos reconocidos por su enc
 ### Desglose de rectificaciones por patente
 
 La tabla principal añade Patente y separa filas por aduana/patente. Su porcentaje de grupo divide pedimentos rectificados de esa combinación entre pedimentos 501 de la misma combinación. La segunda tabla agrupa todas las aduanas seleccionadas por patente: porcentaje de patente = rectificados de esa patente / pedimentos de esa patente × 100. El porcentaje global usa en ambos casos la base 501 filtrada completa. Ambas tablas comparten el total global y no deben sumarse entre sí. Se usan llaves distintas de año, mes, patente, pedimento y aduana, por lo que registros repetidos no multiplican los conteos. Se mantienen las reglas de cobertura, llaves inválidas y rectificaciones sin 501. El PDF contiene ambos desgloses.
+
+### Variantes de empaque y catálogo de PN
+
+Se prioriza la coincidencia exacta. Cuando el código completo no está registrado, los sufijos N y EN pueden resolverse contra un PN base que sí esté en `part_numbers.json`. El PN base queda como principal y el código observado como alternativo, manteniendo búsqueda, CSV y trazabilidad. No se cambia el JSON local ni se agrupan partes por similitud. Dos PN principales diferentes siguen siendo ambiguos; el pago no se duplica entre ellos. La mejora se aplica al consultar las observaciones guardadas después de reiniciar el backend.
