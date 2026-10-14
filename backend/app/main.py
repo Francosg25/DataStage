@@ -16,6 +16,7 @@ from app.core.body_limit import BodyLimitMiddleware
 from app.core.errors import ApplicationError
 from app.core.logging import configure_logging
 from app.modules.storage.filesystem import FileSystemStorage
+from app.modules.reporting.cache import ReportCache
 from app.persistence import Base, make_engine, session_factory
 
 log = logging.getLogger("datastage.api")
@@ -35,6 +36,7 @@ def create_app(settings=None):
     app = FastAPI(title="DataStage API", version="0.1.0", lifespan=lifespan,
                   docs_url="/docs" if settings.environment != "production" else None, redoc_url=None)
     app.state.settings, app.state.engine = settings, engine
+    app.state.analytics_cache = ReportCache()
     app.state.session_factory, app.state.storage = session_factory(engine), storage
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins,
                        allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
@@ -121,3 +123,4 @@ def create_app(settings=None):
 
 configure_logging()
 app = create_app()
+

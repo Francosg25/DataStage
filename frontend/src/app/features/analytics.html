@@ -658,15 +658,25 @@ r.partTaxes.invalidItemKeys > 0) {
       <dd>
         {{ t('Anexo 22, 15 enero 2026, apéndices 12 y 13: 1 = DTA, 3 = IVA, 6 =
         IGI/IGE. IGI e IVA en efectivo incluyen importaciones con FormaPago 0 en
-        557. La tabla mensual separa FP 0 y crédito en IVA e IEPS (FP 21,
-        CERTIVA). FP 13 es pago ya efectuado; FP 22 es garantía en IVA e IEPS.
-        Otras formas se desglosan por separado. No se suman 510 y 557.','Anexo
-        22, January 15, 2026, appendices 12 and 13: 1 = customs processing fee,
-        3 = VAT, 6 = import/export duty. Cash IGI and VAT include imports with
-        payment method 0 in 557. The monthly table separates FP 0 and VAT/excise
-        credit (FP 21, CERTIVA). FP 13 is previously paid; FP 22 is VAT/excise
-        guarantee. Other methods are itemized separately. Tables 510 and 557 are
-        not added together.') }}
+        557. Los indicadores y la tabla mensual separan FP 0 y crédito en IVA e
+        IEPS (FP 21, CERTIVA). FP 13 es pago ya efectuado; FP 22 es garantía en
+        IVA e IEPS. Otras formas se desglosan por separado. No se suman 510 y
+        557.','Anexo 22, January 15, 2026, appendices 12 and 13: 1 = customs
+        processing fee, 3 = VAT, 6 = import/export duty. Cash IGI and VAT
+        include imports with payment method 0 in 557. The indicators and monthly
+        table separate FP 0 and VAT/excise credit (FP 21, CERTIVA). FP 13 is
+        previously paid; FP 22 is VAT/excise guarantee. Other methods are
+        itemized separately. Tables 510 and 557 are not added together.') }}
+      </dd>
+      <dt>{{ t('Valor de mercancías','Goods value') }}</dt>
+      <dd>
+        {{ t('Indicadores separados: importaciones con TipoOperacion 1 y
+        exportaciones con TipoOperacion 2. Ambos suman ValorDolares de 551 y se
+        convierten por pedimento si se elige MXN. Respetan los filtros
+        generales.','Separate indicators: imports with operation type 1 and
+        exports with operation type 2. Both sum ValorDolares from 551 and are
+        converted per declaration when MXN is selected. General filters apply.')
+        }}
       </dd>
       <dt>{{ t('Moneda','Currency') }}</dt>
       <dd>

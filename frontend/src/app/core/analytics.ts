@@ -36,6 +36,21 @@ export interface Ranking {
   value: number | null;
   rows: number;
 }
+export interface AnalyticsMonthlyReport {
+  source: string;
+  year: number;
+  currency: "USD" | "MXN";
+  generatedAt: string;
+  monthly: Pick<AnalyticsMonth, "month" | "available" | "metrics">[];
+}
+export interface AnalyticsComparisonMonth {
+  source: string;
+  year: number;
+  month: number;
+  currency: "USD" | "MXN";
+  available: boolean;
+  totals: MetricValues;
+}
 export interface AnalyticsReport {
   appliedFilters: AnalyticsFilters;
   snapshotId: string;

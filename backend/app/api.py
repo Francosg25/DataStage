@@ -28,7 +28,8 @@ from app.modules.processing.service import (
     get_run, remember, replay, reprocess, run_response, validate_key,
 )
 from app.modules.reporting.queries import compare_periods, data_page, overview
-from app.modules.reporting.analytics import options as analytics_options, summarize as analytics_summary
+from app.modules.reporting.analytics import (options as analytics_options, summarize as analytics_summary,
+                                            monthly_summary as analytics_months)
 from app.modules.reporting.pdf_report import render_report
 from app.modules.reporting.project_maps import catalog as project_maps_catalog, image_path as project_map_image
 from app.persistence.models import (
@@ -411,6 +412,14 @@ def report_overview(session: DB, principal: Reader):
 def report_analytics_options(request: Request, session: DB, principal: Reader):
     return analytics_options(session, request.app.state.settings, principal.scope_id)
 
+@router.get("/reports/analytics/months")
+def report_analytics_months(request: Request, session: DB, principal: Reader,
+                           source: str = Query('published', pattern='^(published|reference)$'),
+                           year: int = Query(2026, ge=1900, le=2100),
+                           currency: Literal['USD', 'MXN'] = 'USD'):
+    return analytics_months(session, request.app.state.settings, principal.scope_id,
+                           source=source, year=year, currency=currency, cache=request.app.state.analytics_cache)
+
 @router.get("/reports/analytics")
 def report_analytics(request: Request, session: DB, principal: Reader,
                      source: str = Query('published', pattern='^(published|reference)$'),
@@ -419,7 +428,8 @@ def report_analytics(request: Request, session: DB, principal: Reader,
                      operation: str = Query('', max_length=10), customs: str = Query('', max_length=10),
                      document: str = Query('', max_length=10), currency: Literal['USD', 'MXN'] = 'USD'):
     return analytics_summary(session, request.app.state.settings, principal.scope_id, source=source, year=year,
-                             start_month=startMonth, end_month=endMonth, operation=operation, customs=customs, document=document, currency=currency)
+                             start_month=startMonth, end_month=endMonth, operation=operation, customs=customs,
+                             document=document, currency=currency, cache=request.app.state.analytics_cache)
 
 @router.get("/reports/analytics/pdf")
 def report_pdf(report: Annotated[dict, Depends(report_analytics)],

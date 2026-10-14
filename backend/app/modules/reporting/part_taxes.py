@@ -95,37 +95,44 @@ def convert(row, field, source_currency, currency, rates):
     return value / rate if currency == 'USD' else value * rate
 
 
-def import_payments(tables, payment_method='0'):
+def import_payment_groups(tables):
+    """Resolve the item operation once for every payment method in this dataset."""
     operations = defaultdict(set)
     for row in tables['551']:
         if (key := item_identity(row)) is not None:
             operations[key].add(normalized(row.get('tipo_operacion')))
-    rows, unmatched = [], 0
+    rows, unmatched = defaultdict(list), defaultdict(int)
     for row in tables['557']:
         tax = {'6': 'igi', '3': 'iva'}.get(normalized(row.get('clave_contribucion')))
-        if not tax or normalized(row.get('forma_pago')) != payment_method:
+        if not tax:
             continue
+        method = normalized(row.get('forma_pago'))
         operation = operations.get(item_identity(row), set())
         if operation not in ({'1'}, {'2'}):
-            unmatched += 1
+            unmatched[method] += 1
         elif operation == {'1'}:
-            rows.append((row, tax))
+            rows[method].append((row, tax))
     return rows, unmatched
 
 
-def paid_totals(tables, coverage, currency, rates):
-    rows, unmatched = import_payments(tables)
+def import_payments(tables, payment_method='0', *, groups=None):
+    rows, unmatched = groups if groups is not None else import_payment_groups(tables)
+    return rows.get(payment_method, []), unmatched.get(payment_method, 0)
+
+
+def paid_totals(tables, coverage, currency, rates, *, groups=None):
+    rows, unmatched = import_payments(tables, groups=groups)
     return {tax: strict_sum(convert(row, 'importe_pago', 'MXN', currency, rates) for row, kind in rows if kind == tax)
             if '551' in coverage and '557' in coverage and not unmatched else None for tax in ('igi', 'iva')}
 
 
-def payment_method_totals(tables, coverage, currency, rates):
+def payment_method_totals(tables, coverage, currency, rates, *, groups=None):
     result = {}
-    methods = sorted({normalized(row.get('forma_pago')) for row in tables['557']
-                      if normalized(row.get('clave_contribucion')) in {'3', '6'}} - {'0', '21'})
+    groups = groups if groups is not None else import_payment_groups(tables)
+    methods = sorted((set(groups[0]) | set(groups[1])) - {'0', '21'})
     other = []
     for method, name in [('0', 'cash'), ('21', 'certiva')] + [(m, None) for m in methods]:
-        rows, unmatched = import_payments(tables, method)
+        rows, unmatched = import_payments(tables, method, groups=groups)
         values = {
             tax: strict_sum(convert(row, 'importe_pago', 'MXN', currency, rates)
                             for row, kind in rows if kind == tax)
@@ -145,7 +152,7 @@ def payment_method_totals(tables, coverage, currency, rates):
     return result
 
 
-def paid_taxes(tables, coverage, currency, rates):
+def paid_taxes(tables, coverage, currency, rates, *, payment_groups=None):
     items, observations = defaultdict(list), defaultdict(list)
     for row in tables['551']:
         if (key := item_identity(row)) is not None:
@@ -173,7 +180,8 @@ def paid_taxes(tables, coverage, currency, rates):
                            'sequence': text_value(row.get('secuencia_fraccion')), 'status': status,
                            'candidates': candidates, 'observations': [text_value(r.get('observaciones')) for r in observations[key]]})
 
-    payments, unmatched = import_payments(tables)
+    payment_groups = payment_groups if payment_groups is not None else import_payment_groups(tables)
+    payments, unmatched = import_payments(tables, groups=payment_groups)
     for row, tax in payments:
         key = item_identity(row)
         part = resolved[key]
@@ -196,4 +204,4 @@ def paid_taxes(tables, coverage, currency, rates):
             'unmatchedTaxRows': unmatched, 'currency': currency,
             'available': all(code in coverage for code in ('551', '557')),
             'observationSourceAvailable': '558' in coverage,
-            'totals': paid_totals(tables, coverage, currency, rates)}
+            'totals': paid_totals(tables, coverage, currency, rates, groups=payment_groups)}

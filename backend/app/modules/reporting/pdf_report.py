@@ -76,7 +76,7 @@ def render_report(report, language='es'):
         return MONTHS[language][month - 1]
     period = f"{month_name(report['startMonth'])} - {month_name(report['endMonth'])} {report['year']}"
     currency = report['currency']
-    trade_key = 'trade' + currency.title()
+    import_key, export_key = 'import' + currency.title(), 'export' + currency.title()
     f = report['appliedFilters']
     totals = report['totals']
     title(t('Reporte general de operaciones', 'General operations report'))
@@ -95,18 +95,21 @@ def render_report(report, language='es'):
                      'months available. Months without a source are not zero.')))
     table([t('Indicador del periodo', 'Period metric'), t('Valor', 'Value')], [
         [t('Pedimentos (501)', 'Declarations (501)'), fmt(totals['declarations'])],
-        [t('Valor de mercancias (551)', 'Trade value (551)'), fmt(totals[trade_key], 2) + ' ' + currency],
+        [t('Valor de importaciones (551)', 'Import goods value (551)'), fmt(totals[import_key], 2) + ' ' + currency],
+        [t('Valor de exportaciones (551)', 'Export goods value (551)'), fmt(totals[export_key], 2) + ' ' + currency],
         ['IGI - FP 0', fmt(totals['igiPaid'], 2) + ' ' + currency],
         ['IVA - FP 0', fmt(totals['ivaPaid'], 2) + ' ' + currency],
+        ['IGI - FP 21', fmt(totals['igiFp21'], 2) + ' ' + currency],
+        ['IVA - FP 21', fmt(totals['ivaFp21'], 2) + ' ' + currency],
         [t('Rectificaciones (701)', 'Amendments (701)'), fmt(totals['rectifications'])],
         [t('Seleccion en rojo (SEL)', 'Red selection (SEL)'), pct(totals['redRate'])],
     ], [320, 195])
     story.append(p(t('Evolucion mensual', 'Monthly performance'), subheading))
-    table([t('Mes', 'Month'), t('Pedimentos', 'Declarations'), t('Mercancias', 'Trade value'),
-           'IGI FP 0', 'IVA FP 0'], [
-        [month_name(m['month']), fmt(m['metrics']['declarations']), fmt(m['metrics'][trade_key], 2),
-         fmt(m['metrics']['igiPaid'], 2), fmt(m['metrics']['ivaPaid'], 2)] for m in months
-    ], [85, 70, 126, 117, 117])
+    table([t('Mes', 'Month'), t('Pedimentos', 'Declarations'), t('Valor importacion', 'Import goods value'),
+           t('Valor exportacion', 'Export goods value')], [
+        [month_name(m['month']), fmt(m['metrics']['declarations']), fmt(m['metrics'][import_key], 2),
+         fmt(m['metrics'][export_key], 2)] for m in months
+    ], [85, 90, 170, 170])
 
     story.append(PageBreak())
     title(t('Contribuciones por forma de pago', 'Taxes by payment method'))

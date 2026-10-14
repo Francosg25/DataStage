@@ -12,7 +12,8 @@ from app.core.errors import ApplicationError
 from app.persistence.business import BUSINESS_TABLES
 from app.persistence.models import Period, ProcessingTable, Run
 from .trade_values import KEY_FIELDS, identity, normalized, number, text_value, strict_sum
-from .part_taxes import convert, exchange_rates, paid_taxes, paid_totals, payment_method_totals
+from .part_taxes import (convert, exchange_rates, import_payment_groups, paid_taxes,
+                         payment_method_totals)
 from .rectifications import rectifications_by_customs
 
 FIELDS = {
@@ -41,7 +42,7 @@ def change(current, previous):
 
 
 @lru_cache(maxsize=2)
-def _reference(path, modified, size):
+def _reference(path, modified, size, changed=0, inode=0):
     with Path(path).open(encoding='utf-8') as stream:
         return json.load(stream)
 
@@ -51,11 +52,11 @@ def reference_dataset(settings, scope):
     if path is None or not path.is_file():
         return None
     stat = path.stat()
-    data = _reference(str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    data = _reference(str(path.resolve()), stat.st_mtime_ns, stat.st_size, stat.st_ctime_ns, stat.st_ino)
     return data if data.get('scopeId') == scope and data.get('schemaVersion') == 1 else None
 
 
-def published_dataset(session, scope, year):
+def published_dataset(session, scope, year, codes=FIELDS):
     pairs = list(session.execute(select(Period, Run).join(Run, Period.active_run_id == Run.id).where(
         Period.scope_id == scope, Run.scope_id == scope, Run.kind == 'monthly',
         Run.publication_status == 'published', Period.year == year)))
@@ -73,7 +74,8 @@ def published_dataset(session, scope, year):
         for table in session.scalars(select(ProcessingTable).where(ProcessingTable.run_id.in_(lookup))):
             lookup[table.run_id]['tables'][table.table_code] = table.row_count
     tables = {}
-    for code, fields in FIELDS.items():
+    for code in codes:
+        fields = FIELDS[code]
         target = BUSINESS_TABLES[code]
         rows = []
         if lookup:
@@ -84,6 +86,22 @@ def published_dataset(session, scope, year):
                 rows.append({f: record[f] for f in fields} | {'year': year, 'month': period['month']})
         tables[code] = rows
     return {'periods': periods, 'tables': tables, 'sources': [], 'reconciliation': None}
+
+
+def _dataset_revision(session, settings, scope, source, year):
+    if source == 'reference':
+        path = settings.analytics_reference_file
+        if path is None or not path.is_file():
+            return None
+        stat = path.stat()
+        return (str(path.resolve()), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, stat.st_ino)
+    # Published rows are immutable within a run. Replacing or deleting a month
+    # changes its active run/version, including publications made by the worker.
+    rows = session.execute(select(Period.month, Period.active_run_id, Period.version, Run.counts_json)
+        .join(Run, Period.active_run_id == Run.id).where(
+            Period.scope_id == scope, Run.scope_id == scope, Run.kind == 'monthly',
+            Run.publication_status == 'published', Period.year == year).order_by(Period.month))
+    return (id(session.get_bind()), tuple(tuple(row) for row in rows))
 
 
 def options(session, settings, scope):
@@ -122,11 +140,19 @@ def declaration_ranking(rows, field):
 
 
 def summarize(session, settings, scope, *, source='published', year=2026, start_month=1,
-              end_month=12, operation='', customs='', document='', currency='USD'):
+              end_month=12, operation='', customs='', document='', currency='USD', cache=None):
     if currency not in {'USD', 'MXN'}:
         raise ApplicationError(400, 'INVALID_CURRENCY', 'Moneda no admitida')
     if start_month > end_month:
         raise ApplicationError(400, 'INVALID_RANGE', 'El mes inicial debe ser anterior o igual al final.')
+    if source not in {'reference', 'published'}:
+        raise ApplicationError(400, 'INVALID_SOURCE', 'La fuente de análisis no es válida.')
+    if cache is not None:
+        key = ('full', scope, source, year, start_month, end_month, operation, customs, document,
+               currency, _dataset_revision(session, settings, scope, source, year))
+        return cache.get_or_compute(key, lambda: summarize(
+            session, settings, scope, source=source, year=year, start_month=start_month,
+            end_month=end_month, operation=operation, customs=customs, document=document, currency=currency))
     if source == 'reference':
         data = reference_dataset(settings, scope)
         if data is None:
@@ -157,7 +183,7 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
         else:
             filtered[code] = rows
 
-    def metrics(tables, coverage):
+    def metrics(tables, coverage, payments):
         general, items = tables['501'], tables['551']
         unique = {identity(r) for r in general if identity(r) is not None}
         red = sum(normalized(r.get('semaforo_fiscal')) == '0' for r in tables['sel'])
@@ -209,17 +235,22 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
             if normalized(r.get('tipo_operacion')) not in {'1', '2'}) if '551' in coverage else None
         result['unclassifiedItems'] = sum(normalized(r.get('tipo_operacion')) not in {'1', '2'}
                                           for r in items) if '551' in coverage else None
-        taxes = paid_totals(tables, coverage, currency, rates)
-        result.update(igiPaid=taxes['igi'], ivaPaid=taxes['iva'])
+        result.update(igiPaid=payments['cash']['igi'], ivaPaid=payments['cash']['iva'],
+                      igiFp21=payments['certiva']['igi'], ivaFp21=payments['certiva']['iva'])
         return result
 
+    by_month = {month: {code: [] for code in FIELDS} for month in range(1, 13)}
+    for code, rows in filtered.items():
+        for row in rows:
+            by_month[row['month']][code].append(row)
     monthly = []
     for month in range(1, 13):
         p = periods.get(month)
-        tables = {code: [r for r in rows if r['month'] == month] for code, rows in filtered.items()}
-        m = metrics(tables, p['tables'] if p else {})
+        tables = by_month[month]
+        payments = payment_method_totals(tables, p['tables'] if p else {}, currency, rates)
+        m = metrics(tables, p['tables'] if p else {}, payments)
         monthly.append({'month': month, 'available': p is not None, 'metrics': m,
-                        'paymentMethods': payment_method_totals(tables, p['tables'] if p else {}, currency, rates),
+                        'paymentMethods': payments,
                         'rows': p['rows'] if p else None, 'warnings': p.get('warnings') if p else None,
                         'errors': p.get('errors') if p else None, 'files': p.get('files') if p else None,
                         'tables': p['tables'] if p else {}, 'runId': p.get('runId') if p else None,
@@ -229,18 +260,19 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
     # An absent table in an available month is not an empty table. Do not
     # present a partial sum as the total for that metric's available months.
     coverage = set.intersection(*(set(p['tables']) for p in selected_periods)) if selected_periods else set()
-    summary = metrics(selected, coverage)
     rectification_summary = rectifications_by_customs(selected, selected_periods)
-    summary['rectifications'] = rectification_summary['totals']['r1']
     payment_coverage = {'551', '557'} if selected_periods and all(
         {'551', '557'}.issubset(p['tables']) for p in selected_periods) else set()
-    payment_summary = payment_method_totals(selected, payment_coverage, currency, rates)
-    parts = paid_taxes(selected, coverage, currency, rates)
+    selected_payments = import_payment_groups(selected)
+    payment_summary = payment_method_totals(selected, payment_coverage, currency, rates, groups=selected_payments)
+    summary = metrics(selected, coverage, payment_summary)
+    summary['rectifications'] = rectification_summary['totals']['r1']
+    parts = paid_taxes(selected, coverage, currency, rates, payment_groups=selected_payments)
     parts['available'] = bool(selected_periods) and all({'551', '557'}.issubset(p['tables']) for p in selected_periods)
     parts['observationSourceAvailable'] = bool(selected_periods) and all('558' in p['tables'] for p in selected_periods)
     if not parts['available']:
         parts['totals'] = {'igi': None, 'iva': None}
-        summary.update(igiPaid=None, ivaPaid=None)
+        summary.update(igiPaid=None, ivaPaid=None, igiFp21=None, ivaFp21=None)
     available_months = sorted(p['month'] for p in selected_periods)
     latest = available_months[-1] if available_months else None
     last = monthly[latest - 1]['metrics'] if latest else {}
@@ -256,13 +288,6 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
         'customs': declaration_ranking(selected['501'], 'seccion_aduanera') if '501' in coverage else [],
         'documents': declaration_ranking(selected['501'], 'clave_documento') if '501' in coverage else [],
         'operations': declaration_ranking(selected['501'], 'tipo_operacion') if '501' in coverage else [],
-        'countries': ranking(selected['551'], 'pais_origen_destino', 'valor_dolares'),
-        'tariffs': ranking(selected['551'], 'fraccion', 'valor_dolares'),
-        'suppliers': ranking(selected['505'], 'proveedor_mercancia', 'valor_dolares'),
-        'incoterms': ranking(selected['505'], 'termino_facturacion', 'valor_dolares'),
-        'headerTaxes': ranking(selected['510'], 'clave_contribucion', 'importe_pago'),
-        'itemTaxes': ranking(selected['557'], 'clave_contribucion', 'importe_pago'),
-        'paymentMethods': ranking(selected['510'], 'forma_pago', 'importe_pago'),
         'transport': ranking(selected['501'], 'medio_transporte_entrada_salida'),
         'inspection': ranking(selected['inci'], 'grado_incidencia'),
     }
@@ -318,4 +343,56 @@ def summarize(session, settings, scope, *, source='published', year=2026, start_
         {k: v for k, v in result.items() if k != 'generatedAt'}, sort_keys=True,
         separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()
     return result
+
+
+def monthly_summary(session, settings, scope, *, source='published', year=2026, currency='USD', cache=None):
+    """Comparison metrics only: no PN matching, observations or rankings."""
+    if currency not in {'USD', 'MXN'}:
+        raise ApplicationError(400, 'INVALID_CURRENCY', 'Moneda no admitida')
+    if source not in {'reference', 'published'}:
+        raise ApplicationError(400, 'INVALID_SOURCE', 'La fuente de análisis no es válida.')
+    if cache is not None:
+        key = ('months', scope, source, year, currency, _dataset_revision(session, settings, scope, source, year))
+        return cache.get_or_compute(key, lambda: monthly_summary(
+            session, settings, scope, source=source, year=year, currency=currency))
+    codes = ('501', '551', '557', '701')
+    if source == 'reference':
+        data = reference_dataset(settings, scope)
+        if data is None:
+            raise ApplicationError(404, 'REFERENCE_UNAVAILABLE', 'No hay una referencia Excel disponible en este ámbito.')
+    else:
+        data = published_dataset(session, scope, year, codes)
+    periods = {p['month']: p for p in data['periods'] if p['year'] == year}
+    tables_by_month = {month: {code: [] for code in codes} for month in range(1, 13)}
+    headers = []
+    for code in codes:
+        for row in data['tables'].get(code, []):
+            if row['year'] == year:
+                tables_by_month[row['month']][code].append(row)
+                if code == '501':
+                    headers.append(row)
+    rates = exchange_rates(headers)
+    monthly = []
+    for month, tables in tables_by_month.items():
+        period = periods.get(month)
+        coverage = period['tables'] if period else {}
+        keys = {identity(row) for row in tables['501']}
+        payments = payment_method_totals(tables, coverage, currency, rates)
+        metrics = {
+            'declarations': len(keys) if '501' in coverage and None not in keys else None,
+            'items': len(tables['551']) if '551' in coverage else None,
+            'trade' + currency.title(): strict_sum(
+                convert(row, 'valor_dolares', 'USD', currency, rates) for row in tables['551'])
+            if '551' in coverage else None,
+            'igiPaid': payments['cash']['igi'], 'ivaPaid': payments['cash']['iva'],
+            'igiFp21': payments['certiva']['igi'], 'ivaFp21': payments['certiva']['iva'],
+            'rectifications': rectifications_by_customs(tables, [period] if period else [])['totals']['r1'],
+        }
+        for name, operation_code in [('import', '1'), ('export', '2')]:
+            metrics[name + currency.title()] = strict_sum(
+                convert(row, 'valor_dolares', 'USD', currency, rates) for row in tables['551']
+                if normalized(row.get('tipo_operacion')) == operation_code) if '551' in coverage else None
+        monthly.append({'month': month, 'available': period is not None, 'metrics': metrics})
+    return {'source': source, 'year': year, 'currency': currency, 'monthly': monthly,
+            'generatedAt': datetime.now(timezone.utc).isoformat()}
 

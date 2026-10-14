@@ -98,8 +98,8 @@ export class Analytics {
   months = Array.from({ length: 12 }, (_, i) => i + 1);
   first = signal(7);
   second = signal(8);
-  tableMetric = signal("tradeUsd");
-  trendMetric = signal("tradeUsd");
+  tableMetric = signal("importUsd");
+  trendMetric = signal("importUsd");
   selectedMonths = computed(
     () =>
       this.report()?.monthly.filter(
@@ -177,28 +177,52 @@ export class Analytics {
         color: "#11998b",
       },
       {
-        key: this.moneyKey("trade"),
-        es: "Valor de mercancías",
-        en: "Trade value",
+        key: this.moneyKey("import"),
+        es: "Valor de importaciones",
+        en: "Import goods value",
         unit: this.currency(),
-        source: "551",
+        source: "551 · IMP",
         color: "#447ec0",
       },
       {
-        key: "igiPaid",
-        es: "IGI en efectivo",
-        en: "Cash import duty (IGI)",
+        key: this.moneyKey("export"),
+        es: "Valor de exportaciones",
+        en: "Export goods value",
         unit: this.currency(),
-        source: "557 · FP 0",
+        source: "551 · EXP",
+        color: "#22978a",
+      },
+      {
+        key: "igiPaid",
+        es: "IGI · FP 0",
+        en: "Import duty · FP 0",
+        unit: this.currency(),
+        source: "557 · " + this.t("Efectivo", "Cash"),
         color: "#2877b5",
       },
       {
         key: "ivaPaid",
-        es: "IVA en efectivo",
-        en: "Cash VAT (IVA)",
+        es: "IVA · FP 0",
+        en: "VAT · FP 0",
         unit: this.currency(),
-        source: "557 · FP 0",
+        source: "557 · " + this.t("Efectivo", "Cash"),
         color: "#9b6520",
+      },
+      {
+        key: "igiFp21",
+        es: "IGI · FP 21",
+        en: "Import duty · FP 21",
+        unit: this.currency(),
+        source: "557 · " + this.t("Crédito IVA/IEPS", "VAT/excise credit"),
+        color: "#7462ac",
+      },
+      {
+        key: "ivaFp21",
+        es: "IVA · FP 21",
+        en: "VAT · FP 21",
+        unit: this.currency(),
+        source: "557 · " + this.t("Crédito IVA/IEPS", "VAT/excise credit"),
+        color: "#a3843f",
       },
       {
         key: "rectifications",
@@ -536,7 +560,9 @@ export class Analytics {
   setCurrency(currency: "USD" | "MXN") {
     if (this.filters.currency === currency) return;
     this.filters.currency = currency;
-    this.trendMetric.set("trade" + (currency === "USD" ? "Usd" : "Mxn"));
+    this.trendMetric.update((key) =>
+      key.replace(/(Usd|Mxn)$/, currency === "USD" ? "Usd" : "Mxn"),
+    );
     this.load();
   }
   rectificationSeries(): ChartSeries[] {

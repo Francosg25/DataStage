@@ -1,12 +1,13 @@
 import { Component, DestroyRef, inject, signal } from "@angular/core";
 import { FormsModule } from "@angular/forms";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { Subject, catchError, forkJoin, of, switchMap, tap } from "rxjs";
+import { Subject, catchError, forkJoin, map, of, switchMap, tap } from "rxjs";
 import { Api } from "../core/api";
 import {
   AnalyticsFilters,
   AnalyticsOptions,
-  AnalyticsReport,
+  AnalyticsMonthlyReport,
+  AnalyticsComparisonMonth,
 } from "../core/analytics";
 import { I18n } from "../core/i18n";
 import { errorText } from "../core/models";
@@ -86,10 +87,7 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
       </div>
     }
     @if (result(); as reports) {
-      @if (
-        !reports[0].coverage.availableMonths.length ||
-        !reports[1].coverage.availableMonths.length
-      ) {
+      @if (!reports[0].available || !reports[1].available) {
         <p class="notice">
           {{
             t(
@@ -274,7 +272,9 @@ export class MonthComparison {
   private destroy = inject(DestroyRef);
   readonly i18n = inject(I18n);
   options = signal<AnalyticsOptions | null>(null);
-  result = signal<[AnalyticsReport, AnalyticsReport] | null>(null);
+  result = signal<[AnalyticsComparisonMonth, AnalyticsComparisonMonth] | null>(
+    null,
+  );
   loading = signal(true);
   error = signal("");
   source = "published";
@@ -327,10 +327,7 @@ export class MonthComparison {
         }),
         switchMap((pair) =>
           pair
-            ? forkJoin([
-                this.api.analytics(pair[0]),
-                this.api.analytics(pair[1]),
-              ]).pipe(
+            ? this.reportsForMonths(pair).pipe(
                 catchError((e) => {
                   this.error.set(errorText(e));
                   return of(null);
@@ -367,9 +364,52 @@ export class MonthComparison {
     this.comparison = `${year}-02`;
     this.load();
   }
+  private reportsForMonths(pair: [AnalyticsFilters, AnalyticsFilters]) {
+    const first = this.api.analyticsMonths({
+      source: pair[0].source,
+      year: pair[0].year,
+      currency: pair[0].currency,
+    });
+    const years =
+      pair[0].year === pair[1].year
+        ? first.pipe(map((report) => [report, report] as const))
+        : forkJoin([
+            first,
+            this.api.analyticsMonths({
+              source: pair[1].source,
+              year: pair[1].year,
+              currency: pair[1].currency,
+            }),
+          ]);
+    const selectMonth = (
+      report: AnalyticsMonthlyReport,
+      month: number,
+    ): AnalyticsComparisonMonth => {
+      const selected = report.monthly.find((item) => item.month === month);
+      return {
+        source: report.source,
+        year: report.year,
+        currency: report.currency,
+        month,
+        available: selected?.available || false,
+        totals: selected?.metrics || {},
+      };
+    };
+    return years.pipe(
+      map(
+        (reports) =>
+          [
+            selectMonth(reports[0], pair[0].startMonth),
+            selectMonth(reports[1], pair[1].startMonth),
+          ] as [AnalyticsComparisonMonth, AnalyticsComparisonMonth],
+      ),
+    );
+  }
   load() {
-    if (this.metric.startsWith("trade"))
-      this.metric = "trade" + (this.currency === "USD" ? "Usd" : "Mxn");
+    this.metric = this.metric.replace(
+      /(Usd|Mxn)$/,
+      this.currency === "USD" ? "Usd" : "Mxn",
+    );
     const parse = (month: string): AnalyticsFilters | null => {
       if (!/^(19\d{2}|20\d{2}|2100)-(0[1-9]|1[0-2])$/.test(month)) return null;
       const [year, m] = month.split("-").map(Number);
@@ -403,8 +443,13 @@ export class MonthComparison {
         unit: "",
       },
       {
-        key: "trade" + (currency === "USD" ? "Usd" : "Mxn"),
-        name: this.t("Valor de mercancías", "Trade value"),
+        key: "import" + (currency === "USD" ? "Usd" : "Mxn"),
+        name: this.t("Valor de importaciones", "Import goods value"),
+        unit: currency,
+      },
+      {
+        key: "export" + (currency === "USD" ? "Usd" : "Mxn"),
+        name: this.t("Valor de exportaciones", "Export goods value"),
         unit: currency,
       },
       {
@@ -415,6 +460,16 @@ export class MonthComparison {
       {
         key: "ivaPaid",
         name: this.t("IVA en efectivo · FP 0", "Cash VAT · FP 0"),
+        unit: currency,
+      },
+      {
+        key: "igiFp21",
+        name: this.t("IGI · FP 21", "Import duty · FP 21"),
+        unit: currency,
+      },
+      {
+        key: "ivaFp21",
+        name: this.t("IVA · FP 21", "VAT · FP 21"),
         unit: currency,
       },
       { key: "items", name: this.t("Partidas", "Line items"), unit: "" },
@@ -432,6 +487,11 @@ export class MonthComparison {
     return this.metrics().find((m) => m.key === this.metric)?.unit || "";
   }
   metricNote() {
+    if (["igiFp21", "ivaFp21"].includes(this.metric))
+      return this.t(
+        "Importaciones · 557 · FormaPago 21: crédito en IVA e IEPS (CERTIVA). Cada impuesto conserva su propia contribución. Sin dato no equivale a cero.",
+        "Imports · 557 · Payment method 21: VAT/excise credit (CERTIVA). Each tax keeps its own contribution code. Unavailable is not zero.",
+      );
     if (["igiPaid", "ivaPaid"].includes(this.metric))
       return this.t(
         "Importaciones · 557 · Solo efectivo (FP 0). Crédito FP 21 y otras formas de pago separados. Sin dato no equivale a cero.",
@@ -452,14 +512,19 @@ export class MonthComparison {
         "Cantidad de registros de partidas en 551.",
         "Number of line-item records in 551.",
       );
-    return this.t(
-      "ValorDolares de 551 convertido por pedimento. No se netean rectificaciones contra originales.",
-      "551 goods value converted per declaration. Amendments are not netted against originals.",
-    );
+    return this.metric.startsWith("export")
+      ? this.t(
+          "Exportaciones · 551 · TipoOperacion 2. ValorDolares convertido por pedimento.",
+          "Exports · 551 · Operation type 2. Goods value converted per declaration.",
+        )
+      : this.t(
+          "Importaciones · 551 · TipoOperacion 1. ValorDolares convertido por pedimento.",
+          "Imports · 551 · Operation type 1. Goods value converted per declaration.",
+        );
   }
   labels() {
     return (this.result() || []).map(
-      (r) => `${this.i18n.month(r.startMonth, true)} ${r.year}`,
+      (r) => `${this.i18n.month(r.month, true)} ${r.year}`,
     );
   }
   series(): ChartSeries[] {

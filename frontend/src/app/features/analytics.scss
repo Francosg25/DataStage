@@ -516,7 +516,7 @@ select {
 }
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -529,7 +529,7 @@ select {
   border-top: 3px solid var(--metric-color);
 }
 .kpi-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   color: #6a7c86;
   line-height: 1.45;
@@ -613,7 +613,7 @@ select {
   }
 }
 .kpi-note {
-  font-size: 8px;
+  font-size: 10px;
   color: #8b989f;
   line-height: 1.5;
   margin-top: 5px;

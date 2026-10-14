@@ -3,6 +3,7 @@ import { HttpClient, HttpParams } from "@angular/common/http";
 import { Observable } from "rxjs";
 import {
   AnalyticsFilters,
+  AnalyticsMonthlyReport,
   AnalyticsOptions,
   AnalyticsReport,
 } from "./analytics";
@@ -131,6 +132,16 @@ export class Api {
     return this.http.get<AnalyticsReport>(`${this.base}/reports/analytics`, {
       params: { ...filters },
     });
+  }
+  analyticsMonths(
+    filters: Pick<AnalyticsFilters, "source" | "year" | "currency">,
+  ) {
+    return this.http.get<AnalyticsMonthlyReport>(
+      `${this.base}/reports/analytics/months`,
+      {
+        params: { ...filters },
+      },
+    );
   }
   analyticsPdf(
     filters: AnalyticsFilters,

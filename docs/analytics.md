@@ -34,7 +34,11 @@ Los rankings comerciales muestran ocho categorías y agrupan el resto en `Otros`
 
 ## IGI, IVA y números de parte
 
-Los indicadores de pago usan 557: clave 6 para IGI y clave 3 para IVA, únicamente importaciones y FormaPago 0 (efectivo). La clave 1 es DTA, no IGI. No se suman 510 y 557. 702 y la gráfica genérica de contribuciones por partida dejan de aparecer en el dashboard; los datos originales se conservan.
+Los indicadores de pago usan 557: clave 6 para IGI y clave 3 para IVA, únicamente importaciones verificadas en 551. Las cuatro tarjetas distinguen IGI e IVA en FormaPago 0 (efectivo) y FormaPago 21 (crédito IVA/IEPS). `igiPaid` y `ivaPaid` conservan FP 0; `igiFp21` e `ivaFp21` conservan FP 21, en la moneda de la respuesta. Cada tarjeta usa su importe mensual para la tendencia y variación. La clave 1 es DTA, no IGI. No se suman 510 y 557. 702 y la gráfica genérica de contribuciones por partida dejan de aparecer en el dashboard; los datos originales se conservan.
+
+El análisis muestra nueve tarjetas: pedimentos, valor de importaciones, valor de exportaciones, IGI FP 0, IVA FP 0, IGI FP 21, IVA FP 21, rectificaciones y tasa roja. Los valores comerciales proceden de 551 y se separan por TipoOperacion 1 y 2; cada importe se convierte por pedimento cuando se solicita MXN. El total histórico `tradeUsd`/`tradeMxn` se mantiene en la API para compatibilidad y puede incluir operaciones sin clasificar, pero no aparece como una tarjeta combinada. Las cuatro tarjetas de contribuciones conservan cero con cobertura e importes verificados; sin cobertura o con cruces o conversiones inválidos conservan `null`. Los filtros generales siguen aplicándose; elegir solo exportación deja los pagos de importación y el valor de importación en cero cuando hay cobertura.
+
+La comparativa mensual utiliza el mismo desglose comercial y de pagos, con Partidas en lugar de tasa roja. El PDF muestra el mismo resumen de nueve indicadores y separa importación/exportación en su evolución mensual. El CSV incluye las nuevas métricas. Las gráficas de impuestos por PN siguen midiendo pagos en efectivo FP 0.
 
 La relación 551/557/558 utiliza año, mes, patente, pedimento, sección aduanera, fracción y secuencia. El extractor admite etiquetas explícitas NP, NP INTERNO, N/P, P/N, No.Parte, número de parte y Part Number, con o sin dos puntos. Admite una etiqueta sola seguida de un token en la siguiente secuencia de observación, o en el siguiente segmento separado por `|` o salto de línea. Conserva códigos completos, incluidos `/MX`, segundos guiones y `+`. Excluye el contador de `ORDEN DE NUMERO DE PARTE 1`.
 
@@ -137,3 +141,33 @@ La prueba automatizada cubre precisión, cero/nulo, granularidad, filtros, autor
 - El PDF usa las mismas definiciones de efectivo, crédito, otras formas y pedimentos rectificados. No se cambia el significado fiscal de las operaciones: el valor declarado no netea originales/rectificaciones y las diferencias 702 permanecen separadas.
 
 Referencias aportadas: Manual de Consulta, julio 2021, páginas 12–23; Anexo 22 del 15 de enero de 2026, páginas 119–120 (apéndices 12 y 13). Pruebas adicionales en `backend/tests/test_chart_semantics.py` y `frontend/src/app/features/analytics.spec.ts`.
+
+## Tiempo de carga
+
+Los reportes se reutilizan en memoria cuando la fuente y los filtros siguen
+iguales. Cada petición mantiene la comprobación de permisos y consulta la
+versión de la fuente: ejecución activa y versión del mes en cargas publicadas;
+ruta, tamaño y marcas del archivo en la referencia Excel. Publicar, reemplazar
+o quitar un mes, o cambiar la referencia, provoca un cálculo nuevo. El botón
+Actualizar y volver a entrar en la sección hacen esta comprobación.
+
+La caché pertenece a cada proceso del backend, con un máximo de 12 resultados
+y 32 MiB de contenido serializado. Solicitudes simultáneas del mismo reporte
+comparten el cálculo. No se guardan resultados en disco ni en el navegador.
+Al reiniciar el backend, la primera consulta vuelve a calcularse.
+
+`GET /api/v1/reports/analytics/months` devuelve los indicadores
+mensuales utilizados por la comparativa y el total comercial histórico de compatibilidad. No procesa observaciones 558 ni calcula
+atribución a PN o rankings. Dos meses del mismo año requieren una petición;
+años diferentes requieren una por año. Conserva el conteo por llave, la moneda,
+la cobertura y los importes desconocidos del reporte completo.
+
+En cargas publicadas consulta solo 501, 551, 557 y 701. La referencia JSON
+completa se lee en su primer acceso y se reutiliza mientras el archivo conserve
+la misma versión.
+
+En la prueba con enero–agosto de 2026, el cálculo completo repetido pasó de
+2.82 s a 0.035 s. La comparativa pasó de dos respuestas de unos 220 kB a una
+respuesta de 2.3 kB; su primer cálculo tardó 0.20 s. Son medidas del entorno
+de prueba, no tiempos garantizados de pantalla en otros equipos.
+

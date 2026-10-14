@@ -29,6 +29,25 @@ describe("contratos de la API", () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it("requests the lightweight monthly summary through the authenticated API", async () => {
+    const promise = firstValueFrom(
+      api.analyticsMonths({ source: "published", year: 2026, currency: "MXN" }),
+    );
+    await Promise.resolve();
+    const request = http.expectOne(
+      (r) => r.url === "/api/v1/reports/analytics/months",
+    );
+    expect(request.request.headers.get("Authorization")).toBe(
+      "Bearer corporate-access-token",
+    );
+    expect(request.request.params.keys().sort()).toEqual([
+      "currency",
+      "source",
+      "year",
+    ]);
+    request.flush({ year: 2026, currency: "MXN", monthly: [] });
+    expect((await promise).currency).toBe("MXN");
+  });
   it("deletes months with the reviewed token and confirmation without a reason", async () => {
     const preview = {
       periods: [{ periodId: "april" }, { periodId: "may" }],

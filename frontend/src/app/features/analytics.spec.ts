@@ -6,6 +6,76 @@ import { Analytics } from "./analytics";
 import { AnalyticsReport, PartTaxRow } from "../core/analytics";
 
 describe("analytics filters and comparisons", () => {
+  it("shows separate import/export goods and four tax indicators in both languages", () => {
+    const { component } = setup();
+    expect(component.metricDefinitions).toHaveLength(9);
+    expect(component.metricDefinitions.map((metric) => metric.key)).toEqual([
+      "declarations",
+      "importUsd",
+      "exportUsd",
+      "igiPaid",
+      "ivaPaid",
+      "igiFp21",
+      "ivaFp21",
+      "rectifications",
+      "redRate",
+    ]);
+    expect(
+      component.metricDefinitions.find((metric) => metric.key === "ivaFp21")
+        ?.es,
+    ).toBe("IVA · FP 21");
+    component.i18n.set("en");
+    expect(
+      component.metricDefinitions.find((metric) => metric.key === "igiFp21")
+        ?.en,
+    ).toBe("Import duty · FP 21");
+    expect(
+      component.metricDefinitions.find((metric) => metric.key === "ivaFp21")
+        ?.source,
+    ).toContain("VAT/excise credit");
+  });
+  it("uses each payment method's own monthly changes and preserves the selected metric across currencies", () => {
+    const { component } = setup();
+    component.report.set({
+      currency: "USD",
+      startMonth: 1,
+      endMonth: 2,
+      latest: { ivaPaid: 6, ivaFp21: 24 },
+      previous: { ivaPaid: 8, ivaFp21: 32 },
+      deltas: { ivaPaid: -25, ivaFp21: -25 },
+      monthly: [
+        {
+          month: 1,
+          available: true,
+          metrics: { ivaPaid: 8, ivaFp21: 32, exportUsd: 200 },
+        },
+        {
+          month: 2,
+          available: true,
+          metrics: { ivaPaid: 6, ivaFp21: 24, exportUsd: 500 },
+        },
+      ],
+    } as unknown as AnalyticsReport);
+    expect(component.series("ivaFp21", "IVA FP 21")[0].values).toEqual([
+      32, 24,
+    ]);
+    expect(component.metricDeltaLabel("ivaFp21")).toBe("-25%");
+    expect(component.compareDelta("exportUsd")).toBeNull();
+    component.first.set(1);
+    component.second.set(2);
+    expect(component.compareDelta("exportUsd")).toBe(150);
+    component.trendMetric.set("exportUsd");
+    component.setCurrency("MXN");
+    expect(component.trendMetric()).toBe("exportMxn");
+    component.report.set({ ...component.report()!, currency: "MXN" });
+    expect(
+      component.metricDefinitions.find((metric) => metric.key === "exportMxn")
+        ?.unit,
+    ).toBe("MXN");
+    component.trendMetric.set("ivaFp21");
+    component.setCurrency("USD");
+    expect(component.trendMetric()).toBe("ivaFp21");
+  });
   it("finds the principal part using its alternate code without duplicating tax rows", () => {
     const { component } = setup();
     const row = {

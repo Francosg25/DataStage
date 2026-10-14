@@ -184,7 +184,7 @@ Las alertas se calculan sobre las llaves identificables de 551 de la selección,
 
 ### Indicadores del análisis
 
-Las seis tarjetas del dashboard muestran: pedimentos únicos de 501; valor de mercancías de 551; IGI en efectivo; IVA en efectivo; llaves distintas de 701; y porcentaje rojo de SEL. El número principal corresponde al rango seleccionado. Para rojo es una proporción del conjunto, no una suma de porcentajes.
+Las nueve tarjetas del análisis muestran: pedimentos únicos de 501; valor de importaciones de 551 (TipoOperacion 1); valor de exportaciones de 551 (TipoOperacion 2); IGI FP 0; IVA FP 0; IGI FP 21; IVA FP 21; llaves distintas de 701; y porcentaje rojo de SEL. El número principal corresponde al rango seleccionado. Para rojo es una proporción del conjunto, no una suma de porcentajes. Los impuestos usan pagos de importación de 557, verificados con 551: contribución 6 para IGI y 3 para IVA. FormaPago 0 es efectivo y 21 es crédito IVA/IEPS (CERTIVA); sus importes nunca se combinan en una tarjeta. Las gráficas por PN conservan únicamente FP 0.
 
 La variación pequeña de cada tarjeta compara el último mes disponible del rango contra el mes calendario inmediatamente anterior. No compara el total del rango contra otro total. El mes anterior puede quedar fuera del rango seleccionado; si falta o su valor base es cero, no hay porcentaje comparable. En enero esta tarjeta no busca automáticamente diciembre del año anterior.
 
@@ -192,15 +192,15 @@ Las minibarras conservan los meses del rango: un valor ausente deja un espacio, 
 
 ### Comparativa dentro del análisis
 
-En Panorama general se eligen dos meses del mismo año y se presentan las seis métricas de las tarjetas. Sean A el valor del mes base y B el del mes comparado. La variación es `(B - A) / abs(A) * 100`. Si cualquiera falta o A es cero, el porcentaje se marca sin base comparable. La tasa de rojo utiliza diferencia en puntos porcentuales (p.p.): de 20 % a 30 % muestra +10 p.p., incluso con base cero. Las demás métricas mantienen la variación relativa.
+En Panorama general se eligen dos meses del mismo año y se presentan las nueve métricas de las tarjetas. Sean A el valor del mes base y B el del mes comparado. La variación es `(B - A) / abs(A) * 100`. Si cualquiera falta o A es cero, el porcentaje se marca sin base comparable. La tasa de rojo utiliza diferencia en puntos porcentuales (p.p.): de 20 % a 30 % muestra +10 p.p., incluso con base cero. Las demás métricas mantienen la variación relativa.
 
 Los selectores de las comparativas internas se limitan al rango seleccionado del reporte. Un mes sin cobertura dentro de ese rango permanece sin dato. La página Comparativa mensual permite elegir libremente otros meses y años.
 
 ### Comparativa mensual entre años
 
-La página Comparativa mensual consulta el mismo servicio dos veces: una para cada par mes/año. Permite comparar años diferentes y usa la misma fuente y moneda en ambos lados. Sus controles no heredan los filtros de aduana, operación o documento de Análisis de operaciones; ambas consultas se realizan sin esos filtros.
+La página Comparativa mensual consulta un resumen anual ligero: una petición si los dos meses pertenecen al mismo año y una por año si son diferentes. Permite comparar años diferentes y usa la misma fuente y moneda en ambos lados. Sus controles no heredan los filtros de aduana, operación o documento de Análisis de operaciones; las consultas se realizan sin esos filtros. No se calcula identificación de PN ni rankings en este resumen.
 
-La gráfica de dos barras admite seis indicadores: pedimentos, valor de mercancías, IGI, IVA, partidas y rectificaciones. Partidas significa cantidad de filas 551. Las seis fichas muestran ambos valores, diferencia absoluta `B - A` y variación relativa con la misma fórmula anterior. No incluye la tasa roja en esta página.
+La gráfica de dos barras admite nueve indicadores: pedimentos, valor de importaciones, valor de exportaciones, IGI FP 0, IVA FP 0, IGI FP 21, IVA FP 21, partidas y rectificaciones. Partidas significa cantidad de filas 551. Las nueve fichas muestran ambos valores, diferencia absoluta `B - A` y variación relativa con la misma fórmula anterior. No incluye la tasa roja en esta página.
 
 Ejemplo: A = 100 y B = 120 producen diferencia de 20 y variación de 20 %. A = 0 y B = 120 producen diferencia de 120, pero no un crecimiento porcentual definido. Si A falta, tanto la diferencia como el porcentaje quedan sin dato. La página solo analiza información; crear Excel consolidados pertenece a Cargas.
 
