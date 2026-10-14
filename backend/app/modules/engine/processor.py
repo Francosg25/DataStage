@@ -50,14 +50,21 @@ def _parse_asc(file: InputFile, options: EngineOptions) -> tuple[list[str], list
         raise ValueError("Encabezados equivalentes duplicados dentro del archivo; no es posible alinearlos sin perder valores.")
     if set(keys) & _TRACE:
         raise ValueError("El ASC contiene un encabezado reservado para trazabilidad: Periodo, ArchivoOrigen o FolioOrigen.")
-    if len(lines) - 1 > options.max_rows:
-        raise ValueError(f"Se excedió el límite de {options.max_rows} filas por tabla.")
     width = len(headers)
     rows = []
+    empty_lines = 0
     for number, line in lines[1:]:
         row = _split_line(line)
+        if not any(row):
+            empty_lines += 1
+            continue
+        if len(rows) >= options.max_rows:
+            raise ValueError(f"Se excedió el límite de {options.max_rows} filas por tabla.")
         rows.append((number, (row + [""] * width)[:width]))
-    return headers, rows, "Procesado correctamente." if rows else "Archivo solo con encabezado."
+    message = "Procesado correctamente." if rows else "Archivo solo con encabezado."
+    if empty_lines:
+        message += f" Se omitieron {empty_lines} líneas sin datos."
+    return headers, rows, message
 
 
 def _add_pedimento(headers: list[str], rows: list[tuple[int, list[str]]], year: int, options: EngineOptions) -> tuple[list[str], list[tuple[int, list[str]]]]:
@@ -227,3 +234,4 @@ def process_annual(year: int, range_name: str, files: list[InputFile], options: 
     if period_range:
         result["periodRange"] = period_range.payload()
     return result
+

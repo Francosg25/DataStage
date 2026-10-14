@@ -463,11 +463,6 @@ export class MonthComparison {
         unit: currency,
       },
       {
-        key: "igiFp21",
-        name: this.t("IGI · FP 21", "Import duty · FP 21"),
-        unit: currency,
-      },
-      {
         key: "ivaFp21",
         name: this.t("IVA · FP 21", "VAT · FP 21"),
         unit: currency,
@@ -487,7 +482,7 @@ export class MonthComparison {
     return this.metrics().find((m) => m.key === this.metric)?.unit || "";
   }
   metricNote() {
-    if (["igiFp21", "ivaFp21"].includes(this.metric))
+    if (this.metric === "ivaFp21")
       return this.t(
         "Importaciones · 557 · FormaPago 21: crédito en IVA e IEPS (CERTIVA). Cada impuesto conserva su propia contribución. Sin dato no equivale a cero.",
         "Imports · 557 · Payment method 21: VAT/excise credit (CERTIVA). Each tax keeps its own contribution code. Unavailable is not zero.",

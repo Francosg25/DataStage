@@ -6,16 +6,15 @@ import { Analytics } from "./analytics";
 import { AnalyticsReport, PartTaxRow } from "../core/analytics";
 
 describe("analytics filters and comparisons", () => {
-  it("shows separate import/export goods and four tax indicators in both languages", () => {
+  it("shows eight indicators with cash IGI and VAT plus FP 21 VAT in both languages", () => {
     const { component } = setup();
-    expect(component.metricDefinitions).toHaveLength(9);
+    expect(component.metricDefinitions).toHaveLength(8);
     expect(component.metricDefinitions.map((metric) => metric.key)).toEqual([
       "declarations",
       "importUsd",
       "exportUsd",
       "igiPaid",
       "ivaPaid",
-      "igiFp21",
       "ivaFp21",
       "rectifications",
       "redRate",
@@ -25,10 +24,7 @@ describe("analytics filters and comparisons", () => {
         ?.es,
     ).toBe("IVA · FP 21");
     component.i18n.set("en");
-    expect(
-      component.metricDefinitions.find((metric) => metric.key === "igiFp21")
-        ?.en,
-    ).toBe("Import duty · FP 21");
+    expect(component.metricDefinitions.some((metric) => metric.key === "igiFp21")).toBe(false);
     expect(
       component.metricDefinitions.find((metric) => metric.key === "ivaFp21")
         ?.source,
@@ -99,7 +95,7 @@ describe("analytics filters and comparisons", () => {
       currency: "MXN",
       startMonth,
       endMonth,
-      partTaxes: { rows },
+      partTaxes: { rows, available: true, unmatchedTaxRows: 0 },
       monthly: Array.from({ length: 12 }, (_, i) => ({
         month: i + 1,
         available: true,
@@ -122,6 +118,44 @@ describe("analytics filters and comparisons", () => {
       months: { "1": { igi, iva: 20 } },
     };
   }
+  it("ranks tariffs by all cash duty amounts, including unassigned PN and net adjustments", () => {
+    const { component } = setup();
+    component.report.set(partReport([
+      partRow("PN-A", "85044099", 100),
+      partRow("PN-B", "85044099", 300),
+      partRow(null, "84733004", 1000),
+      partRow("PN-C", "84733004", -100),
+      partRow("PN-ZERO", "00000000", 0),
+    ]));
+    expect(component.topTariffTaxes()).toEqual([
+      { tariff: "84733004", igi: 900 },
+      { tariff: "85044099", igi: 400 },
+    ]);
+    expect(component.tariffTaxLabels()).toEqual(["84733004", "85044099"]);
+    expect(component.tariffTaxSeries()[0].values).toEqual([900, 400]);
+    component.selectPartTariff("85044099");
+    expect(component.topTariffTaxes()).toEqual([{ tariff: "85044099", igi: 400 }]);
+    component.searchParts("PN-A");
+    expect(component.tariffTaxSeries()[0].values).toEqual([100]);
+  });
+  it("filters before taking the top ten tariffs and handles unknown amounts and missing coverage", () => {
+    const { component } = setup();
+    const rows = Array.from({ length: 12 }, (_, i) => partRow(`PN-${i}`, String(i).padStart(8, "0"), i + 1));
+    const report = partReport(rows);
+    report.partTaxes.observationSourceAvailable = false;
+    component.report.set(report);
+    expect(component.topTariffTaxes()).toHaveLength(10);
+    expect(component.topTariffTaxes()[0]).toEqual({ tariff: "00000011", igi: 12 });
+    component.selectPartTariff("00000000");
+    expect(component.tariffTaxSeries()[0].values).toEqual([1]);
+    component.clearPartFilters();
+    component.report.set(partReport([...rows, { ...partRow(null), igi: null }]));
+    expect(component.topTariffTaxes()).toEqual([]);
+    component.report.set({ ...report, partTaxes: { ...report.partTaxes, available: false } });
+    expect(component.topTariffTaxes()).toEqual([]);
+    component.report.set({ ...report, partTaxes: { ...report.partTaxes, unmatchedTaxRows: 1 } });
+    expect(component.topTariffTaxes()).toEqual([]);
+  });
   it("combines independent PN and tariff filters, including aliases, and resets pagination", () => {
     const { component } = setup();
     const primary = {

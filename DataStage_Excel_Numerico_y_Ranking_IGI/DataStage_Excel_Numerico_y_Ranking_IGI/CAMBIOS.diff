@@ -1,0 +1,956 @@
+--- a/backend/app/modules/engine/exporter.py
++++ b/backend/app/modules/engine/exporter.py
+@@ -1,19 +1,35 @@
+ """Excel output adapter; Excel never participates in the transformation."""
+ from __future__ import annotations
+ 
++import math
+ import re
+-from datetime import datetime
++from datetime import date, datetime
++from decimal import Decimal, InvalidOperation
+ from pathlib import Path
+ 
+ import xlsxwriter
+ 
+ from .catalog import normalize_header
++from .dates import is_date_header, parse_date
+ 
+ MONTHLY_CONTROL_HEADERS = ("Archivo", "Tabla", "Hoja", "Estatus", "Filas", "Columnas", "ColumnasFecha", "Mensaje")
+ ANNUAL_CONTROL_HEADERS = ("Periodo",) + MONTHLY_CONTROL_HEADERS
+ EXCEL_MAX_ROWS = 1_048_576
+ EXCEL_MAX_COLUMNS = 16_384
+ EXCEL_MAX_TEXT = 32_767
++MONEY_HEADERS = frozenset(normalize_header(header) for header in (
++    "TotalFletes", "TotalSeguros", "TotalEmbalajes", "TotalIncrementables", "TotalDeducibles",
++    "ValorDolares", "ValorMonedaExtranjera", "ValorUnitarioTitulo", "TotalGarantia",
++    "PrecioUnitario", "ValorAduana", "ValorComercial", "ValorAgregado", "ValorComercialDolares",
++    "ImportePago", "TotalContribuciones",
++))
++MEASURE_HEADERS = frozenset(normalize_header(header) for header in (
++    "TipoCambio", "PesoBrutoMercancia", "CantidadUnidades", "TitulosAsignados", "TasaContribucion",
++    "MercanciaDescargada", "CantidadUMComercial", "CantidadUMTarifa", "KilometrajeVehiculo",
++    "CantidadMUMTarifa", "CantidadUnidadesMedida",
++))
++COUNT_HEADERS = frozenset(normalize_header(header) for header in ("TotalFracciones",))
++CONTROL_COUNTS = frozenset(normalize_header(header) for header in ("Filas", "Columnas", "ColumnasFecha"))
+ 
+ 
+ def _empty(value: object) -> bool:
+@@ -36,12 +52,31 @@
+ 
+ 
+ def _datetime_cell(value: object) -> datetime | None:
+-    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", value):
++    if isinstance(value, datetime):
++        parsed = value
++    elif isinstance(value, date):
++        parsed = datetime.combine(value, datetime.min.time())
++    elif isinstance(value, str):
++        parsed, _ = parse_date(value)
++    else:
++        return None
++    return parsed if parsed and parsed.tzinfo is None and 1900 <= parsed.year <= 2100 else None
++
++
++def _number_cell(value: object) -> float | None:
++    """Convert schema-defined measures only; never guess identifier types."""
++    text = str(value).strip()
++    if not re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", text):
+         return None
+     try:
+-        parsed = datetime.fromisoformat(value)
+-        return parsed if 1900 <= parsed.year <= 2100 else None
+-    except ValueError:
++        parsed = Decimal(text)
++        # Excel cannot faithfully store more than 15 significant decimal digits.
++        significant = ''.join(str(digit) for digit in parsed.as_tuple().digits).rstrip('0')
++        if len(significant) > 15:
++            return None
++        result = float(parsed)
++        return result if math.isfinite(result) and (result != 0 or parsed == 0) else None
++    except (InvalidOperation, OverflowError, ValueError):
+         return None
+ 
+ 
+@@ -63,11 +98,23 @@
+                 "font_size": 11, "align": "left", "valign": "vcenter", "text_wrap": True,
+             })
+             text_format = workbook.add_format({"num_format": "@"})
+-            date_format = workbook.add_format({"num_format": "yyyy-mm-dd hh:mm:ss"})
++            date_format = workbook.add_format({"num_format": "yyyy-mm-dd"})
++            datetime_format = workbook.add_format({"num_format": "yyyy-mm-dd hh:mm:ss"})
++            money_format = workbook.add_format({"num_format": "#,##0.00"})
++            measure_format = workbook.add_format({"num_format": "#,##0.##########"})
++            count_format = workbook.add_format({"num_format": "#,##0"})
+             for sheet in sheets:
+                 worksheet = workbook.add_worksheet(sheet["sheetName"])
+                 headers, rows = sheet["headers"], sheet["rows"]
+-                date_keys = set(sheet["dateColumns"])
++                keys = [normalize_header(header) for header in headers]
++                date_keys = {normalize_header(header) for header in sheet["dateColumns"]}
++                date_keys.update(key for key in keys if is_date_header(key))
++                count_keys = COUNT_HEADERS | (CONTROL_COUNTS if sheet["sheetName"] == "Control_Proceso" else set())
++                numeric_keys = MONEY_HEADERS | MEASURE_HEADERS | count_keys
++                column_formats = [date_format if key in date_keys else
++                                  money_format if key in MONEY_HEADERS else
++                                  count_format if key in count_keys else
++                                  measure_format if key in MEASURE_HEADERS else text_format for key in keys]
+                 widths = [max(len(line) for line in header.split("\n")) for header in headers]
+                 worksheet.freeze_panes(1, 0)
+                 for column, header in enumerate(headers):
+@@ -80,16 +127,22 @@
+                     for column, value in enumerate(row):
+                         if _empty(value):
+                             continue
+-                        parsed = _datetime_cell(value) if normalize_header(headers[column]) in date_keys else None
++                        key = keys[column]
++                        parsed = _datetime_cell(value) if key in date_keys else None
++                        numeric = _number_cell(value) if key in numeric_keys else None
+                         if parsed:
+-                            worksheet.write_datetime(row_index, column, parsed, date_format)
+-                            visible = parsed.strftime("%Y-%m-%d %H:%M:%S")
++                            has_time = parsed.time() != datetime.min.time()
++                            worksheet.write_datetime(row_index, column, parsed, datetime_format if has_time else date_format)
++                            visible = parsed.strftime("%Y-%m-%d %H:%M:%S" if has_time else "%Y-%m-%d")
++                        elif numeric is not None:
++                            worksheet.write_number(row_index, column, numeric, column_formats[column])
++                            visible = str(value)
+                         else:
+                             visible = str(value) if value is not None else ""
+                             worksheet.write_string(row_index, column, visible, text_format)
+                         widths[column] = max(widths[column], *(len(line) for line in visible.split("\n")))
+                 for column, width in enumerate(widths):
+-                    worksheet.set_column(column, column, min(255, max(12, width + 4)), text_format)
++                    worksheet.set_column(column, column, min(255, max(12, width + 4)), column_formats[column])
+                 worksheet.autofilter(0, 0, row_index, len(headers) - 1)
+                 header_lines = max(len(header.split("\n")) for header in headers)
+                 worksheet.set_row(0, max(32, header_lines * 16 + 12))
+--- a/backend/app/modules/reporting/pdf_report.py
++++ b/backend/app/modules/reporting/pdf_report.py
+@@ -99,7 +99,6 @@
+         [t('Valor de exportaciones (551)', 'Export goods value (551)'), fmt(totals[export_key], 2) + ' ' + currency],
+         ['IGI - FP 0', fmt(totals['igiPaid'], 2) + ' ' + currency],
+         ['IVA - FP 0', fmt(totals['ivaPaid'], 2) + ' ' + currency],
+-        ['IGI - FP 21', fmt(totals['igiFp21'], 2) + ' ' + currency],
+         ['IVA - FP 21', fmt(totals['ivaFp21'], 2) + ' ' + currency],
+         [t('Rectificaciones (701)', 'Amendments (701)'), fmt(totals['rectifications'])],
+         [t('Seleccion en rojo (SEL)', 'Red selection (SEL)'), pct(totals['redRate'])],
+@@ -146,7 +145,7 @@
+           [[t('Sin datos identificables', 'No identifiable data'), '', '', '']], [185, 100, 115, 115])
+ 
+     story.append(PageBreak())
+-    title(t('Rectificaciones por aduana', 'Amendments by customs office'))
++    title(t('Rectificaciones por aduana y patente', 'Amendments by customs office and broker'))
+     rect = report['rectificationsByCustoms']
+     story.append(p(t('Pedimentos rectificados: pedimentos distintos registrados en 701. El documento puede conservar '
+                      'claves AF, IN, RT u otras; no se filtra exclusivamente por ClaveDocumento = R1.',
+@@ -154,22 +153,37 @@
+                      'or others; records are not restricted to DocumentCode = R1.')))
+     story.append(p(t('Base global con los filtros aplicados: ', 'Global base under the applied filters: ') +
+                    fmt(rect['globalDeclarations']) + t(' pedimentos de 501.', ' declarations from 501.')))
+-    def rect_row(label, row):
+-        return [label, fmt(row['r1']), fmt(row['declarations']), pct(row['officeRate']), pct(row['globalRate'])]
+-    table([t('Codigo y aduana', 'Code and customs office'), t('Rectificados', 'Amended'), t('Pedimentos', 'Declarations'),
+-           t('% aduana', '% office'), t('% global', '% global')],
+-          [rect_row(r['customs'] + ' - ' + CUSTOMS.get(r['customs'], t('Sin descripcion validada', 'Description not verified')), r)
+-           for r in rect['rows']] + [rect_row('Total', rect['totals'])], [181, 74, 90, 85, 85], total=True)
+-    story.append(p(t('% aduana = rectificados de la aduana / pedimentos de esa aduana x 100. '
+-                     '% global = rectificados de la aduana / total de pedimentos filtrados x 100. '
++    def group_row(label, row):
++        return [label, fmt(row['r1']), fmt(row['declarations']), pct(row['groupRate']), pct(row['globalRate'])]
++    table([t('Aduana', 'Customs office'), t('Patente', 'Broker license'), t('Rectificados', 'Amended'),
++           t('Pedimentos', 'Declarations'), t('% aduana / patente', '% office / broker'), '% global'],
++          [[row['customs'] + ' - ' + CUSTOMS.get(row['customs'], t('Sin descripcion validada', 'Description not verified')),
++            *group_row(row['patent'], row)] for row in rect['customsPatentRows']] +
++          [[t('Total', 'Total'), '', fmt(rect['totals']['r1']), fmt(rect['totals']['declarations']),
++            pct(rect['totals']['officeRate']), pct(rect['totals']['globalRate'])]], [180, 55, 75, 85, 65, 55], total=True)
++    story.append(p(t('% aduana / patente = rectificados de esa combinacion / sus pedimentos x 100. '
++                     '% global = rectificados de esa combinacion / total de pedimentos filtrados x 100. '
+                      'El total porcentual se recalcula; no se promedian porcentajes.',
+-                     '% office = office amended / office declarations x 100. '
+-                     '% global = office amended / total filtered declarations x 100. '
++                     '% office / broker = amended for the pair / declarations for the pair x 100. '
++                     '% global = pair amended / total filtered declarations x 100. '
+                      'Total percentages are recalculated, not averaged.')))
+-    story.append(p(t('Es una frecuencia de rectificacion, no una prueba de error o responsabilidad. '
+-                     'No se infieren costos ni responsables logisticos.',
+-                     'This is amendment frequency, not proof of error or responsibility. '
+-                     'Costs and logistics owners are not inferred.')))
++
++    story.append(PageBreak())
++    title(t('Rectificaciones por patente', 'Amendments by broker license'))
++    story.append(p(t('Agrupa todas las aduanas de la seleccion por patente. Base global: ',
++                     'Combines all selected customs offices by broker license. Global base: ') +
++                   fmt(rect['globalDeclarations']) + t(' pedimentos.', ' declarations.')))
++    table([t('Patente', 'Broker license'), t('Rectificados', 'Amended'), t('Pedimentos', 'Declarations'),
++           t('% patente', '% broker'), '% global'],
++          [group_row(row['patent'], row) for row in rect['patentRows']] +
++          [[t('Total', 'Total'), fmt(rect['totals']['r1']), fmt(rect['totals']['declarations']),
++            pct(rect['totals']['officeRate']), pct(rect['totals']['globalRate'])]], [105, 100, 110, 100, 100], total=True)
++    story.append(p(t('% patente = rectificados de la patente / pedimentos de la patente x 100. '
++                     'Ambas tablas describen la misma base: no se suman sus totales. '
++                     'Una rectificacion no demuestra por si sola un error o responsabilidad.',
++                     '% broker = broker amended / broker declarations x 100. '
++                     'Both tables describe the same base: do not add their totals. '
++                     'An amendment alone does not establish an error or responsibility.')))
+ 
+     story.append(PageBreak())
+     title(t('Calidad, criterios y trazabilidad', 'Quality, methodology and provenance'))
+--- a/backend/app/modules/reporting/rectifications.py
++++ b/backend/app/modules/reporting/rectifications.py
+@@ -1,4 +1,6 @@
+ """Amendment frequency, not a determination of operational fault."""
++from collections import Counter
++
+ from .trade_values import identity, normalized
+ 
+ 
+@@ -26,8 +28,38 @@
+                      'globalRate': percentage(count, denominator) if verified else None})
+     count = len(amendments) if complete and not invalid_amendments else None
+     rate = percentage(count, denominator) if not unmatched else None
++
++    def grouped_summary(key, header_counts, amendment_counts, unmatched_counts):
++        group_count = amendment_counts[key] if complete and not invalid_amendments else None
++        group_base = header_counts[key] if denominator is not None else None
++        verified = not unmatched_counts[key]
++        return {'r1': group_count, 'declarations': group_base,
++                'groupRate': percentage(group_count, group_base) if verified else None,
++                'globalRate': percentage(group_count, denominator) if verified else None}
++
++    combinations = sorted({(normalized(row.get('seccion_aduanera')) or 'unknown',
++                            normalized(row.get('patente')) or 'unknown')
++                           for code in ('501', '701') for row in tables[code]})
++    def office_patent(key):
++        return key[-1], key[2]
++    header_groups = Counter(office_patent(key) for key in headers)
++    amendment_groups = Counter(office_patent(key) for key in amendments)
++    unmatched_groups = Counter(office_patent(key) for key in unmatched)
++    customs_patent_rows = [
++        {'customs': office, 'patent': patent,
++         **grouped_summary((office, patent), header_groups, amendment_groups, unmatched_groups)}
++        for office, patent in combinations
++    ]
++    header_patents = Counter(key[2] for key in headers)
++    amendment_patents = Counter(key[2] for key in amendments)
++    unmatched_patents = Counter(key[2] for key in unmatched)
++    patent_rows = [
++        {'patent': patent, **grouped_summary(patent, header_patents, amendment_patents, unmatched_patents)}
++        for patent in sorted({patent for _, patent in combinations})
++    ]
+     return {'rows': rows, 'totals': {'r1': count, 'declarations': denominator,
+                                    'officeRate': rate, 'globalRate': rate},
++            'customsPatentRows': customs_patent_rows, 'patentRows': patent_rows,
+             'globalDeclarations': denominator, 'available': complete,
+             'unmatchedAmendments': len(unmatched),
+             'invalidKeys': invalid_headers + invalid_amendments}
+--- a/backend/tests/test_export.py
++++ b/backend/tests/test_export.py
+@@ -97,6 +97,55 @@
+     assert openpyxl.load_workbook(path).sheetnames == ["Control_Proceso"]
+ 
+ 
++def test_export_native_measures_dates_and_counts_preserves_identifiers_monthly_and_annual(tmp_path):
++    content = ("Fraccion|SecuenciaFraccion|PrecioUnitario|ValorDolares|CantidadUMComercial|"
++               "TipoCambio|FechaPagoReal|TipoFecha|CodigoMercanciaProducto\n"
++               "00123456|0001|123.456789|1195277.50|3.125|17.18470|20260423121314|01|00000987654321012345\n"
++               "00123456|0002|0|-42.50|0|19.1754|20260424|02|PN-0002")
++    files = [InputFile("x_551.asc", content, "Abril_2026")]
++    for kind, result in (("monthly", process_monthly("Abril_2026", files)),
++                         ("annual", process_annual(2026, "Ene-Ago", files))):
++        path = tmp_path / f"typed-{kind}.xlsx"
++        export_xlsx(result, path)
++        book = openpyxl.load_workbook(path)
++        sheet = book["551 Partidas"]
++        fields = {cell.value: cell.column for cell in sheet[1]}
++        for header, value in {"PrecioUnitario": 123.456789, "ValorDolares": 1195277.5,
++                              "CantidadUMComercial": 3.125, "TipoCambio": 17.1847}.items():
++            cell = sheet.cell(2, fields[header])
++            assert cell.data_type == "n"
++            assert cell.value == pytest.approx(value)
++            assert cell.number_format != "@"
++        assert sheet.cell(3, fields["PrecioUnitario"]).value == 0
++        assert sheet.cell(3, fields["ValorDolares"]).value == -42.5
++        for header, value in {"Fraccion": "00123456", "SecuenciaFraccion": "0001",
++                              "TipoFecha": "01", "CodigoMercanciaProducto": "00000987654321012345"}.items():
++            cell = sheet.cell(2, fields[header])
++            assert cell.data_type == "s" and cell.value == value
++        assert sheet.cell(2, fields["FechaPagoReal"]).value == datetime(2026, 4, 23, 12, 13, 14)
++        assert sheet.cell(3, fields["FechaPagoReal"]).value == datetime(2026, 4, 24)
++        assert sheet.cell(3, fields["FechaPagoReal"]).number_format == "yyyy-mm-dd"
++        control = book["Control_Proceso"]
++        counts = {cell.value: cell.column for cell in control[1]}
++        for header in ("Filas", "Columnas", "ColumnasFecha"):
++            assert control.cell(2, counts[header]).data_type == "n"
++
++
++def test_numeric_export_keeps_invalid_and_overprecision_values_without_coercing_to_zero(tmp_path):
++    result = process_monthly("Abril_2026", [InputFile("x_557.asc",
++        "ImportePago|FormaPago|FechaPagoReal\nNaN|00|invalid\n1e309|21|invalid\n"
++        "1234567890123456|00|invalid\n=SUM(A1:A2)|00|invalid\n1,234.50|00|invalid\n"
++        "1.23456789012345|00|20260423", "Abril_2026")])
++    path = tmp_path / "numeric-originals.xlsx"
++    export_xlsx(result, path)
++    sheet = openpyxl.load_workbook(path)["557 Contribuciones partida"]
++    for row, original in enumerate(("NaN", "1e309", "1234567890123456", "=SUM(A1:A2)", "1,234.50"), 2):
++        assert sheet[f"D{row}"].value == original and sheet[f"D{row}"].data_type == "s"
++    assert sheet["D7"].data_type == "n" and sheet["D7"].value == pytest.approx(1.23456789012345)
++    assert sheet["E2"].value == "00" and sheet["E2"].data_type == "s"
++    assert sheet["F2"].value == "invalid" and sheet["F2"].data_type == "s"
++
++
+ def test_out_of_range_iso_date_remains_original_text_in_excel(tmp_path):
+     result = process_monthly("Abril_2026", [InputFile("x_501.asc", "FechaPagoReal\n2200-01-01T00:00:00", "Abril_2026")])
+     path = tmp_path / "invalid-date.xlsx"
+--- a/backend/tests/test_rectification_patents.py
++++ b/backend/tests/test_rectification_patents.py
+@@ -0,0 +1,67 @@
++"""Broker and customs groups must partition distinct declarations, not multiply them."""
++from copy import deepcopy
++
++from app.modules.reporting.rectifications import rectifications_by_customs
++
++
++def declaration(**changes):
++    return dict(year=2026, month=1, patente='0036', pedimento='0000009', seccion_aduanera='240') | changes
++
++
++def test_customs_patent_and_patent_groups_partition_unique_declarations_across_months():
++    a = declaration()
++    alias = declaration(patente='36', pedimento='9')
++    b = declaration(pedimento='10')
++    c = declaration(pedimento='11', seccion_aduanera='160')
++    d = declaration(patente='0077')
++    e = declaration(month=2)
++    tables = {'501': [a, alias, b, c, d, e], '701': [a, alias, c, d, e, e]}
++    original = deepcopy(tables)
++    result = rectifications_by_customs(tables, [{'tables': {'501': 6, '701': 6}}])
++    assert tables == original
++    assert result['totals'] == {'r1': 4, 'declarations': 5, 'officeRate': 80, 'globalRate': 80}
++    assert result['customsPatentRows'] == [
++        {'customs': '160', 'patent': '36', 'r1': 1, 'declarations': 1, 'groupRate': 100, 'globalRate': 20},
++        {'customs': '240', 'patent': '36', 'r1': 2, 'declarations': 3, 'groupRate': 66.67, 'globalRate': 40},
++        {'customs': '240', 'patent': '77', 'r1': 1, 'declarations': 1, 'groupRate': 100, 'globalRate': 20},
++    ]
++    assert result['patentRows'] == [
++        {'patent': '36', 'r1': 3, 'declarations': 4, 'groupRate': 75, 'globalRate': 60},
++        {'patent': '77', 'r1': 1, 'declarations': 1, 'groupRate': 100, 'globalRate': 20},
++    ]
++    for group in ('rows', 'customsPatentRows', 'patentRows'):
++        assert sum(row['r1'] for row in result[group]) == 4
++        assert sum(row['declarations'] for row in result[group]) == 5
++
++
++def test_orphan_amendment_invalidates_only_its_group_and_global_total_rate():
++    a, b = declaration(), declaration(patente='77')
++    orphan = declaration(patente='77', pedimento='99')
++    result = rectifications_by_customs({'501': [a, b], '701': [a, orphan]}, [{'tables': {'501': 2, '701': 2}}])
++    assert result['unmatchedAmendments'] == 1
++    assert result['totals']['globalRate'] is None
++    assert result['customsPatentRows'][0]['groupRate'] == 100
++    assert result['patentRows'][0]['groupRate'] == 100
++    assert result['patentRows'][0]['globalRate'] == 50
++    assert result['customsPatentRows'][1]['groupRate'] is None
++    assert result['patentRows'][1]['groupRate'] is None
++    assert result['patentRows'][1]['globalRate'] is None
++
++
++def test_missing_coverage_invalid_keys_and_zero_base_remain_unavailable():
++    row = declaration()
++    incomplete = rectifications_by_customs({'501': [row], '701': [row]}, [{'tables': {'501': 1}}])
++    for group in ('customsPatentRows', 'patentRows'):
++        assert incomplete[group][0]['r1'] is None
++        assert incomplete[group][0]['declarations'] is None
++        assert incomplete[group][0]['groupRate'] is None
++    invalid = declaration(patente='')
++    result = rectifications_by_customs({'501': [invalid], '701': [invalid]}, [{'tables': {'501': 1, '701': 1}}])
++    assert result['invalidKeys'] == 2
++    assert result['patentRows'][0]['patent'] == 'unknown'
++    assert result['patentRows'][0]['r1'] is None
++    assert result['patentRows'][0]['groupRate'] is None
++    empty = rectifications_by_customs({'501': [], '701': []}, [{'tables': {'501': 0, '701': 0}}])
++    assert empty['patentRows'] == empty['customsPatentRows'] == []
++    assert empty['totals']['r1'] == 0
++    assert empty['totals']['officeRate'] is None
+--- a/docs/analytics.md
++++ b/docs/analytics.md
+@@ -34,11 +34,11 @@
+ 
+ ## IGI, IVA y números de parte
+ 
+-Los indicadores de pago usan 557: clave 6 para IGI y clave 3 para IVA, únicamente importaciones verificadas en 551. Las cuatro tarjetas distinguen IGI e IVA en FormaPago 0 (efectivo) y FormaPago 21 (crédito IVA/IEPS). `igiPaid` y `ivaPaid` conservan FP 0; `igiFp21` e `ivaFp21` conservan FP 21, en la moneda de la respuesta. Cada tarjeta usa su importe mensual para la tendencia y variación. La clave 1 es DTA, no IGI. No se suman 510 y 557. 702 y la gráfica genérica de contribuciones por partida dejan de aparecer en el dashboard; los datos originales se conservan.
++Los indicadores de pago usan 557: clave 6 para IGI y clave 3 para IVA, únicamente importaciones verificadas en 551. Las tres tarjetas de contribuciones muestran IGI FP 0, IVA FP 0 e IVA FP 21. La tarjeta IGI FP 21 se retiró; el dato se conserva en API/CSV. `igiPaid` y `ivaPaid` conservan FP 0; `igiFp21` e `ivaFp21` conservan FP 21, en la moneda de la respuesta. Cada tarjeta usa su importe mensual para la tendencia y variación. La clave 1 es DTA, no IGI. No se suman 510 y 557. 702 y la gráfica genérica de contribuciones por partida dejan de aparecer en el dashboard; los datos originales se conservan.
+ 
+-El análisis muestra nueve tarjetas: pedimentos, valor de importaciones, valor de exportaciones, IGI FP 0, IVA FP 0, IGI FP 21, IVA FP 21, rectificaciones y tasa roja. Los valores comerciales proceden de 551 y se separan por TipoOperacion 1 y 2; cada importe se convierte por pedimento cuando se solicita MXN. El total histórico `tradeUsd`/`tradeMxn` se mantiene en la API para compatibilidad y puede incluir operaciones sin clasificar, pero no aparece como una tarjeta combinada. Las cuatro tarjetas de contribuciones conservan cero con cobertura e importes verificados; sin cobertura o con cruces o conversiones inválidos conservan `null`. Los filtros generales siguen aplicándose; elegir solo exportación deja los pagos de importación y el valor de importación en cero cuando hay cobertura.
++El análisis muestra ocho tarjetas: pedimentos, valor de importaciones, valor de exportaciones, IGI FP 0, IVA FP 0, IVA FP 21, rectificaciones y tasa roja. Los valores comerciales proceden de 551 y se separan por TipoOperacion 1 y 2; cada importe se convierte por pedimento cuando se solicita MXN. El total histórico `tradeUsd`/`tradeMxn` se mantiene en la API para compatibilidad y puede incluir operaciones sin clasificar, pero no aparece como una tarjeta combinada. Las tres tarjetas de contribuciones conservan cero con cobertura e importes verificados; sin cobertura o con cruces o conversiones inválidos conservan `null`. Los filtros generales siguen aplicándose; elegir solo exportación deja los pagos de importación y el valor de importación en cero cuando hay cobertura.
+ 
+-La comparativa mensual utiliza el mismo desglose comercial y de pagos, con Partidas en lugar de tasa roja. El PDF muestra el mismo resumen de nueve indicadores y separa importación/exportación en su evolución mensual. El CSV incluye las nuevas métricas. Las gráficas de impuestos por PN siguen midiendo pagos en efectivo FP 0.
++La comparativa mensual utiliza el mismo desglose comercial y de pagos, con Partidas en lugar de tasa roja. El PDF muestra el mismo resumen de ocho indicadores y separa importación/exportación en su evolución mensual. El CSV incluye las nuevas métricas. Las gráficas de impuestos por PN siguen midiendo pagos en efectivo FP 0.
+ 
+ La relación 551/557/558 utiliza año, mes, patente, pedimento, sección aduanera, fracción y secuencia. El extractor admite etiquetas explícitas NP, NP INTERNO, N/P, P/N, No.Parte, número de parte y Part Number, con o sin dos puntos. Admite una etiqueta sola seguida de un token en la siguiente secuencia de observación, o en el siguiente segmento separado por `|` o salto de línea. Conserva códigos completos, incluidos `/MX`, segundos guiones y `+`. Excluye el contador de `ORDEN DE NUMERO DE PARTE 1`.
+ 
+@@ -107,11 +107,11 @@
+ 
+ ## Interfaz
+ 
+-La ruta `/analytics` conserva cinco vistas, con contenido propio en cada una. Panorama general muestra las nueve tarjetas y la tendencia del valor de mercancías; el enlace de comparación abre `/annual`. Comercio y mercancías contiene los cinco rankings comerciales. Contribuciones contiene la tabla de pagos, las tres gráficas por PN y sus comparativas de IGI/IVA. Control y calidad contiene selección aduanera, rectificaciones y alertas NP. Fuentes y métricas explica los cálculos. Las tarjetas aparecen únicamente en Panorama general. Las tablas de pagos y rectificaciones y las gráficas PN no se repiten en otras pestañas. La comparación general de meses se consulta en Comparativa mensual; los controles de meses por PN permanecen en Contribuciones.
++La ruta `/analytics` conserva cinco vistas, con contenido propio en cada una. Panorama general muestra las ocho tarjetas y la tendencia del valor de mercancías; el enlace de comparación abre `/annual`. Comercio y mercancías contiene los cinco rankings comerciales. Contribuciones contiene la tabla de pagos, los rankings de IGI pagado por PN y por fracción, uno junto al otro, y las comparativas de IGI/IVA por PN. Control y calidad contiene rectificaciones y alertas NP; se retiró la gráfica de eventos de selección aduanera. Fuentes y métricas explica los cálculos. Las tarjetas aparecen únicamente en Panorama general. Las tablas de pagos y rectificaciones y las gráficas PN no se repiten en otras pestañas. La comparación general de meses se consulta en Comparativa mensual; los controles de meses por PN permanecen en Contribuciones.
+ 
+-La tabla mensual de pagos presenta IGI FP 0, IVA FP 0 e IVA FP 21. Se retiró la columna de IGI del bloque FP 21 de esa tabla y de su tabla equivalente en el PDF. El indicador IGI FP 21 y los datos originales de la API/CSV conservan su cálculo. Se mantienen filtros, CSV, PNG y ampliación; el PDF corresponde al reporte completo, con independencia de la pestaña activa. ES/EN actualiza etiquetas y formatos regionales. Resumen muestra por defecto los últimos seis meses publicados, con selector de 3/6/12. Cargas separa mensuales y consolidados.
++La tabla mensual de pagos presenta IGI FP 0, IVA FP 0 e IVA FP 21. Se retiró la columna de IGI del bloque FP 21 de esa tabla y de su tabla equivalente en el PDF. La tarjeta IGI FP 21 también se retiró del análisis y de la comparativa; los datos originales de API/CSV conservan su cálculo. Se mantienen filtros, CSV, PNG y ampliación; el PDF corresponde al reporte completo, con independencia de la pestaña activa. ES/EN actualiza etiquetas y formatos regionales. Resumen muestra por defecto los últimos seis meses publicados, con selector de 3/6/12. Cargas separa mensuales y consolidados.
+ 
+-Los Excel nuevos son rangos normales con autofiltros, sin tablas nativas y con encabezados legibles. El motor omite líneas ASC formadas solo por separadores antes de añadir trazabilidad: esas líneas no generan registros ni inflan los conteos de Control_Proceso. Los ceros y las filas con algún dato se conservan. El exportador no escribe celdas vacías con formato ni filas totalmente vacías, y ajusta el filtro a las filas exportadas. Conserva todos los encabezados, las posiciones de campos, fechas nativas y códigos de texto. No combina ni mueve celdas para cerrar huecos. Los archivos ya generados requieren una nueva exportación para adoptar este ajuste.
++Los Excel nuevos son rangos normales con autofiltros, sin tablas nativas y con encabezados legibles. El motor omite líneas ASC formadas solo por separadores antes de añadir trazabilidad: esas líneas no generan registros ni inflan los conteos de Control_Proceso. Los ceros y las filas con algún dato se conservan. El exportador no escribe celdas vacías con formato ni filas totalmente vacías, y ajusta el filtro a las filas exportadas. Conserva todos los encabezados y posiciones de campos. ImportePago, valores monetarios, cantidades, pesos, tasas y conteos se escriben como números nativos; las fechas válidas se escriben como fechas de Excel, mostrando la hora cuando existe. PN, fracciones, pedimentos y otros códigos permanecen como texto. Valores numéricos no interpretables o con más de 15 cifras significativas y fechas inválidas conservan el original como texto. La clasificación se basa en encabezados de medidas explícitos; no convierte cualquier texto con dígitos. No combina ni mueve celdas para cerrar huecos. Los archivos ya generados requieren una nueva exportación para adoptar este ajuste.
+ 
+ Después de aplicar una actualización, se reinician backend, worker y frontend. El comando habitual de Uvicorn no usa recarga automática; un proceso anterior puede no ofrecer `/reports/analytics/months` o no incluir `ivaFp21` en los indicadores, aunque el frontend ya se haya actualizado. En ese caso aparece `Not Found` o un guion de dato no disponible. Esto no significa que el importe de crédito sea cero.
+ 
+@@ -177,3 +177,9 @@
+ respuesta de 2.3 kB; su primer cálculo tardó 0.20 s. Son medidas del entorno
+ de prueba, no tiempos garantizados de pantalla en otros equipos.
+ 
++
++El ranking de fracciones agrupa `partTaxes.rows` por `tariff`, suma IGI FP 0 de la selección y ordena los diez importes positivos más altos. Incluye pagos sin PN cuando el filtro PN está vacío. Respeta el filtro por fracción y la búsqueda PN/alternativos. No usa el valor de mercancías, FP 21 ni conteos de pagos como sustitutos del IGI. Cobertura 551/557 incompleta, pagos sin cruce verificable o importes IGI desconocidos dejan el ranking sin dato.
++
++### Desglose de rectificaciones por patente
++
++La tabla principal añade Patente y separa filas por aduana/patente. Su porcentaje de grupo divide pedimentos rectificados de esa combinación entre pedimentos 501 de la misma combinación. La segunda tabla agrupa todas las aduanas seleccionadas por patente: porcentaje de patente = rectificados de esa patente / pedimentos de esa patente × 100. El porcentaje global usa en ambos casos la base 501 filtrada completa. Ambas tablas comparten el total global y no deben sumarse entre sí. Se usan llaves distintas de año, mes, patente, pedimento y aduana, por lo que registros repetidos no multiplican los conteos. Se mantienen las reglas de cobertura, llaves inválidas y rectificaciones sin 501. El PDF contiene ambos desgloses.
+--- a/docs/guia-graficas-calculos.md
++++ b/docs/guia-graficas-calculos.md
+@@ -40,7 +40,7 @@
+ | 551 o ds_551 | Registro de partida | Fraccion, SecuenciaFraccion, TipoOperacion, ValorDolares, PaisOrigenDestino | Valor comercial analizado, países, fracciones y relación de pagos |
+ | 557 o ds_557 | Registro de contribución por partida | ClaveContribucion, FormaPago, ImportePago y llave de partida | IGI e IVA pagados |
+ | 558 o ds_558 | Observación de partida | SecuenciaObservacion, Observaciones y llave de partida | Número de parte principal y alternativos |
+-| 701 o ds_701 | Registro de rectificación | Patente y llave de pedimento | Rectificaciones por aduana |
++| 701 o ds_701 | Registro de rectificación | Patente y llave de pedimento | Rectificaciones por aduana y patente |
+ | SEL o ds_sel | Evento de selección | SemaforoFiscal y llave de pedimento | Selecciones rojas y verdes |
+ | 505 o ds_505 | Registro de factura | ValorDolares, ProveedorMercancia, TerminoFacturacion | Métricas adicionales de API y exportación |
+ | 510 o ds_510 | Pago a nivel de pedimento | ClaveContribucion, FormaPago, ImportePago | Métricas generales separadas de pagos |
+@@ -113,7 +113,7 @@
+ 
+ **Calidad:** si un pago candidato no tiene partida u operación verificable, se incrementa `unmatchedTaxRows`. Los totales de ambos impuestos para ese conjunto quedan sin dato, aunque el fallo se haya detectado en uno de ellos. Un tipo de cambio inválido afecta al agregado que necesita esa conversión. Sin NP verificable, el pago puede seguir entrando al total del impuesto si la partida y operación sí están verificadas.
+ 
+-La tabla aparece únicamente en Contribuciones y presenta IGI FP 0, IVA FP 0 e IVA FP 21. Se retiró IGI FP 21 de esta tabla y de su equivalente en el PDF; su tarjeta y los datos originales de API/CSV se conservan. Cada forma tiene su propio conteo de pagos sin cruce verificable; una forma incompleta no invalida la otra. No se añade CERTIVA al efectivo. Las cuatro tarjetas distinguen FP 0 y FP 21; el análisis por NP sigue limitado a FP 0. No es una conciliación bancaria.
++La tabla aparece únicamente en Contribuciones y presenta IGI FP 0, IVA FP 0 e IVA FP 21. Se retiró IGI FP 21 de esta tabla y de su equivalente en el PDF; su tarjeta también se retiró del análisis y de la comparativa, conservando los datos originales de API/CSV. Cada forma tiene su propio conteo de pagos sin cruce verificable; una forma incompleta no invalida la otra. No se añade CERTIVA al efectivo. Las tres tarjetas muestran IGI FP 0, IVA FP 0 e IVA FP 21; el análisis por NP sigue limitado a FP 0. No es una conciliación bancaria.
+ 
+ ### Números de parte con mayor IGI
+ 
+@@ -123,11 +123,19 @@
+ 
+ Una misma parte en dos fracciones aparece como dos combinaciones. Las combinaciones fuera del Top 10 no se agrupan en «Otros» en esta gráfica. Los pagos sin NP, con NP ambiguo, IGI cero o negativo no forman parte del ranking. Si hay importes IGI desconocidos entre PN identificados, el ranking completo queda sin dato porque no puede ordenarse con certeza. Por ello la suma de sus barras no debe equipararse al IGI total del rango. El ranking aparece únicamente en Contribuciones.
+ 
+-### Rectificaciones por aduana
+-
+-**Origen:** pedimentos de 501 y rectificaciones de 701, agrupados por aduana. La tabla muestra código y nombre, pedimentos rectificados, total de pedimentos, porcentaje por aduana y porcentaje global. Se cuentan registros distintos de 701 sin exigir que ClaveDocumento diga R1: el archivo conserva claves AF, IN, RT y otras.
+-
+-Se cuentan llaves distintas (año, mes de carga, patente, pedimento y aduana). Repeticiones de la misma llave se cuentan una vez; apariciones en meses diferentes se conservan por separado. `% aduana = rectificados de la aduana / pedimentos 501 de esa aduana * 100`. `% global = rectificados de la aduana / total 501 de la selección * 100`. El total global respeta también el filtro de aduana y se muestra explícitamente. Los totales recalculan tasas, no promedian porcentajes. Base cero, llaves inválidas, 701 sin 501 o falta de cobertura producen tasas sin dato, no cero.
++### Fracciones con mayor IGI pagado - Forma de pago 0
++
++**Origen:** los pagos de contribución 6 de 557 con FormaPago 0, relacionados por llave completa con partidas de importación de 551. La moneda USD utiliza el tipo de cambio del pedimento en 501. No exige observaciones 558 ni un PN identificado.
++
++**Cálculo:** agrupar los importes IGI de `partTaxes.rows` por fracción, sumar cada grupo antes de ordenar y mostrar las diez fracciones con mayor suma positiva. Se conservan ajustes negativos dentro de la suma; no se cuenta el número de pagos ni se utiliza ValorDolares. Los empates se ordenan por código de fracción.
++
++**Filtros:** respeta el rango, moneda, aduana, operación y documento del reporte, además del filtro local por fracción y la búsqueda PN/alternativos. Sin búsqueda PN incluye los pagos sin PN que tengan una fracción verificable. Con cobertura 551/557 incompleta, pagos sin cruce verificable o importes IGI desconocidos, el ranking queda sin dato. El Top 10 puede ser menor que el IGI total y no añade Otros.
++
++### Rectificaciones por aduana y patente
++
++**Origen:** pedimentos de 501 y rectificaciones de 701. La primera tabla agrupa por aduana y patente, mostrando ambas columnas, conteos, porcentaje de la combinación y porcentaje global. La segunda agrupa solo por patente. Se cuentan registros distintos de 701 sin exigir que ClaveDocumento diga R1: el archivo conserva claves AF, IN, RT y otras.
++
++Se cuentan llaves distintas (año, mes de carga, patente, pedimento y aduana). Repeticiones de la misma llave se cuentan una vez; apariciones en meses diferentes se conservan por separado. `% aduana / patente = rectificados de la combinación / pedimentos 501 de esa combinación * 100`. `% patente = rectificados de la patente / pedimentos 501 de esa patente * 100`. `% global = rectificados del grupo / total 501 de la selección * 100`. El total global respeta también el filtro de aduana y se muestra explícitamente. Los totales recalculan tasas, no promedian porcentajes. Base cero, llaves inválidas, 701 sin 501 o falta de cobertura producen tasas sin dato, no cero.
+ 
+ La tabla se reutiliza en Control y calidad. Más rectificaciones no demuestra por sí solo un error operativo. No se infieren responsables logísticos, costos ni sustituciones fiscales, ni se netean importes de 702. La imagen muestra 1,105 pedimentos, pero los datos de referencia enero-junio con todas las operaciones arrojan 1,527 y 31 rectificados; 7/1,527 = 0.46%, consistente con su porcentaje global de Manzanillo. Se muestran todas las aduanas, incluidas las que no tienen rectificaciones. Los conteos por aduana proceden de 501, no se fuerzan a coincidir con la imagen.
+ 
+@@ -155,9 +163,9 @@
+ 
+ ### Selección aduanera
+ 
+-**Origen:** SEL, campo `SemaforoFiscal`. Por cada mes se cuentan los registros con código 0 como rojo y con código 1 como verde. Las barras están apiladas y representan eventos de selección, no pedimentos únicos.
+-
+-Un pedimento puede tener más de un evento. Valores diferentes de 0 o 1 aparecen en una tercera serie Sin clasificar y dejan la tasa de rojo sin dato. Sin SEL disponible no se sustituye por cero. La gráfica no mide resultados de inspección ni multas.
++**Origen:** SEL, campo `SemaforoFiscal`. Por cada mes se cuentan los registros con código 0 como rojo y con código 1 como verde. Estos conteos permanecen como datos; la gráfica de eventos de selección se retiró. Son eventos, no pedimentos únicos.
++
++Un pedimento puede tener más de un evento. Valores diferentes de 0 o 1 se contabilizan como sin clasificar y dejan la tasa de rojo sin dato. Sin SEL disponible no se sustituye por cero. El indicador no mide resultados de inspección ni multas.
+ 
+ La tarjeta «Selecciones en rojo» se obtiene como 100 multiplicado por eventos rojos dividido entre eventos rojos más verdes. El total del rango se calcula sobre todos sus eventos; no es el promedio simple de los porcentajes mensuales. Con 2 rojos y 8 verdes resulta 20 %. Si no hay eventos rojos o verdes, o existe algún evento sin clasificar, el porcentaje no está disponible.
+ 
+@@ -184,7 +192,7 @@
+ 
+ ### Indicadores del análisis
+ 
+-Las nueve tarjetas del análisis muestran: pedimentos únicos de 501; valor de importaciones de 551 (TipoOperacion 1); valor de exportaciones de 551 (TipoOperacion 2); IGI FP 0; IVA FP 0; IGI FP 21; IVA FP 21; llaves distintas de 701; y porcentaje rojo de SEL. El número principal corresponde al rango seleccionado. Para rojo es una proporción del conjunto, no una suma de porcentajes. Los impuestos usan pagos de importación de 557, verificados con 551: contribución 6 para IGI y 3 para IVA. FormaPago 0 es efectivo y 21 es crédito IVA/IEPS (CERTIVA); sus importes nunca se combinan en una tarjeta. Las gráficas por PN conservan únicamente FP 0.
++Las ocho tarjetas del análisis muestran: pedimentos únicos de 501; valor de importaciones de 551 (TipoOperacion 1); valor de exportaciones de 551 (TipoOperacion 2); IGI FP 0; IVA FP 0; IVA FP 21; llaves distintas de 701; y porcentaje rojo de SEL. El número principal corresponde al rango seleccionado. Para rojo es una proporción del conjunto, no una suma de porcentajes. Los impuestos usan pagos de importación de 557, verificados con 551: contribución 6 para IGI y 3 para IVA. FormaPago 0 es efectivo y 21 es crédito IVA/IEPS (CERTIVA); sus importes nunca se combinan en una tarjeta. Las gráficas por PN conservan únicamente FP 0.
+ 
+ La variación pequeña de cada tarjeta compara el último mes disponible del rango contra el mes calendario inmediatamente anterior. No compara el total del rango contra otro total. El mes anterior puede quedar fuera del rango seleccionado; si falta o su valor base es cero, no hay porcentaje comparable. En enero esta tarjeta no busca automáticamente diciembre del año anterior.
+ 
+@@ -192,7 +200,7 @@
+ 
+ ### Distribución de vistas y comparación
+ 
+-Panorama general contiene las nueve tarjetas y la tendencia comercial. Comercio y mercancías contiene los cinco rankings por aduana, documento, países y fracción. Contribuciones contiene la tabla mensual de pagos y las gráficas y comparativas por PN. Control y calidad contiene selección aduanera, rectificaciones y alertas. Fuentes y métricas documenta los cálculos. Cada bloque detallado se muestra en una única pestaña y las tarjetas se concentran en Panorama general.
++Panorama general contiene las ocho tarjetas y la tendencia comercial. Comercio y mercancías contiene los cinco rankings por aduana, documento, países y fracción. Contribuciones contiene la tabla mensual de pagos, los dos rankings de IGI en efectivo por PN y fracción, y las comparativas por PN. Control y calidad contiene rectificaciones y alertas. Fuentes y métricas documenta los cálculos. Cada bloque detallado se muestra en una única pestaña y las tarjetas se concentran en Panorama general.
+ 
+ La comparación general entre meses se consulta en Comparativa mensual. Las comparativas por PN permanecen en Contribuciones y sus meses respetan el rango del análisis. Un mes sin cobertura conserva sin dato. Las variaciones de las tarjetas siguen comparando el último mes disponible contra el anterior; la tasa de rojo se expresa en puntos porcentuales.
+ 
+@@ -200,7 +208,7 @@
+ 
+ La página Comparativa mensual consulta un resumen anual ligero: una petición si los dos meses pertenecen al mismo año y una por año si son diferentes. Permite comparar años diferentes y usa la misma fuente y moneda en ambos lados. Sus controles no heredan los filtros de aduana, operación o documento de Análisis de operaciones; las consultas se realizan sin esos filtros. No se calcula identificación de PN ni rankings en este resumen.
+ 
+-La gráfica de dos barras admite nueve indicadores: pedimentos, valor de importaciones, valor de exportaciones, IGI FP 0, IVA FP 0, IGI FP 21, IVA FP 21, partidas y rectificaciones. Partidas significa cantidad de filas 551. Las nueve fichas muestran ambos valores, diferencia absoluta `B - A` y variación relativa con la misma fórmula anterior. No incluye la tasa roja en esta página.
++La gráfica de dos barras admite ocho indicadores: pedimentos, valor de importaciones, valor de exportaciones, IGI FP 0, IVA FP 0, IVA FP 21, partidas y rectificaciones. Partidas significa cantidad de filas 551. Las ocho fichas muestran ambos valores, diferencia absoluta `B - A` y variación relativa con la misma fórmula anterior. No incluye la tasa roja en esta página.
+ 
+ Ejemplo: A = 100 y B = 120 producen diferencia de 20 y variación de 20 %. A = 0 y B = 120 producen diferencia de 120, pero no un crecimiento porcentual definido. Si A falta, tanto la diferencia como el porcentaje quedan sin dato. La página solo analiza información; crear Excel consolidados pertenece a Cargas.
+ 
+@@ -290,7 +298,7 @@
+ 
+ ## 14 Criterios de claridad de esta revisión
+ 
+-- **IGI e IVA por PN:** se muestran en gráficas mensuales separadas, cada una con su propia escala. Se conservan los filtros PN/fracción y el Top 10 de IGI. Los importes de PN sin identificar se presentan explícitamente debajo y siguen formando parte del total general de efectivo. El Top 10 queda sin dato si falta cobertura 551/557/558 o hay un importe IGI desconocido entre los PN identificados.
++- **IGI e IVA por PN:** se conservan en las tablas comparativas. Se retiraron sus dos gráficas mensuales y se conserva el Top 10 de IGI por PN, junto al nuevo ranking por fracción. Se mantienen los filtros PN/fracción. Los importes de PN sin identificar se presentan explícitamente debajo y siguen formando parte del total general de efectivo. El Top 10 queda sin dato si falta cobertura 551/557/558 o hay un importe IGI desconocido entre los PN identificados.
+ - **Formas de pago:** la tabla principal separa FP 0 y FP 21. Una tabla adicional desglosa todas las otras formas presentes en las importaciones, con IGI, IVA y número de registros. FP 13 significa pago ya efectuado; FP 22 es garantía en IVA e IEPS. No se suman al efectivo. Los pagos sin cruce verificable invalidan únicamente la forma de pago afectada.
+ - **Selección:** se dibujan también eventos con código distinto de 0/1 como Sin clasificar. La tasa de rojo queda no disponible si existe alguno; no se ocultan para publicar una tasa aparentemente completa.
+ - **Rectificaciones e importes:** el valor declarado suma las filas 551 de la fuente activa. No reconstruye una operación fiscal final ni netea rectificaciones contra sus originales. La interfaz y el PDF explican este alcance; 702 permanece separado.
+@@ -302,3 +310,11 @@
+ La lectura independiente y el servicio arrojan: 250 pedimentos, 3 pedimentos rectificados; IGI en efectivo 1,195,277 MXN; IVA en efectivo 5,421 MXN; IVA FP 21 de 31,167,147 MXN; e IGI FP 13 de 2,180,339 MXN en tres registros. Estos últimos importes permanecen separados de FP 0.
+ 
+ Con el catálogo del repositorio, el IVA en efectivo de abril queda sin PN identificado (296.99328052510873 USD). Por eso la gráfica de IVA por PN identificado es cero aunque el total general de IVA en efectivo sea positivo. La nota de atribución muestra la diferencia. Un catálogo local distinto puede modificar la atribución, sin alterar el total de impuestos.
++
++### Tipos de celda de los Excel nuevos
++
++Los importes, valores, cantidades, pesos, tasas y conteos reconocidos por su encabezado se exportan como números nativos, aptos para SUMA y SUMAR.SI.CONJUNTO. Las fechas válidas se exportan como fechas nativas; los valores con hora conservan fecha y hora. Las columnas de identificación conservan texto y ceros iniciales. Se mantiene la precisión del dato en la celda, aunque el formato monetario muestre dos decimales. Valores inválidos o que exceden 15 cifras significativas permanecen en texto para preservar el original. Los archivos existentes requieren una nueva generación para adoptar los tipos nuevos.
++
++### Desglose de rectificaciones por patente
++
++La tabla principal añade Patente y separa filas por aduana/patente. Su porcentaje de grupo divide pedimentos rectificados de esa combinación entre pedimentos 501 de la misma combinación. La segunda tabla agrupa todas las aduanas seleccionadas por patente: porcentaje de patente = rectificados de esa patente / pedimentos de esa patente × 100. El porcentaje global usa en ambos casos la base 501 filtrada completa. Ambas tablas comparten el total global y no deben sumarse entre sí. Se usan llaves distintas de año, mes, patente, pedimento y aduana, por lo que registros repetidos no multiplican los conteos. Se mantienen las reglas de cobertura, llaves inválidas y rectificaciones sin 501. El PDF contiene ambos desgloses.
+--- a/frontend/src/app/core/analytics.ts
++++ b/frontend/src/app/core/analytics.ts
+@@ -16,6 +16,12 @@
+   r1: number | null;
+   declarations: number | null;
+   officeRate: number | null;
++  globalRate: number | null;
++}
++export interface RectificationGroupRow {
++  r1: number | null;
++  declarations: number | null;
++  groupRate: number | null;
+   globalRate: number | null;
+ }
+ export interface AnalyticsMonth {
+@@ -57,6 +63,8 @@
+   paymentMethods: PaymentMethods;
+   rectificationsByCustoms: {
+     rows: (RectificationRow & { customs: string })[];
++    customsPatentRows: (RectificationGroupRow & { customs: string; patent: string })[];
++    patentRows: (RectificationGroupRow & { patent: string })[];
+     totals: RectificationRow;
+     globalDeclarations: number | null;
+     available: boolean;
+--- a/frontend/src/app/features/analytics.html
++++ b/frontend/src/app/features/analytics.html
+@@ -527,20 +527,6 @@
+     </button>
+   </div>
+   } @if (tab() === 'quality') {
+-  <div class="chart-grid">
+-    <ds-analytics-chart
+-      [loading]="loading()"
+-      [title]="t('Eventos de selección aduanera','Customs selection events')"
+-      [subtitle]="t('Rojo: reconocimiento / Verde: desaduanamiento libre · SEL','Red: inspection / Green: customs release · SEL')"
+-      [unit]="t('Eventos','Events')"
+-      [context]="chartContext()"
+-      [categoryLabel]="t('Mes','Month')"
+-      [labels]="labels()"
+-      [series]="[{label:t('Rojo','Red'),color:'#b85b52',values:series('red','')[0].values},{label:t('Verde','Green'),color:'#138679',values:series('green','')[0].values},{label:t('Sin clasificar','Unclassified'),color:'#a16b20',values:series('unclassifiedSelections','')[0].values}]"
+-      [stacked]="true"
+-      [footnote]="t('Un pedimento puede tener varios eventos. Si hay códigos distintos de 0/1, se muestran sin clasificar y la tasa de rojo queda sin dato.','One declaration may have multiple events. Codes other than 0/1 are shown as unclassified and the red rate is unavailable.')"
+-    />
+-  </div>
+   <ng-container *ngTemplateOutlet="rectificationsTable" />
+   <div class="section-heading">
+     <h2>
+@@ -718,15 +704,15 @@
+       <dd>
+         {{ t('Pedimentos rectificados cuenta pedimentos distintos en 701, sin
+         exigir ClaveDocumento R1: el archivo conserva claves AF, IN, RT y otras.
+-        Llave: año, mes, patente, pedimento y aduana. % aduana = rectificados /
+-        pedimentos 501 de esa aduana × 100. % global = rectificados de esa
+-        aduana / total 501 con los mismos filtros × 100. El total recalcula la
++        Llave: año, mes, patente, pedimento y aduana. % grupo = rectificados /
++        pedimentos 501 de la misma aduana y patente, o de la misma patente × 100.
++        % global = rectificados del grupo / total 501 con los mismos filtros × 100. El total recalcula la
+         tasa, no promedia porcentajes. Meses diferentes se cuentan por separado.
+         Una rectificación no demuestra por sí sola un error operativo.',
+         'Amended declarations counts distinct declarations in 701 without
+         requiring document code R1: files retain AF, IN, RT and other codes.
+-        Key: year, month, broker, declaration and customs office. % office =
+-        amended / office declarations in 501 × 100. % global = office amended /
++        Key: year, month, broker, declaration and customs office. % group =
++        amended / 501 declarations for the office/broker pair or broker × 100. % global = group amended /
+         all 501 declarations under the same filters × 100. The total
+         recalculates the rate rather than averaging percentages. Different
+         months are counted separately. An amendment alone is not proof of an
+@@ -881,25 +867,23 @@
+         [series]="partSeries()"
+         [footnote]="t('Solo PN identificados · IGI en efectivo (FP 0). El Top 10 es un subconjunto; con importes o cobertura incompletos el ranking queda sin dato.','Identified PN only · Cash import duty (FP 0). The top 10 is a subset; incomplete amounts or coverage make the ranking unavailable.')"
+       />
+-      @for (tax of taxTypes; track tax) {
+       <ds-analytics-chart
+         [loading]="loading()"
+-        [title]="tax === 'igi' ? t('IGI mensual en efectivo por PN','Monthly cash import duty by PN') : t('IVA mensual en efectivo por PN','Monthly cash VAT by PN')"
+-        [subtitle]="t('Todos los PN identificados de la selección · 551 / 557 / 558','All identified PN in the selection · 551 / 557 / 558')"
++        [title]="t('Fracciones con mayor IGI pagado · Forma de pago 0','Top tariff codes by paid import duty · Payment method 0')"
++        [subtitle]="currency() + ' · ' + t('10 principales por importe pagado · 551 / 557','Top 10 by amount paid · 551 / 557')"
+         [unit]="currency()"
+         [context]="partContext()"
+-        [categoryLabel]="t('Mes','Month')"
+-        type="line"
+-        [labels]="labels()"
+-        [series]="partTrendSeries(tax)"
+-        [footnote]="t('Escala propia para este impuesto · FP 0. Crédito IVA/IEPS (FP 21) excluido. Meses sin cobertura: sin dato.','Independent scale for this tax · FP 0. VAT/excise credit (FP 21) excluded. Months without coverage: unavailable.')"
++        [categoryLabel]="t('Fracción arancelaria','Tariff code')"
++        [horizontal]="true"
++        [labels]="tariffTaxLabels()"
++        [series]="tariffTaxSeries()"
++        [footnote]="t('Suma IGI de importación en efectivo (FP 0) por fracción, incluidos pagos sin PN identificado cuando no se filtra un PN. Orden por importe, no por cantidad de pagos. Top 10; sin dato si faltan importes o cruces verificables.','Sums cash import duty (FP 0) by tariff, including payments without an identified PN when no PN filter is selected. Ranked by amount, not payment count. Top 10; unavailable with missing amounts or unverified matches.')"
+       />
+-      }
+     </div>
+     @if (taxRows().length > identifiedTaxRows().length) {
+     <p class="data-note part-attribution-note">
+-      {{ t('Pagos en efectivo fuera de estas gráficas por falta de un PN
+-      identificado:','Cash payments excluded from these charts because no PN was
++      {{ t('Pagos en efectivo fuera del ranking por PN por falta de un PN
++      identificado:','Cash payments excluded from the PN ranking because no PN was
+       identified:') }} {{ t('IGI','IMPORT DUTY') }} {{
+       format(partUnassignedTotals().igi,currency()) }} · {{ t('IVA','VAT') }} {{
+       format(partUnassignedTotals().iva,currency()) }} {{ currency() }}.
+@@ -1046,7 +1030,7 @@
+     <div class="section-heading">
+       <div>
+         <h2 id="rectifications-title">
+-          {{ t('Rectificaciones por aduana','Amendments by customs office') }}
++          {{ t('Rectificaciones por aduana y patente','Amendments by customs office and broker license') }}
+         </h2>
+         <p>
+           {{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{
+@@ -1062,7 +1046,7 @@
+     <div
+       class="table-scroll"
+       tabindex="0"
+-      [attr.aria-label]="t('Rectificaciones por aduana','Amendments by customs office')"
++      [attr.aria-label]="t('Rectificaciones por aduana y patente','Amendments by customs office and broker license')"
+     >
+       <table class="analysis-table financial-table">
+         <thead>
+@@ -1070,30 +1054,32 @@
+             <th scope="col">
+               {{ t('Código y aduana','Code and customs office') }}
+             </th>
++            <th scope="col">{{ t('Patente','Broker license') }}</th>
+             <th scope="col">
+               {{ t('Pedimentos rectificados','Amended declarations') }}
+             </th>
+             <th scope="col">
+               {{ t('Total pedimentos','Total declarations') }}
+             </th>
+-            <th scope="col">{{ t('% aduana','% office') }}</th>
++            <th scope="col">{{ t('% aduana / patente','% office / broker') }}</th>
+             <th scope="col">% global</th>
+           </tr>
+         </thead>
+         <tbody>
+-          @for (row of rect.rows; track row.customs) {
++          @for (row of rect.customsPatentRows; track row.customs + ':' + row.patent) {
+           <tr>
+             <th scope="row" class="customs-name">
+               {{ category(row.customs, 'customs') }}
+             </th>
++            <td>{{ row.patent === 'unknown' ? t('Sin especificar','Unspecified') : row.patent }}</td>
+             <td>{{ format(row.r1) }}</td>
+             <td>{{ format(row.declarations) }}</td>
+-            <td>{{ percentage(row.officeRate) }}</td>
++            <td>{{ percentage(row.groupRate) }}</td>
+             <td>{{ percentage(row.globalRate) }}</td>
+           </tr>
+           } @empty {
+           <tr>
+-            <td colspan="5">
++            <td colspan="6">
+               {{ t('Sin registros para esta selección.','No records for this
+               selection.') }}
+             </td>
+@@ -1102,7 +1088,7 @@
+         </tbody>
+         <tfoot>
+           <tr>
+-            <th scope="row">Total</th>
++            <th scope="row" colspan="2">Total</th>
+             <td>{{ format(rect.totals.r1) }}</td>
+             <td>{{ format(rect.totals.declarations) }}</td>
+             <td>{{ percentage(rect.totals.officeRate) }}</td>
+@@ -1123,13 +1109,55 @@
+     }
+     <p class="data-note">
+       {{ t('Pedimentos distintos registrados en 701, cualquiera que sea su clave
+-      de documento. % aduana = rectificados / pedimentos de esa aduana. % global
+-      = rectificados de esa aduana / base global filtrada. Una rectificación no
++      de documento. % aduana / patente = rectificados / pedimentos de esa combinación. % global
++      = rectificados de la combinación / base global filtrada. Una rectificación no
+       demuestra por sí sola un error.','Distinct declarations recorded in 701,
+-      regardless of document code. % office = amended / office declarations. %
+-      global = office amended / filtered global base. An amendment alone does
++      regardless of document code. % office / broker = amended / declarations for that pair. %
++      global = pair amended / filtered global base. An amendment alone does
+       not establish an error.') }}
+     </p>
+   </section>
++
++  <section class="report-data-section" aria-labelledby="rectifications-patent-title">
++    <div class="section-heading">
++      <div>
++        <h2 id="rectifications-patent-title">{{ t('Rectificaciones por patente','Amendments by broker license') }}</h2>
++        <p>{{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{ r.year }} · 501 / 701</p>
++      </div>
++      <span class="data-source">{{ t('Base global filtrada:','Filtered global base:') }} <b>{{ format(rect.globalDeclarations) }}</b> {{ t('pedimentos','declarations') }}</span>
++    </div>
++    <div class="table-scroll" tabindex="0" [attr.aria-label]="t('Rectificaciones por patente','Amendments by broker license')">
++      <table class="analysis-table financial-table">
++        <thead><tr>
++          <th scope="col">{{ t('Patente','Broker license') }}</th>
++          <th scope="col">{{ t('Pedimentos rectificados','Amended declarations') }}</th>
++          <th scope="col">{{ t('Total pedimentos','Total declarations') }}</th>
++          <th scope="col">{{ t('% patente','% broker') }}</th>
++          <th scope="col">% global</th>
++        </tr></thead>
++        <tbody>
++          @for (row of rect.patentRows; track row.patent) {
++          <tr>
++            <th scope="row">{{ row.patent === 'unknown' ? t('Sin especificar','Unspecified') : row.patent }}</th>
++            <td>{{ format(row.r1) }}</td>
++            <td>{{ format(row.declarations) }}</td>
++            <td>{{ percentage(row.groupRate) }}</td>
++            <td>{{ percentage(row.globalRate) }}</td>
++          </tr>
++          } @empty {
++          <tr><td colspan="5">{{ t('Sin registros para esta selección.','No records for this selection.') }}</td></tr>
++          }
++        </tbody>
++        <tfoot><tr>
++          <th scope="row">Total</th>
++          <td>{{ format(rect.totals.r1) }}</td>
++          <td>{{ format(rect.totals.declarations) }}</td>
++          <td>{{ percentage(rect.totals.officeRate) }}</td>
++          <td>{{ percentage(rect.totals.globalRate) }}</td>
++        </tr></tfoot>
++      </table>
++    </div>
++    <p class="data-note">{{ t('Cada patente reúne sus pedimentos de todas las aduanas de la selección. % patente = rectificados de esa patente / pedimentos de esa patente. % global = rectificados de esa patente / base global filtrada. Ambas tablas representan los mismos pedimentos; sus totales no se suman.','Each broker license combines its declarations across the selected customs offices. % broker = broker amended / broker declarations. % global = broker amended / filtered global base. Both tables describe the same declarations; their totals are not added together.') }}</p>
++  </section>
+ </ng-template>
+ }
+--- a/frontend/src/app/features/analytics.scss
++++ b/frontend/src/app/features/analytics.scss
+@@ -516,7 +516,7 @@
+ }
+ .kpi-grid {
+   display: grid;
+-  grid-template-columns: repeat(3, minmax(0, 1fr));
++  grid-template-columns: repeat(4, minmax(0, 1fr));
+   gap: 12px;
+   margin-bottom: 24px;
+ }
+@@ -604,14 +604,6 @@
+ .metric-scope {
+   margin: 0 0 14px;
+ }
+-.part-analysis .chart-grid > ds-analytics-chart:first-child {
+-  grid-row: span 2;
+-}
+-@media (max-width: 760px) {
+-  .part-analysis .chart-grid > ds-analytics-chart:first-child {
+-    grid-row: auto;
+-  }
+-}
+ .kpi-note {
+   font-size: 10px;
+   color: #8b989f;
+@@ -950,7 +942,7 @@
+ }
+ @media (max-width: 1250px) {
+   .kpi-grid {
+-    grid-template-columns: repeat(3, minmax(0, 1fr));
++    grid-template-columns: repeat(4, minmax(0, 1fr));
+   }
+   .kpi-label {
+     min-height: 18px;
+--- a/frontend/src/app/features/analytics.spec.ts
++++ b/frontend/src/app/features/analytics.spec.ts
+@@ -6,16 +6,15 @@
+ import { AnalyticsReport, PartTaxRow } from "../core/analytics";
+ 
+ describe("analytics filters and comparisons", () => {
+-  it("shows separate import/export goods and four tax indicators in both languages", () => {
+-    const { component } = setup();
+-    expect(component.metricDefinitions).toHaveLength(9);
++  it("shows eight indicators with cash IGI and VAT plus FP 21 VAT in both languages", () => {
++    const { component } = setup();
++    expect(component.metricDefinitions).toHaveLength(8);
+     expect(component.metricDefinitions.map((metric) => metric.key)).toEqual([
+       "declarations",
+       "importUsd",
+       "exportUsd",
+       "igiPaid",
+       "ivaPaid",
+-      "igiFp21",
+       "ivaFp21",
+       "rectifications",
+       "redRate",
+@@ -25,10 +24,7 @@
+         ?.es,
+     ).toBe("IVA · FP 21");
+     component.i18n.set("en");
+-    expect(
+-      component.metricDefinitions.find((metric) => metric.key === "igiFp21")
+-        ?.en,
+-    ).toBe("Import duty · FP 21");
++    expect(component.metricDefinitions.some((metric) => metric.key === "igiFp21")).toBe(false);
+     expect(
+       component.metricDefinitions.find((metric) => metric.key === "ivaFp21")
+         ?.source,
+@@ -99,7 +95,7 @@
+       currency: "MXN",
+       startMonth,
+       endMonth,
+-      partTaxes: { rows },
++      partTaxes: { rows, available: true, unmatchedTaxRows: 0 },
+       monthly: Array.from({ length: 12 }, (_, i) => ({
+         month: i + 1,
+         available: true,
+@@ -122,6 +118,44 @@
+       months: { "1": { igi, iva: 20 } },
+     };
+   }
++  it("ranks tariffs by all cash duty amounts, including unassigned PN and net adjustments", () => {
++    const { component } = setup();
++    component.report.set(partReport([
++      partRow("PN-A", "85044099", 100),
++      partRow("PN-B", "85044099", 300),
++      partRow(null, "84733004", 1000),
++      partRow("PN-C", "84733004", -100),
++      partRow("PN-ZERO", "00000000", 0),
++    ]));
++    expect(component.topTariffTaxes()).toEqual([
++      { tariff: "84733004", igi: 900 },
++      { tariff: "85044099", igi: 400 },
++    ]);
++    expect(component.tariffTaxLabels()).toEqual(["84733004", "85044099"]);
++    expect(component.tariffTaxSeries()[0].values).toEqual([900, 400]);
++    component.selectPartTariff("85044099");
++    expect(component.topTariffTaxes()).toEqual([{ tariff: "85044099", igi: 400 }]);
++    component.searchParts("PN-A");
++    expect(component.tariffTaxSeries()[0].values).toEqual([100]);
++  });
++  it("filters before taking the top ten tariffs and handles unknown amounts and missing coverage", () => {
++    const { component } = setup();
++    const rows = Array.from({ length: 12 }, (_, i) => partRow(`PN-${i}`, String(i).padStart(8, "0"), i + 1));
++    const report = partReport(rows);
++    report.partTaxes.observationSourceAvailable = false;
++    component.report.set(report);
++    expect(component.topTariffTaxes()).toHaveLength(10);
++    expect(component.topTariffTaxes()[0]).toEqual({ tariff: "00000011", igi: 12 });
++    component.selectPartTariff("00000000");
++    expect(component.tariffTaxSeries()[0].values).toEqual([1]);
++    component.clearPartFilters();
++    component.report.set(partReport([...rows, { ...partRow(null), igi: null }]));
++    expect(component.topTariffTaxes()).toEqual([]);
++    component.report.set({ ...report, partTaxes: { ...report.partTaxes, available: false } });
++    expect(component.topTariffTaxes()).toEqual([]);
++    component.report.set({ ...report, partTaxes: { ...report.partTaxes, unmatchedTaxRows: 1 } });
++    expect(component.topTariffTaxes()).toEqual([]);
++  });
+   it("combines independent PN and tariff filters, including aliases, and resets pagination", () => {
+     const { component } = setup();
+     const primary = {
+--- a/frontend/src/app/features/analytics.ts
++++ b/frontend/src/app/features/analytics.ts
+@@ -209,14 +209,6 @@
+         color: "#9b6520",
+       },
+       {
+-        key: "igiFp21",
+-        es: "IGI · FP 21",
+-        en: "Import duty · FP 21",
+-        unit: this.currency(),
+-        source: "557 · " + this.t("Crédito IVA/IEPS", "VAT/excise credit"),
+-        color: "#7462ac",
+-      },
+-      {
+         key: "ivaFp21",
+         es: "IVA · FP 21",
+         en: "VAT · FP 21",
+@@ -606,6 +598,30 @@
+       },
+     ];
+   }
++  topTariffTaxes = computed(() => {
++    const parts = this.report()?.partTaxes;
++    const rows = this.taxRows();
++    if (!parts?.available || parts.unmatchedTaxRows ||
++      rows.some((row) => row.igi == null || !row.tariff)) return [];
++    const totals = new Map<string, number>();
++    for (const row of rows) {
++      totals.set(row.tariff, (totals.get(row.tariff) || 0) + row.igi!);
++    }
++    return [...totals].map(([tariff, igi]) => ({ tariff, igi }))
++      .filter((row) => row.igi > 0)
++      .sort((a, b) => b.igi - a.igi || a.tariff.localeCompare(b.tariff))
++      .slice(0, 10);
++  });
++  tariffTaxLabels() {
++    return this.topTariffTaxes().map((row) => row.tariff);
++  }
++  tariffTaxSeries(): ChartSeries[] {
++    return [{
++      label: this.t("IGI pagado · FP 0", "Paid import duty · FP 0"),
++      color: "#138679",
++      values: this.topTariffTaxes().map((row) => row.igi),
++    }];
++  }
+   partTrendSeries(tax?: "igi" | "iva"): ChartSeries[] {
+     const series = [
+       {
+--- a/frontend/src/app/shared/month-comparison.spec.ts
++++ b/frontend/src/app/shared/month-comparison.spec.ts
+@@ -54,7 +54,8 @@
+       exportUsd: 500,
+     };
+     const component = create(vi.fn(() => of(data)));
+-    expect(component.metrics()).toHaveLength(9);
++    expect(component.metrics()).toHaveLength(8);
++    expect(component.metrics().some((metric) => metric.key === "igiFp21")).toBe(false);
+     expect(
+       component.metrics().some((metric) => metric.key.startsWith("trade")),
+     ).toBe(false);
+--- a/frontend/src/app/shared/month-comparison.ts
++++ b/frontend/src/app/shared/month-comparison.ts
+@@ -463,11 +463,6 @@
+         unit: currency,
+       },
+       {
+-        key: "igiFp21",
+-        name: this.t("IGI · FP 21", "Import duty · FP 21"),
+-        unit: currency,
+-      },
+-      {
+         key: "ivaFp21",
+         name: this.t("IVA · FP 21", "VAT · FP 21"),
+         unit: currency,
+@@ -487,7 +482,7 @@
+     return this.metrics().find((m) => m.key === this.metric)?.unit || "";
+   }
+   metricNote() {
+-    if (["igiFp21", "ivaFp21"].includes(this.metric))
++    if (this.metric === "ivaFp21")
+       return this.t(
+         "Importaciones · 557 · FormaPago 21: crédito en IVA e IEPS (CERTIVA). Cada impuesto conserva su propia contribución. Sin dato no equivale a cero.",
+         "Imports · 557 · Payment method 21: VAT/excise credit (CERTIVA). Each tax keeps its own contribution code. Unavailable is not zero.",

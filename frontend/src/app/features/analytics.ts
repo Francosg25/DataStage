@@ -209,14 +209,6 @@ export class Analytics {
         color: "#9b6520",
       },
       {
-        key: "igiFp21",
-        es: "IGI · FP 21",
-        en: "Import duty · FP 21",
-        unit: this.currency(),
-        source: "557 · " + this.t("Crédito IVA/IEPS", "VAT/excise credit"),
-        color: "#7462ac",
-      },
-      {
         key: "ivaFp21",
         es: "IVA · FP 21",
         en: "VAT · FP 21",
@@ -605,6 +597,30 @@ export class Analytics {
         values: this.topParts().map((r) => r.igi),
       },
     ];
+  }
+  topTariffTaxes = computed(() => {
+    const parts = this.report()?.partTaxes;
+    const rows = this.taxRows();
+    if (!parts?.available || parts.unmatchedTaxRows ||
+      rows.some((row) => row.igi == null || !row.tariff)) return [];
+    const totals = new Map<string, number>();
+    for (const row of rows) {
+      totals.set(row.tariff, (totals.get(row.tariff) || 0) + row.igi!);
+    }
+    return [...totals].map(([tariff, igi]) => ({ tariff, igi }))
+      .filter((row) => row.igi > 0)
+      .sort((a, b) => b.igi - a.igi || a.tariff.localeCompare(b.tariff))
+      .slice(0, 10);
+  });
+  tariffTaxLabels() {
+    return this.topTariffTaxes().map((row) => row.tariff);
+  }
+  tariffTaxSeries(): ChartSeries[] {
+    return [{
+      label: this.t("IGI pagado · FP 0", "Paid import duty · FP 0"),
+      color: "#138679",
+      values: this.topTariffTaxes().map((row) => row.igi),
+    }];
   }
   partTrendSeries(tax?: "igi" | "iva"): ChartSeries[] {
     const series = [

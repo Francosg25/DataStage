@@ -1,5 +1,6 @@
 from datetime import datetime
 from zipfile import ZipFile
+from xml.etree import ElementTree as ET
 
 import openpyxl
 import pytest
@@ -96,6 +97,55 @@ def test_empty_result_still_exports_control(tmp_path):
     assert openpyxl.load_workbook(path).sheetnames == ["Control_Proceso"]
 
 
+def test_export_native_measures_dates_and_counts_preserves_identifiers_monthly_and_annual(tmp_path):
+    content = ("Fraccion|SecuenciaFraccion|PrecioUnitario|ValorDolares|CantidadUMComercial|"
+               "TipoCambio|FechaPagoReal|TipoFecha|CodigoMercanciaProducto\n"
+               "00123456|0001|123.456789|1195277.50|3.125|17.18470|20260423121314|01|00000987654321012345\n"
+               "00123456|0002|0|-42.50|0|19.1754|20260424|02|PN-0002")
+    files = [InputFile("x_551.asc", content, "Abril_2026")]
+    for kind, result in (("monthly", process_monthly("Abril_2026", files)),
+                         ("annual", process_annual(2026, "Ene-Ago", files))):
+        path = tmp_path / f"typed-{kind}.xlsx"
+        export_xlsx(result, path)
+        book = openpyxl.load_workbook(path)
+        sheet = book["551 Partidas"]
+        fields = {cell.value: cell.column for cell in sheet[1]}
+        for header, value in {"PrecioUnitario": 123.456789, "ValorDolares": 1195277.5,
+                              "CantidadUMComercial": 3.125, "TipoCambio": 17.1847}.items():
+            cell = sheet.cell(2, fields[header])
+            assert cell.data_type == "n"
+            assert cell.value == pytest.approx(value)
+            assert cell.number_format != "@"
+        assert sheet.cell(3, fields["PrecioUnitario"]).value == 0
+        assert sheet.cell(3, fields["ValorDolares"]).value == -42.5
+        for header, value in {"Fraccion": "00123456", "SecuenciaFraccion": "0001",
+                              "TipoFecha": "01", "CodigoMercanciaProducto": "00000987654321012345"}.items():
+            cell = sheet.cell(2, fields[header])
+            assert cell.data_type == "s" and cell.value == value
+        assert sheet.cell(2, fields["FechaPagoReal"]).value == datetime(2026, 4, 23, 12, 13, 14)
+        assert sheet.cell(3, fields["FechaPagoReal"]).value == datetime(2026, 4, 24)
+        assert sheet.cell(3, fields["FechaPagoReal"]).number_format == "yyyy-mm-dd"
+        control = book["Control_Proceso"]
+        counts = {cell.value: cell.column for cell in control[1]}
+        for header in ("Filas", "Columnas", "ColumnasFecha"):
+            assert control.cell(2, counts[header]).data_type == "n"
+
+
+def test_numeric_export_keeps_invalid_and_overprecision_values_without_coercing_to_zero(tmp_path):
+    result = process_monthly("Abril_2026", [InputFile("x_557.asc",
+        "ImportePago|FormaPago|FechaPagoReal\nNaN|00|invalid\n1e309|21|invalid\n"
+        "1234567890123456|00|invalid\n=SUM(A1:A2)|00|invalid\n1,234.50|00|invalid\n"
+        "1.23456789012345|00|20260423", "Abril_2026")])
+    path = tmp_path / "numeric-originals.xlsx"
+    export_xlsx(result, path)
+    sheet = openpyxl.load_workbook(path)["557 Contribuciones partida"]
+    for row, original in enumerate(("NaN", "1e309", "1234567890123456", "=SUM(A1:A2)", "1,234.50"), 2):
+        assert sheet[f"D{row}"].value == original and sheet[f"D{row}"].data_type == "s"
+    assert sheet["D7"].data_type == "n" and sheet["D7"].value == pytest.approx(1.23456789012345)
+    assert sheet["E2"].value == "00" and sheet["E2"].data_type == "s"
+    assert sheet["F2"].value == "invalid" and sheet["F2"].data_type == "s"
+
+
 def test_out_of_range_iso_date_remains_original_text_in_excel(tmp_path):
     result = process_monthly("Abril_2026", [InputFile("x_501.asc", "FechaPagoReal\n2200-01-01T00:00:00", "Abril_2026")])
     path = tmp_path / "invalid-date.xlsx"
@@ -103,3 +153,43 @@ def test_out_of_range_iso_date_remains_original_text_in_excel(tmp_path):
     cell = openpyxl.load_workbook(path).worksheets[1]["D2"]
     assert cell.value == "2200-01-01T00:00:00"
     assert cell.data_type == "s"
+
+
+def test_empty_cells_are_not_serialized_or_merged_and_values_keep_their_columns(tmp_path):
+    result = {"kind": "monthly", "controlRows": [], "tables": [{
+        "sheetName": "Vacios", "headers": ["Clave", "Vacio", "Valor", "FechaPagoReal"],
+        "dateColumns": ["fechapagoreal"],
+        "rows": [["00001", "", "0", "2026-04-23T12:13:14"],
+                 [None, "", "  ", None], ["00002", None, "42", None]],
+    }]}
+    path = tmp_path / "sparse.xlsx"
+    export_xlsx(result, path)
+    sheet = openpyxl.load_workbook(path)["Vacios"]
+    assert list(sheet.values) == [
+        ("Clave", "Vacio", "Valor", "FechaPagoReal"),
+        ("00001", None, "0", datetime(2026, 4, 23, 12, 13, 14)),
+        ("00002", None, "42", None),
+    ]
+    assert sheet.auto_filter.ref == "A1:D3"
+    assert not sheet.merged_cells.ranges
+    with ZipFile(path) as archive:
+        xml = ET.fromstring(archive.read("xl/worksheets/sheet2.xml"))
+        ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+        coordinates = {cell.attrib["r"] for cell in xml.findall(".//s:sheetData/s:row/s:c", ns)}
+        assert coordinates == {"A1", "B1", "C1", "D1", "A2", "C2", "D2", "A3", "C3"}
+
+
+def test_monthly_and_annual_excel_exclude_separator_only_records_before_trace_columns(tmp_path):
+    files = [InputFile("x_501.asc", "Clave|Valor\n||\n00001|0\n | |\n00002|42\n|||", "Abril_2026")]
+    for kind, result in (("monthly", process_monthly("Abril_2026", files)),
+                         ("annual", process_annual(2026, "Ene-Ago", files))):
+        assert len(result["tables"][0]["rows"]) == 2
+        assert result["controlRows"][0]["Filas"] == 2
+        path = tmp_path / f"{kind}.xlsx"
+        export_xlsx(result, path)
+        sheet = openpyxl.load_workbook(path).worksheets[1]
+        assert sheet.max_row == 3
+        assert sheet.auto_filter.ref.endswith("3")
+        assert sheet["D2"].value == "00001"
+        assert sheet["E2"].value == "0"
+

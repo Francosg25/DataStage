@@ -516,7 +516,7 @@ select {
 }
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -603,14 +603,6 @@ select {
 }
 .metric-scope {
   margin: 0 0 14px;
-}
-.part-analysis .chart-grid > ds-analytics-chart:first-child {
-  grid-row: span 2;
-}
-@media (max-width: 760px) {
-  .part-analysis .chart-grid > ds-analytics-chart:first-child {
-    grid-row: auto;
-  }
 }
 .kpi-note {
   font-size: 10px;
@@ -950,7 +942,7 @@ select {
 }
 @media (max-width: 1250px) {
   .kpi-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .kpi-label {
     min-height: 18px;

@@ -1,0 +1,1163 @@
+<header class="analytics-heading">
+  <div>
+    <div class="report-kicker">
+      DATASTAGE / {{ t('OPERACIONES ADUANERAS','CUSTOMS OPERATIONS') }}
+    </div>
+    <h1>{{ t('Análisis de operaciones','Operations analytics') }}</h1>
+  </div>
+  <div class="heading-actions">
+    <div
+      class="currency-switch"
+      role="group"
+      [attr.aria-label]="t('Moneda','Currency')"
+    >
+      @for (c of ['USD','MXN']; track c) {
+      <button
+        type="button"
+        [class.active]="filters.currency === c"
+        [attr.aria-pressed]="filters.currency === c"
+        (click)="setCurrency($any(c))"
+      >
+        {{ c }}
+      </button>
+      }
+    </div>
+    <button
+      type="button"
+      (click)="retry()"
+      [disabled]="loading()"
+      [title]="t('Actualizar','Refresh')"
+      [attr.aria-label]="t('Actualizar','Refresh')"
+    >
+      <ds-icon name="history" />
+    </button>
+    <button
+      type="button"
+      (click)="downloadPdf()"
+      [disabled]="!report() || loading() || exportingPdf()"
+      [title]="t('Descargar reporte general PDF','Download general PDF report')"
+      [attr.aria-label]="t('Descargar reporte general PDF','Download general PDF report')"
+    >
+      <ds-icon name="file" /> PDF
+    </button>
+    <button
+      type="button"
+      class="export-button"
+      (click)="downloadCsv()"
+      [disabled]="!report() || loading()"
+    >
+      <ds-icon name="download" />{{ t('Exportar CSV','Export CSV') }}
+    </button>
+  </div>
+</header>
+@if (exportingPdf()) {
+<p role="status">
+  {{ t('Generando reporte PDF...', 'Generating PDF report...') }}
+</p>
+} @if (pdfError()) {
+<p class="error-message" role="alert">{{ pdfError() }}</p>
+}
+<div class="filterbar">
+  <label class="source-filter"
+    >{{ t('Fuente','Source') }}<select
+      [(ngModel)]="filters.source"
+      (ngModelChange)="sourceChanged()"
+      [disabled]="!options()"
+    >
+      @for (source of options()?.sources || []; track source.id) {
+      <option [value]="source.id">
+        {{ source.id === 'reference' ? t('Excel de referencia','Reference
+        workbook') : t('Cargas publicadas','Published runs') }}
+      </option>
+      }
+    </select></label
+  >
+  <label
+    >{{ t('Año','Year') }}<select
+      [(ngModel)]="filters.year"
+      (ngModelChange)="load()"
+    >
+      @for (source of options()?.sources || []; track source.id) { @if
+      (source.id === filters.source) { @for (year of source.years; track year) {
+      <option [ngValue]="year">{{ year }}</option>
+      } @empty {
+      <option [ngValue]="filters.year">{{ filters.year }}</option>
+      } } }
+    </select></label
+  >
+  <label class="month-filter"
+    >{{ t('Desde','From') }}<select
+      [(ngModel)]="filters.startMonth"
+      (ngModelChange)="load()"
+    >
+      @for (m of months; track m) {
+      <option [ngValue]="m">{{ i18n.month(m) }}</option>
+      }
+    </select></label
+  >
+  <label class="month-filter"
+    >{{ t('Hasta','Through') }}<select
+      [(ngModel)]="filters.endMonth"
+      (ngModelChange)="load()"
+    >
+      @for (m of months; track m) {
+      <option [ngValue]="m" [disabled]="m < filters.startMonth">
+        {{ i18n.month(m) }}
+      </option>
+      }
+    </select></label
+  >
+  <label
+    >{{ t('Operación','Operation') }}<select
+      [(ngModel)]="filters.operation"
+      (ngModelChange)="load()"
+    >
+      <option value="">{{ t('Todas','All') }}</option>
+      <option value="1">{{ t('Importación','Import') }}</option>
+      <option value="2">{{ t('Exportación','Export') }}</option>
+    </select></label
+  >
+  <label class="wide-filter"
+    >{{ t('Aduana','Customs office') }}<select
+      [(ngModel)]="filters.customs"
+      (ngModelChange)="load()"
+    >
+      <option value="">{{ t('Todas','All') }}</option>
+      @for (v of report()?.filters?.customs || []; track v) {
+      <option [value]="v">{{ category(v,'customs') }}</option>
+      }
+    </select></label
+  >
+  <label class="wide-filter"
+    >{{ t('Documento','Declaration type') }}<select
+      [(ngModel)]="filters.document"
+      (ngModelChange)="load()"
+    >
+      <option value="">{{ t('Todos','All') }}</option>
+      @for (v of report()?.filters?.documents || []; track v) {
+      <option [value]="v">{{ category(v,'documents') }}</option>
+      }
+    </select></label
+  >
+  <button type="button" class="reset-button" (click)="reset()">
+    {{ t('Restablecer','Reset') }}
+  </button>
+</div>
+@if (error()) {
+<div class="error-message" role="alert">
+  {{ i18n.t(error()) }}
+  <button (click)="retry()">{{ t('Reintentar','Retry') }}</button>
+</div>
+} @if (loading()) {
+<div class="loading-bar" role="status">
+  {{ t('Actualizando indicadores...','Updating metrics...') }}
+</div>
+} @if (loading() && !report()) {
+<section class="analytics-loading" aria-hidden="true">
+  <div class="loading-skeleton loading-skeleton-text"></div>
+  <div class="kpi-grid">
+    @for (metric of metricDefinitions; track metric.key) {
+    <article class="kpi" [style.--metric-color]="metric.color">
+      <div class="kpi-label">
+        {{ t(metric.es,metric.en) }}<span>{{ metric.unit }}</span>
+      </div>
+      <div class="kpi-value">
+        <span class="loading-skeleton loading-skeleton-value"></span>
+      </div>
+      <div class="kpi-bottom">
+        <span class="loading-skeleton loading-skeleton-short"></span>
+      </div>
+      <div class="kpi-note">
+        <span class="loading-skeleton loading-skeleton-text"></span>
+      </div>
+    </article>
+    }
+  </div>
+  <div class="loading-chart-panel">
+    <span class="loading-skeleton loading-skeleton-text"></span>
+    <div class="loading-skeleton loading-skeleton-chart"></div>
+  </div>
+</section>
+} @if (report(); as r) {
+<div class="report-status">
+  <span
+    >{{ r.source === 'reference' ? t('Referencia Excel','Excel reference') :
+    t('Versiones mensuales vigentes','Current monthly versions') }} · {{
+    r.coverage.availableMonths.length }}/{{ r.coverage.requestedMonths }} {{
+    t('meses disponibles','months available') }}</span
+  >
+  <span
+    >{{ t('Último mes:','Latest month:') }}
+    <b>{{ r.latestMonth ? i18n.month(r.latestMonth) + ' ' + r.year : '—' }}</b>
+    · {{ currency() }}</span
+  >
+</div>
+<nav
+  class="report-tabs"
+  [attr.aria-label]="t('Vistas de análisis','Analytics views')"
+>
+  @for (item of tabs; track item.id) {
+  <button
+    type="button"
+    [class.active]="tab() === item.id"
+    [attr.aria-current]="tab() === item.id ? 'page' : null"
+    (click)="tab.set(item.id)"
+  >
+    {{ t(item.es,item.en) }}
+  </button>
+  }
+</nav>
+@if (r.partTaxes.missingParts + r.partTaxes.ambiguousParts +
+r.partTaxes.invalidItemKeys > 0) {
+<div class="reference-notice persistent-alert" role="status">
+  <ds-icon name="alert" />
+  <span
+    ><b>{{ format(r.partTaxes.missingParts) }}</b> {{ t('partidas sin número de
+    parte','line items missing a part number') }} ·
+    <b>{{ format(r.partTaxes.ambiguousParts) }}</b> {{ t('con varios números de
+    parte','with multiple part numbers') }} @if (r.partTaxes.invalidItemKeys) {
+    · {{ format(r.partTaxes.invalidItemKeys) }} {{ t('llaves
+    incompletas','incomplete item keys') }} }. {{ t('Pendientes de corrección en
+    la fuente.','Pending source-data correction.') }}</span
+  >
+  <button type="button" (click)="tab.set('quality')">
+    {{ t('Revisar','Review') }}
+  </button>
+</div>
+} @if (r.coverage.missingExchangeRates > 0) {
+<div class="reference-notice">
+  <ds-icon name="alert" /><span
+    >{{ format(r.coverage.missingExchangeRates) }} {{ t('registros 501 sin tipo
+    de cambio único y válido. Los importes no convertibles aparecen sin
+    dato.','501 records lack a unique valid exchange rate. Unconvertible amounts
+    are unavailable.') }}</span
+  >
+</div>
+} @if (r.partTaxes.unmatchedTaxRows > 0) {
+<div class="reference-notice">
+  <ds-icon name="alert" /><span
+    >{{ format(r.partTaxes.unmatchedTaxRows) }} {{ t('pagos IGI/IVA sin partida
+    u operación verificable; totales pendientes de conciliación.','IGI/VAT
+    payment rows have no verified item or operation; totals require
+    reconciliation.') }}</span
+  >
+</div>
+} @if (r.reconciliation && !r.reconciliation.matched) {
+<div class="reference-notice">
+  <ds-icon name="file" /><span
+    >{{ r.reconciliation.differences.length }} {{ t('tablas difieren entre los
+    Excel de referencia.','tables differ between the reference workbooks.')
+    }}</span
+  ><button (click)="tab.set('definitions')">
+    {{ t('Fuentes','Sources') }}
+  </button>
+</div>
+}
+<div
+  [class.is-loading]="loading()"
+  [attr.aria-busy]="loading()"
+  [inert]="loading()"
+>
+  @if (!r.coverage.availableMonths.length) {
+  <section class="analytics-empty">
+    <ds-icon name="calendar" />
+    <h2>{{ t('No hay meses disponibles','No months available') }}</h2>
+    <a routerLink="/monthly"
+      >{{ t('Ir a cargas mensuales','Go to monthly uploads') }}</a
+    >
+  </section>
+  } @else { @if (tab() !== 'definitions') {
+  <p class="data-note metric-scope">
+    {{ t('Indicadores del rango:','Range metrics:') }} {{
+    i18n.month(r.startMonth,true) }}–{{ i18n.month(r.endMonth,true) }} {{ r.year
+    }} · {{ r.coverage.availableMonths.length }}/{{ r.coverage.requestedMonths
+    }} {{ t('meses disponibles','months available') }}. {{ t('0 = valor
+    observado · — = sin dato.','0 = observed value · — = unavailable.') }}
+  </p>
+  @if (r.coverage.incompleteTables?.length) {
+  <p class="data-warning">
+    {{ t('Cobertura incompleta en meses disponibles. Los agregados afectados
+    quedan sin dato. Tablas:','Incomplete coverage in available months. Affected
+    aggregates are unavailable. Tables:') }} {{
+    r.coverage.incompleteTables!.join(', ') }}.
+  </p>
+  } @if (r.coverage.invalidDeclarationKeys) {
+  <p class="data-warning">
+    {{ r.coverage.invalidDeclarationKeys }} {{ t('registros 501 con llave
+    incompleta. El conteo y los rankings de pedimentos quedan sin dato.','501
+    records have incomplete keys. Declaration counts and rankings are
+    unavailable.') }}
+  </p>
+  } @if (tab() === 'overview') {
+  <div class="kpi-grid">
+    @for (metric of metricDefinitions; track metric.key) {
+    <article class="kpi" [style.--metric-color]="metric.color">
+      <div class="kpi-label">
+        {{ t(metric.es,metric.en) }}<span>{{ metric.unit }}</span>
+      </div>
+      <div
+        class="kpi-value"
+        [title]="loading() ? '' : format(r.totals[metric.key],metric.unit)"
+      >
+        @if (loading()) {
+        <span
+          class="loading-skeleton loading-skeleton-value"
+          aria-hidden="true"
+        ></span>
+        } @else {
+        <span class="metric-ready"
+          >{{ format(r.totals[metric.key],metric.unit,!!metric.unit) }}</span
+        >
+        }
+      </div>
+      <div class="kpi-bottom">
+        @if (loading()) {
+        <span
+          class="loading-skeleton loading-skeleton-short"
+          aria-hidden="true"
+        ></span>
+        } @else {
+        <span
+          class="kpi-change"
+          [class.increase]="(r.deltas[metric.key] || 0) > 0"
+          [class.decrease]="(r.deltas[metric.key] || 0) < 0"
+          >{{ metricDeltaLabel(metric.key) }}</span
+        ><span class="spark" aria-hidden="true"
+          >@for (height of spark(metric.key); track $index) {
+          <i
+            [class.spark-missing]="height === null"
+            [class.spark-zero]="height === 0"
+            [style.height.px]="height"
+          ></i>
+          }</span
+        >
+        }
+      </div>
+      <div class="kpi-note">
+        {{ metric.source }} · {{ t('Último mes vs. anterior','Latest vs. prior
+        month') }}
+      </div>
+    </article>
+    }
+  </div>
+  } @if (r.coverage.availableMonths.length && !r.partTaxes.available) {
+  <div class="reference-notice">
+    <ds-icon name="alert" /><span
+      >{{ t('Cobertura incompleta de partidas y pagos (551/557). Los totales de
+      IGI/IVA no están disponibles.','Incomplete line-item and payment coverage
+      (551/557). IGI/VAT totals are unavailable.') }}</span
+    >
+  </div>
+  } } @if (tab() === 'overview') {
+  <ds-analytics-chart
+    [loading]="loading()"
+    [title]="t('Valor declarado de mercancías por mes','Monthly declared goods value')"
+    [subtitle]="t('Valor de las partidas · 551','Line-item value · 551')"
+    [unit]="currency()"
+    [context]="chartContext()"
+    [categoryLabel]="t('Mes','Month')"
+    type="line"
+    [labels]="labels()"
+    [series]="tradeSeries()"
+    [footnote]="t('Valores declarados en las cargas; las rectificaciones no se netean contra sus originales. Meses sin fuente: sin dato.','Declared values in uploaded records; amendments are not netted against originals. Months without a source: unavailable.')"
+  />
+  } @if (tab() === 'trade') {
+  <div class="chart-grid">
+    <ds-analytics-chart
+      [loading]="loading()"
+      [title]="t('Pedimentos por aduana','Declarations by customs office')"
+      [subtitle]="t('Pedimentos únicos por mes · 501','Distinct declarations per month · 501')"
+      [unit]="t('Pedimentos','Declarations')"
+      [context]="chartContext()"
+      [categoryLabel]="t('Aduana','Customs office')"
+      [horizontal]="true"
+      [labels]="rankLabels('customs')"
+      [series]="rankSeries('customs',t('Pedimentos','Declarations'))"
+      [footnote]="t('8 principales + Otros. La suma coincide con el indicador de pedimentos. Selecciona una barra para filtrar.','Top 8 + Other. The sum matches the declarations metric. Select a bar to filter.')"
+      (selected)="crossFilter('customs','customs',$event)"
+    />
+    <ds-analytics-chart
+      [loading]="loading()"
+      [title]="t('Pedimentos por clave de documento','Declarations by document code')"
+      [subtitle]="t('Pedimentos únicos por mes · 501','Distinct declarations per month · 501')"
+      [unit]="t('Pedimentos','Declarations')"
+      [context]="chartContext()"
+      [categoryLabel]="t('Clave de documento','Document code')"
+      [horizontal]="true"
+      [labels]="rankLabels('documents')"
+      [series]="rankSeries('documents',t('Pedimentos','Declarations'),'#138679')"
+      [footnote]="t('ClaveDocumento del pedimento · Anexo 22, apéndice 2. 8 principales + Otros. Selecciona una barra para filtrar.','Declaration document code · Anexo 22, appendix 2. Top 8 + Other. Select a bar to filter.')"
+      (selected)="crossFilter('document','documents',$event)"
+    />
+    <ds-analytics-chart
+      [loading]="loading()"
+      [title]="t('Importaciones por país de origen','Imports by country of origin')"
+      [subtitle]="t('Valor declarado · Importaciones · 551','Declared value · Imports · 551')"
+      [unit]="currency()"
+      [context]="chartContext()"
+      [categoryLabel]="t('País de origen','Country of origin')"
+      [horizontal]="true"
+      [labels]="rankLabels('originCountries')"
+      [series]="rankSeries('originCountries',t('Importaciones','Imports'),'#138679')"
+      [footnote]="t('PaísOrigenDestino de partidas de importación. 8 principales + Otros; no es el país del proveedor.','Country of origin from import line items. Top 8 + Other; this is not the supplier country.')"
+    />
+    <ds-analytics-chart
+      [loading]="loading()"
+      [title]="t('Exportaciones por país de destino','Exports by destination country')"
+      [subtitle]="t('Valor declarado · Exportaciones · 551','Declared value · Exports · 551')"
+      [unit]="currency()"
+      [context]="chartContext()"
+      [categoryLabel]="t('País de destino','Destination country')"
+      [horizontal]="true"
+      [labels]="rankLabels('destinationCountries')"
+      [series]="rankSeries('destinationCountries',t('Exportaciones','Exports'))"
+      [footnote]="t('PaísOrigenDestino de partidas de exportación. 8 principales + Otros.','Destination country from export line items. Top 8 + Other.')"
+    />
+    <ds-analytics-chart
+      [loading]="loading()"
+      [title]="t('Valor declarado por fracción arancelaria','Declared value by tariff code')"
+      [subtitle]="t('Valor de las partidas · 551','Line-item value · 551')"
+      [unit]="currency()"
+      [context]="chartContext()"
+      [categoryLabel]="t('Fracción arancelaria','Tariff code')"
+      [horizontal]="true"
+      [labels]="rankLabels('tariffs')"
+      [series]="rankSeries('tariffs',t('Valor declarado','Declared value'))"
+      [footnote]="t('8 principales + Otros. Agrupación por Fracción; no desglosa NICO. Estos importes son valor declarado, no impuestos.','Top 8 + Other. Grouped by tariff code without a NICO breakdown. These amounts are declared goods value, not taxes.')"
+    />
+  </div>
+  } @if (tab() === 'taxes') {
+  <ng-container *ngTemplateOutlet="paymentsTable" />
+  <ng-container *ngTemplateOutlet="partAnalysis" />
+  <div class="section-heading tax-toolbar">
+    <h2>
+      {{ t('Comparativa IGI / IVA por número de parte','Import duty / VAT
+      comparison by part number') }}
+    </h2>
+    <div class="compare-selectors">
+      <label
+        >{{ t('Mes base','Baseline month') }}<select
+          [ngModel]="first()"
+          (ngModelChange)="first.set(+$event)"
+        >
+          @for (month of selectedMonths(); track month.month) { @let m =
+          month.month;
+          <option [ngValue]="m">{{ i18n.month(m) }} {{ r.year }}</option>
+          }
+        </select></label
+      >
+      <label
+        >{{ t('Mes comparado','Comparison month') }}<select
+          [ngModel]="second()"
+          (ngModelChange)="second.set(+$event)"
+        >
+          @for (month of selectedMonths(); track month.month) { @let m =
+          month.month;
+          <option [ngValue]="m">{{ i18n.month(m) }} {{ r.year }}</option>
+          }
+        </select></label
+      >
+    </div>
+  </div>
+  @for (tax of taxTypes; track tax) {
+  <h3 class="tax-table-heading">
+    {{ tax === 'igi' ? t('IGI · Impuesto General de Importación','IGI · Import
+    duty') : t('IVA · Impuesto al Valor Agregado','IVA · Value-added tax') }}
+    <span>{{ currency() }} · FP 0</span>
+  </h3>
+  <div class="table-scroll">
+    <table class="analysis-table">
+      <thead>
+        <tr>
+          <th>{{ t('Número de parte','Part number') }}</th>
+          <th>{{ t('Fracción','Tariff code') }}</th>
+          <th>{{ i18n.month(first()) }}</th>
+          <th>{{ i18n.month(second()) }}</th>
+          <th>{{ t('Diferencia','Difference') }}</th>
+          <th>{{ t('Variación','Change') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of visibleTaxRows(); track $index) {
+        <tr>
+          <th [class.unassigned]="!row.partNumber">
+            {{ row.partNumber || t('Sin asignar · revisar NP','Unassigned ·
+            review part number') }} @if (row.alternatePartNumbers?.length) {
+            <small class="part-alias"
+              >{{ t('Alternativo:','Alternate:') }} {{
+              row.alternatePartNumbers!.join(' · ') }}</small
+            >
+            }
+          </th>
+          <td>{{ row.tariff }}</td>
+          <td>{{ format(taxValue(row,first(),tax),currency()) }}</td>
+          <td>{{ format(taxValue(row,second(),tax),currency()) }}</td>
+          <td>{{ format(taxDifference(row,tax),currency()) }}</td>
+          <td>{{ delta(taxChange(row,tax)) }}</td>
+        </tr>
+        } @empty {
+        <tr>
+          <td colspan="6">
+            {{ t('Sin pagos identificables con los filtros actuales.','No
+            identifiable payments under the current filters.') }}
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  }
+  <div class="pagination">
+    <span
+      >{{ format(taxRows().length) }} {{ t('combinaciones NP / fracción','part /
+      tariff combinations') }} · {{ t('Página','Page') }} {{ partPage() + 1
+      }}</span
+    ><button
+      (click)="partPage.set(partPage() - 1)"
+      [disabled]="partPage() === 0"
+      [attr.aria-label]="t('Página anterior','Previous page')"
+    >
+      ‹</button
+    ><button
+      (click)="partPage.set(partPage() + 1)"
+      [disabled]="(partPage() + 1) * pageSize >= taxRows().length"
+      [attr.aria-label]="t('Página siguiente','Next page')"
+    >
+      ›
+    </button>
+  </div>
+  } @if (tab() === 'quality') {
+  <ng-container *ngTemplateOutlet="rectificationsTable" />
+  <div class="section-heading">
+    <h2>
+      {{ t('Números de parte pendientes de corrección','Part numbers requiring
+      correction') }}
+    </h2>
+    <button
+      type="button"
+      (click)="exportAlerts()"
+      [disabled]="loading() || !r.partTaxes.alerts.length"
+    >
+      <ds-icon name="download" /> CSV
+    </button>
+  </div>
+  @if (!r.partTaxes.observationSourceAvailable) {
+  <p class="error-message">
+    {{ t('La tabla 558 no está disponible en esta fuente.','Table 558 is
+    unavailable in this source.') }}
+  </p>
+  }
+  <div class="table-scroll">
+    <table class="analysis-table">
+      <thead>
+        <tr>
+          <th>{{ t('Mes','Month') }}</th>
+          <th>{{ t('Patente / pedimento','Broker / declaration') }}</th>
+          <th>{{ t('Fracción / partida','Tariff / line item') }}</th>
+          <th>{{ t('Estado','Status') }}</th>
+          <th>{{ t('Observaciones 558','558 observations') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (a of visibleAlerts(); track $index) {
+        <tr>
+          <td>{{ i18n.month(a.month,true) }} {{ a.year }}</td>
+          <td>
+            {{ a.patent }} / {{ a.declaration }}<small
+              >{{ category(a.customs,'customs') }}</small
+            >
+          </td>
+          <td>{{ a.tariff }} / {{ a.sequence }}</td>
+          <td class="unassigned">
+            {{ a.status === 'missing' ? t('Sin NP verificable','No verified part
+            number') : t('Varios NP','Multiple part numbers') }}
+          </td>
+          <td class="observation-cell">
+            {{ a.observations.join(' | ') || t('Sin observación relacionada','No
+            related observation') }}
+          </td>
+        </tr>
+        } @empty {
+        <tr>
+          <td colspan="5">
+            {{ t('No hay alertas en las partidas identificables de esta
+            selección.','No alerts in identifiable line items for this
+            selection.') }}
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <div class="pagination">
+    <span
+      >{{ format(r.partTaxes.alerts.length) }} {{ t('pendientes','pending') }} ·
+      {{ t('Página','Page') }} {{ alertPage() + 1 }}</span
+    ><button
+      (click)="alertPage.set(alertPage() - 1)"
+      [disabled]="alertPage() === 0"
+      [attr.aria-label]="t('Página anterior','Previous page')"
+    >
+      ‹</button
+    ><button
+      (click)="alertPage.set(alertPage() + 1)"
+      [disabled]="(alertPage() + 1) * pageSize >= r.partTaxes.alerts.length"
+      [attr.aria-label]="t('Página siguiente','Next page')"
+    >
+      ›
+    </button>
+  </div>
+  <div class="quality-facts">
+    <div>
+      <strong>{{ format(r.coverage.invalidNumericValues) }}</strong
+      ><span
+        >{{ t('Valores numéricos ausentes o inválidos','Missing or invalid
+        numeric values') }}</span
+      >
+    </div>
+    <div>
+      <strong>{{ format(r.coverage.orphanItems) }}</strong
+      ><span
+        >{{ t('Partidas sin pedimento en 501','Line items without a 501
+        declaration') }}</span
+      >
+    </div>
+    <div>
+      <strong>{{ format(r.coverage.duplicateDeclarationRows) }}</strong
+      ><span
+        >{{ t('Filas 501 adicionales por llave','Additional 501 rows per key')
+        }}</span
+      >
+    </div>
+  </div>
+  } @if (tab() === 'definitions') {
+  <section class="definitions">
+    <h2>
+      {{ t('Fuentes y criterios de cálculo','Sources and calculation rules') }}
+    </h2>
+    <dl>
+      <dt>{{ t('Contribuciones','Taxes') }}</dt>
+      <dd>
+        {{ t('Anexo 22, 15 enero 2026, apéndices 12 y 13: 1 = DTA, 3 = IVA, 6 =
+        IGI/IGE. IGI e IVA en efectivo incluyen importaciones con FormaPago 0 en
+        557. Los indicadores y la tabla mensual separan FP 0 y crédito en IVA e
+        IEPS (FP 21, CERTIVA). FP 13 es pago ya efectuado; FP 22 es garantía en
+        IVA e IEPS. Otras formas se desglosan por separado. No se suman 510 y
+        557.','Anexo 22, January 15, 2026, appendices 12 and 13: 1 = customs
+        processing fee, 3 = VAT, 6 = import/export duty. Cash IGI and VAT
+        include imports with payment method 0 in 557. The indicators and monthly
+        table separate FP 0 and VAT/excise credit (FP 21, CERTIVA). FP 13 is
+        previously paid; FP 22 is VAT/excise guarantee. Other methods are
+        itemized separately. Tables 510 and 557 are not added together.') }}
+      </dd>
+      <dt>{{ t('Valor de mercancías','Goods value') }}</dt>
+      <dd>
+        {{ t('Indicadores separados: importaciones con TipoOperacion 1 y
+        exportaciones con TipoOperacion 2. Ambos suman ValorDolares de 551 y se
+        convierten por pedimento si se elige MXN. Respetan los filtros
+        generales.','Separate indicators: imports with operation type 1 and
+        exports with operation type 2. Both sum ValorDolares from 551 and are
+        converted per declaration when MXN is selected. General filters apply.')
+        }}
+      </dd>
+      <dt>{{ t('Moneda','Currency') }}</dt>
+      <dd>
+        {{ t('USD por defecto. Conversión individual con TipoCambio de 501: MXN
+        / tipo de cambio = USD. Sin un tipo válido y único, el agregado que
+        requiere conversión queda sin dato.','USD by default. Individual
+        conversion using the 501 exchange rate: MXN / exchange rate = USD.
+        Without a valid unique rate, aggregates requiring conversion are
+        unavailable.') }}
+      </dd>
+      <dt>{{ t('Número de parte','Part number') }}</dt>
+      <dd>
+        {{ t('Cruce por año, mes, patente, pedimento, aduana, fracción y
+        secuencia. NP es el principal; OTRO NP es un código alternativo del
+        mismo artículo. Se asigna el importe una sola vez al principal. Series y
+        lotes no son NP. Varios principales distintos requieren
+        revisión.','Matched by year, month, broker, declaration, customs office,
+        tariff and item sequence. NP is the principal; OTRO NP is an alternate
+        code for the same item. The amount is assigned once to the principal.
+        Serial and lot numbers are not parts. Multiple distinct principals
+        require review.') }}
+      </dd>
+      <dt>{{ t('Mes y versiones','Month and versions') }}</dt>
+      <dd>
+        {{ t('Se utiliza el mes del archivo o carga. Solo versiones mensuales
+        activas en datos publicados. Los Excel son una referencia separada.
+        Meses sin fuente no equivalen a cero.','The file or upload month is
+        used. Published data includes only active monthly versions. Workbooks
+        are a separate reference. Missing months are not zero.') }}
+      </dd>
+      <dt>{{ t('Variaciones','Changes') }}</dt>
+      <dd>
+        {{ t('(Mes comparado − mes base) / |mes base| × 100. Sin porcentaje
+        cuando la base es cero o falta. Los cambios de la tasa de rojo se
+        muestran en puntos porcentuales (p.p.). Los indicadores muestran el
+        total del rango y la variación del último mes frente al
+        anterior.','(Comparison month − baseline month) / |baseline month| ×
+        100. No percentage when the baseline is zero or missing. Red-rate
+        changes are shown in percentage points (pp). Indicators show range
+        totals and the latest month versus its preceding month.') }}
+      </dd>
+      <dt>{{ t('Rectificaciones','Amendments') }}</dt>
+      <dd>
+        {{ t('Pedimentos rectificados cuenta pedimentos distintos en 701, sin
+        exigir ClaveDocumento R1: el archivo conserva claves AF, IN, RT y otras.
+        Llave: año, mes, patente, pedimento y aduana. % grupo = rectificados /
+        pedimentos 501 de la misma aduana y patente, o de la misma patente × 100.
+        % global = rectificados del grupo / total 501 con los mismos filtros × 100. El total recalcula la
+        tasa, no promedia porcentajes. Meses diferentes se cuentan por separado.
+        Una rectificación no demuestra por sí sola un error operativo.',
+        'Amended declarations counts distinct declarations in 701 without
+        requiring document code R1: files retain AF, IN, RT and other codes.
+        Key: year, month, broker, declaration and customs office. % group =
+        amended / 501 declarations for the office/broker pair or broker × 100. % global = group amended /
+        all 501 declarations under the same filters × 100. The total
+        recalculates the rate rather than averaging percentages. Different
+        months are counted separately. An amendment alone is not proof of an
+        operational error.') }}
+      </dd>
+      <dt>
+        {{ t('Valor declarado y rectificaciones','Declared value and
+        amendments') }}
+      </dt>
+      <dd>
+        {{ t('Las gráficas monetarias de comercio suman registros 551 de la
+        fuente activa. No reconstruyen el estado final de una operación ni
+        restan el pedimento original al rectificado. Las diferencias 702 se
+        mantienen separadas.','Trade value charts sum 551 records from the
+        active source. They do not reconstruct the final state of an operation
+        or subtract an original declaration from its amendment. Differences in
+        702 remain separate.') }}
+      </dd>
+      <dt>{{ t('Referencia externa de IGI','External IGI reference') }}</dt>
+      <dd>
+        {{ t('El archivo IGI abril 2025 a marzo 2026 guía la presentación por
+        NP. Sus totales no se mezclan con enero a agosto de 2026 ni se
+        distribuyen por meses sin evidencia.','The April 2025 to March 2026 IGI
+        workbook informs the part-number layout. Its totals are not merged into
+        January to August 2026 or assigned to months without evidence.') }}
+      </dd>
+    </dl>
+    @for (s of r.sources; track s.sha256) {
+    <div class="source-row">
+      <ds-icon name="file" />
+      <div>
+        <strong>{{ s.file }}</strong><small>SHA-256: {{ s.sha256 }}</small>
+      </div>
+    </div>
+    } @if (r.reconciliation; as check) {
+    <div class="reconciliation" [class.mismatch]="!check.matched">
+      {{ check.file }} · {{ check.comparedTables }} {{ t('tablas
+      comparadas','tables compared') }}
+    </div>
+    @for (d of check.differences; track $index) {
+    <p>{{ d.period }} · {{ d.table }}</p>
+    } }
+  </section>
+  } @if (tab() === 'overview') {
+  <div class="comparison-links">
+    <a routerLink="/annual"
+      >{{ t('Abrir comparativa mensual','Open monthly comparison') }}
+      <ds-icon name="arrow"
+    /></a>
+    <a routerLink="/agent" [queryParams]="{prompt:aiPrompt()}"
+      >{{ t('Consultar al asistente','Ask the assistant') }}
+      <ds-icon name="spark"
+    /></a>
+  </div>
+  } }
+</div>
+<footer class="analytics-footer">
+  <span>DataStage · {{ r.year }} · {{ currency() }}</span
+  ><span
+    >{{ t('Manual Data Stage · Anexo 22','Data Stage Manual · Anexo 22')
+    }}</span
+  >
+</footer>
+<ng-template #partAnalysis>
+  <section
+    class="report-data-section part-analysis"
+    aria-labelledby="part-analysis-title"
+  >
+    <div class="section-heading">
+      <div>
+        <h2 id="part-analysis-title">
+          {{ t('Números de parte','Part Numbers') }}
+        </h2>
+        <p id="part-filter-help">
+          {{ t('Filtra las gráficas, tablas y CSV de PN por número de parte y
+          fracción arancelaria.','Filter PN charts, tables and CSV by part
+          number and tariff code.') }}
+        </p>
+      </div>
+      <button
+        type="button"
+        (click)="exportParts()"
+        [disabled]="loading() || !taxRows().length"
+      >
+        <ds-icon name="download" /> {{ t('CSV de PN','PN CSV') }}
+      </button>
+    </div>
+    <div class="part-filters" role="group" aria-describedby="part-filter-help">
+      <label for="part-number-filter">
+        <span>PN</span>
+        <input
+          id="part-number-filter"
+          type="search"
+          list="part-number-options"
+          autocomplete="off"
+          [placeholder]="t('Buscar PN principal o alternativo','Search primary or alternate PN')"
+          [ngModel]="partSearch()"
+          (ngModelChange)="searchParts($event)"
+          [disabled]="loading()"
+        />
+      </label>
+      <datalist id="part-number-options">
+        @for (pn of partNumberOptions(); track pn) {
+        <option [value]="pn"></option>
+        }
+      </datalist>
+      <label for="part-tariff-filter">
+        <span>{{ t('Fracción arancelaria','Tariff code') }}</span>
+        <select
+          id="part-tariff-filter"
+          [ngModel]="partTariff()"
+          (ngModelChange)="selectPartTariff($event)"
+          [disabled]="loading()"
+        >
+          <option value="">
+            {{ t('Todas las fracciones','All tariff codes') }}
+          </option>
+          @if (partTariff() && !tariffCodes().includes(partTariff())) {
+          <option [value]="partTariff()">
+            {{ partTariff() }} · {{ t('Sin coincidencias','No matches') }}
+          </option>
+          } @for (tariff of tariffCodes(); track tariff) {
+          <option [value]="tariff">{{ tariff }}</option>
+          }
+        </select>
+      </label>
+      <button
+        type="button"
+        (click)="clearPartFilters()"
+        [disabled]="!partSearch() && !partTariff()"
+      >
+        {{ t('Limpiar filtros','Clear filters') }}
+      </button>
+    </div>
+    <p class="part-filter-status" role="status">
+      {{ format(identifiedTaxRows().length) }} {{ t('combinaciones PN /
+      fracción','PN / tariff combinations') }} @if (taxRows().length >
+      identifiedTaxRows().length) { · {{ format(taxRows().length -
+      identifiedTaxRows().length) }} {{ t('sin PN asignado, disponibles en
+      tablas y CSV','without an assigned PN, available in tables and CSV') }} }
+    </p>
+    <div class="chart-grid">
+      <ds-analytics-chart
+        [loading]="loading()"
+        [title]="t('Números de parte con mayor IGI','Top part numbers by import duty')"
+        [subtitle]="currency() + ' · ' + t('10 principales de la selección · PN y fracción','Top 10 in selection · PN and tariff')"
+        [unit]="currency()"
+        [context]="partContext()"
+        [categoryLabel]="t('PN · Fracción','PN · Tariff')"
+        [horizontal]="true"
+        [labels]="partLabels()"
+        [series]="partSeries()"
+        [footnote]="t('Solo PN identificados · IGI en efectivo (FP 0). El Top 10 es un subconjunto; con importes o cobertura incompletos el ranking queda sin dato.','Identified PN only · Cash import duty (FP 0). The top 10 is a subset; incomplete amounts or coverage make the ranking unavailable.')"
+      />
+      <ds-analytics-chart
+        [loading]="loading()"
+        [title]="t('Fracciones con mayor IGI pagado · Forma de pago 0','Top tariff codes by paid import duty · Payment method 0')"
+        [subtitle]="currency() + ' · ' + t('10 principales por importe pagado · 551 / 557','Top 10 by amount paid · 551 / 557')"
+        [unit]="currency()"
+        [context]="partContext()"
+        [categoryLabel]="t('Fracción arancelaria','Tariff code')"
+        [horizontal]="true"
+        [labels]="tariffTaxLabels()"
+        [series]="tariffTaxSeries()"
+        [footnote]="t('Suma IGI de importación en efectivo (FP 0) por fracción, incluidos pagos sin PN identificado cuando no se filtra un PN. Orden por importe, no por cantidad de pagos. Top 10; sin dato si faltan importes o cruces verificables.','Sums cash import duty (FP 0) by tariff, including payments without an identified PN when no PN filter is selected. Ranked by amount, not payment count. Top 10; unavailable with missing amounts or unverified matches.')"
+      />
+    </div>
+    @if (taxRows().length > identifiedTaxRows().length) {
+    <p class="data-note part-attribution-note">
+      {{ t('Pagos en efectivo fuera del ranking por PN por falta de un PN
+      identificado:','Cash payments excluded from the PN ranking because no PN was
+      identified:') }} {{ t('IGI','IMPORT DUTY') }} {{
+      format(partUnassignedTotals().igi,currency()) }} · {{ t('IVA','VAT') }} {{
+      format(partUnassignedTotals().iva,currency()) }} {{ currency() }}.
+    </p>
+    }
+  </section>
+</ng-template>
+<ng-template #paymentsTable>
+  <section class="report-data-section" aria-labelledby="payments-title">
+    <div class="section-heading">
+      <div>
+        <h2 id="payments-title">
+          {{ t('IGI e IVA por mes y forma de pago','Monthly IMPORT DUTY and VAT
+          by payment method') }}
+        </h2>
+        <p>
+          {{ currency() }} · {{ t('Importaciones · 551 / 557','Imports · 551 /
+          557') }}
+        </p>
+      </div>
+      <span class="data-source"
+        >{{ t('Importes separados por forma de pago','Amounts separated by
+        payment method') }}</span
+      >
+    </div>
+    <div
+      class="table-scroll"
+      tabindex="0"
+      [attr.aria-label]="t('Contribuciones mensuales','Monthly taxes')"
+    >
+      <table class="analysis-table financial-table">
+        <thead>
+          <tr>
+            <th rowspan="2" scope="col">{{ t('Mes','Month') }}</th>
+            <th colspan="2" scope="colgroup" class="cash-heading">
+              {{ t('Efectivo','Cash') }} · FP 0
+            </th>
+            <th colspan="1" scope="colgroup" class="certiva-heading">
+              {{ t('Crédito IVA/IEPS','VAT/excise credit') }} · FP 21
+            </th>
+          </tr>
+          <tr>
+            <th scope="col">{{ t('IGI','IMPORT DUTY') }}</th>
+            <th scope="col">{{ t('IVA','VAT') }}</th>
+            <th scope="col">{{ t('IVA','VAT') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (m of selectedMonths(); track m.month) {
+          <tr>
+            <th scope="row">{{ i18n.month(m.month) }} {{ r.year }}</th>
+            <td>{{ format(m.paymentMethods.cash.igi, currency()) }}</td>
+            <td>{{ format(m.paymentMethods.cash.iva, currency()) }}</td>
+            <td>{{ format(m.paymentMethods.certiva.iva, currency()) }}</td>
+          </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">Total</th>
+            <td>{{ format(r.paymentMethods.cash.igi, currency()) }}</td>
+            <td>{{ format(r.paymentMethods.cash.iva, currency()) }}</td>
+            <td>{{ format(r.paymentMethods.certiva.iva, currency()) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    @if (r.paymentMethods.certiva.unmatchedRows) {
+    <p class="data-warning" role="status">
+      {{ r.paymentMethods.certiva.unmatchedRows }} {{ t('registros FP 21 sin
+      partida u operación verificable. Totales pendientes de conciliación.','FP
+      21 records without a verified item or operation. Totals require
+      reconciliation.') }}
+    </p>
+    }
+    <p class="data-note">
+      {{ t('FP 21 es crédito en IVA e IEPS (CERTIVA); no representa salida de
+      efectivo. Otras formas de pago de importación (557):','FP 21 is VAT and
+      excise tax credit (CERTIVA); it is not cash outflow. Other import payment
+      methods (557):') }} {{ format(r.paymentMethods.otherPaymentRows) }} {{
+      t('registros','records') }}. {{ t('Sin dato no equivale a
+      cero.','Unavailable does not mean zero.') }}
+    </p>
+    @if (r.paymentMethods.cash.unmatchedRows) {
+    <p class="data-warning">
+      {{ r.paymentMethods.cash.unmatchedRows }} {{ t('registros FP 0 sin partida
+      u operación verificable; los totales de efectivo quedan sin dato.','FP 0
+      records without a verified item or operation; cash totals are
+      unavailable.') }}
+    </p>
+    } @if (r.paymentMethods.other?.length) {
+    <h3 class="tax-table-heading">
+      {{ t('Otras formas de pago del rango','Other payment methods in the
+      range') }} <span>{{ currency() }}</span>
+    </h3>
+    <div
+      class="table-scroll"
+      tabindex="0"
+      [attr.aria-label]="t('Otras formas de pago','Other payment methods')"
+    >
+      <table class="analysis-table financial-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ t('Forma de pago','Payment method') }}</th>
+            <th scope="col">
+              {{ t('Registros de importación','Import records') }}
+            </th>
+            <th scope="col">IGI</th>
+            <th scope="col">{{ t('IVA','VAT') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (method of r.paymentMethods.other; track method.code) {
+          <tr>
+            <th scope="row">
+              {{ category(method.code,'paymentMethods') }} @if
+              (method.unmatchedRows) {
+              <small
+                >· {{ method.unmatchedRows }} {{ t('sin cruce
+                verificable','unverified matches') }}</small
+              >
+              }
+            </th>
+            <td>{{ format(method.rows) }}</td>
+            <td>{{ format(method.igi,currency()) }}</td>
+            <td>{{ format(method.iva,currency()) }}</td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="data-note">
+      {{ t('FP 13: pago ya efectuado. FP 22: garantía en IVA e IEPS. Se muestran
+      por separado y no se añaden al efectivo (FP 0).','FP 13: previously paid.
+      FP 22: VAT and excise guarantee. Shown separately and not added to cash
+      (FP 0).') }}
+    </p>
+    }
+  </section>
+</ng-template>
+<ng-template #rectificationsTable>
+  @let rect = r.rectificationsByCustoms;
+  <section class="report-data-section" aria-labelledby="rectifications-title">
+    <div class="section-heading">
+      <div>
+        <h2 id="rectifications-title">
+          {{ t('Rectificaciones por aduana y patente','Amendments by customs office and broker license') }}
+        </h2>
+        <p>
+          {{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{
+          r.year }} · 501 / 701
+        </p>
+      </div>
+      <span class="data-source"
+        >{{ t('Base global filtrada:','Filtered global base:') }}
+        <b>{{ format(rect.globalDeclarations) }}</b> {{
+        t('pedimentos','declarations') }}</span
+      >
+    </div>
+    <div
+      class="table-scroll"
+      tabindex="0"
+      [attr.aria-label]="t('Rectificaciones por aduana y patente','Amendments by customs office and broker license')"
+    >
+      <table class="analysis-table financial-table">
+        <thead>
+          <tr>
+            <th scope="col">
+              {{ t('Código y aduana','Code and customs office') }}
+            </th>
+            <th scope="col">{{ t('Patente','Broker license') }}</th>
+            <th scope="col">
+              {{ t('Pedimentos rectificados','Amended declarations') }}
+            </th>
+            <th scope="col">
+              {{ t('Total pedimentos','Total declarations') }}
+            </th>
+            <th scope="col">{{ t('% aduana / patente','% office / broker') }}</th>
+            <th scope="col">% global</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rect.customsPatentRows; track row.customs + ':' + row.patent) {
+          <tr>
+            <th scope="row" class="customs-name">
+              {{ category(row.customs, 'customs') }}
+            </th>
+            <td>{{ row.patent === 'unknown' ? t('Sin especificar','Unspecified') : row.patent }}</td>
+            <td>{{ format(row.r1) }}</td>
+            <td>{{ format(row.declarations) }}</td>
+            <td>{{ percentage(row.groupRate) }}</td>
+            <td>{{ percentage(row.globalRate) }}</td>
+          </tr>
+          } @empty {
+          <tr>
+            <td colspan="6">
+              {{ t('Sin registros para esta selección.','No records for this
+              selection.') }}
+            </td>
+          </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row" colspan="2">Total</th>
+            <td>{{ format(rect.totals.r1) }}</td>
+            <td>{{ format(rect.totals.declarations) }}</td>
+            <td>{{ percentage(rect.totals.officeRate) }}</td>
+            <td>{{ percentage(rect.totals.globalRate) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    @if (!rect.available || rect.unmatchedAmendments || rect.invalidKeys) {
+    <p class="data-warning" role="status">
+      {{ t('Pendiente de conciliación:','Reconciliation pending:') }} {{
+      t('cobertura 501/701','501/701 coverage') }} {{ rect.available ?
+      t('completa','complete') : t('incompleta','incomplete') }} · {{
+      rect.unmatchedAmendments }} {{ t('rectificaciones sin 501','amendments
+      without 501') }} · {{ rect.invalidKeys }} {{ t('llaves
+      incompletas','incomplete keys') }}.
+    </p>
+    }
+    <p class="data-note">
+      {{ t('Pedimentos distintos registrados en 701, cualquiera que sea su clave
+      de documento. % aduana / patente = rectificados / pedimentos de esa combinación. % global
+      = rectificados de la combinación / base global filtrada. Una rectificación no
+      demuestra por sí sola un error.','Distinct declarations recorded in 701,
+      regardless of document code. % office / broker = amended / declarations for that pair. %
+      global = pair amended / filtered global base. An amendment alone does
+      not establish an error.') }}
+    </p>
+  </section>
+
+  <section class="report-data-section" aria-labelledby="rectifications-patent-title">
+    <div class="section-heading">
+      <div>
+        <h2 id="rectifications-patent-title">{{ t('Rectificaciones por patente','Amendments by broker license') }}</h2>
+        <p>{{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{ r.year }} · 501 / 701</p>
+      </div>
+      <span class="data-source">{{ t('Base global filtrada:','Filtered global base:') }} <b>{{ format(rect.globalDeclarations) }}</b> {{ t('pedimentos','declarations') }}</span>
+    </div>
+    <div class="table-scroll" tabindex="0" [attr.aria-label]="t('Rectificaciones por patente','Amendments by broker license')">
+      <table class="analysis-table financial-table">
+        <thead><tr>
+          <th scope="col">{{ t('Patente','Broker license') }}</th>
+          <th scope="col">{{ t('Pedimentos rectificados','Amended declarations') }}</th>
+          <th scope="col">{{ t('Total pedimentos','Total declarations') }}</th>
+          <th scope="col">{{ t('% patente','% broker') }}</th>
+          <th scope="col">% global</th>
+        </tr></thead>
+        <tbody>
+          @for (row of rect.patentRows; track row.patent) {
+          <tr>
+            <th scope="row">{{ row.patent === 'unknown' ? t('Sin especificar','Unspecified') : row.patent }}</th>
+            <td>{{ format(row.r1) }}</td>
+            <td>{{ format(row.declarations) }}</td>
+            <td>{{ percentage(row.groupRate) }}</td>
+            <td>{{ percentage(row.globalRate) }}</td>
+          </tr>
+          } @empty {
+          <tr><td colspan="5">{{ t('Sin registros para esta selección.','No records for this selection.') }}</td></tr>
+          }
+        </tbody>
+        <tfoot><tr>
+          <th scope="row">Total</th>
+          <td>{{ format(rect.totals.r1) }}</td>
+          <td>{{ format(rect.totals.declarations) }}</td>
+          <td>{{ percentage(rect.totals.officeRate) }}</td>
+          <td>{{ percentage(rect.totals.globalRate) }}</td>
+        </tr></tfoot>
+      </table>
+    </div>
+    <p class="data-note">{{ t('Cada patente reúne sus pedimentos de todas las aduanas de la selección. % patente = rectificados de esa patente / pedimentos de esa patente. % global = rectificados de esa patente / base global filtrada. Ambas tablas representan los mismos pedimentos; sus totales no se suman.','Each broker license combines its declarations across the selected customs offices. % broker = broker amended / broker declarations. % global = broker amended / filtered global base. Both tables describe the same declarations; their totals are not added together.') }}</p>
+  </section>
+</ng-template>
+}

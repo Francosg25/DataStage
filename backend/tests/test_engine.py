@@ -130,6 +130,16 @@ def test_monthly_period_comes_from_request_not_zip_or_file_period():
     assert result["tables"][0]["rows"][0][0] == "Abril_2026"
 
 
+def test_only_data_rows_count_against_the_row_limit_and_blank_fields_do_not_shift():
+    result = process_monthly("Abril_2026", [source("A|B|C\n|||\n0||value\n | | |\n||0\n|||")],
+                             EngineOptions(max_rows=2))
+    table = result["tables"][0]
+    assert len(table["rows"]) == 2
+    assert table["rows"][0][-3:] == ["0", "", "value"]
+    assert table["rows"][1][-3:] == ["", "", "0"]
+    assert result["controlRows"][0]["Filas"] == 2
+
+
 def test_official_and_unknown_table_order_and_sheet_collisions():
     codes = ["z_unknown", "resumen", "501", "sel", "551", "a_unknown"]
     result = process_monthly("Abril_2026", [source("A\n1", code=code) for code in codes])
@@ -177,3 +187,4 @@ def test_deterministic_result_for_repeated_processing():
 def test_folio_suffix_and_path():
     assert folio_from_name("folder/A-B_1896462_501.asc", "501") == "1896462"
     assert folio_from_name("1896462-sel.ASC", "sel") == "1896462"
+

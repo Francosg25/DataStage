@@ -99,7 +99,6 @@ def render_report(report, language='es'):
         [t('Valor de exportaciones (551)', 'Export goods value (551)'), fmt(totals[export_key], 2) + ' ' + currency],
         ['IGI - FP 0', fmt(totals['igiPaid'], 2) + ' ' + currency],
         ['IVA - FP 0', fmt(totals['ivaPaid'], 2) + ' ' + currency],
-        ['IGI - FP 21', fmt(totals['igiFp21'], 2) + ' ' + currency],
         ['IVA - FP 21', fmt(totals['ivaFp21'], 2) + ' ' + currency],
         [t('Rectificaciones (701)', 'Amendments (701)'), fmt(totals['rectifications'])],
         [t('Seleccion en rojo (SEL)', 'Red selection (SEL)'), pct(totals['redRate'])],
@@ -118,10 +117,10 @@ def render_report(report, language='es'):
                      'Imports verified in 551. Amounts from 557 split by payment method: '
                      'FP 0 = cash; FP 21 = VAT/excise credit (CERTIVA). Credit is not added to cash.')))
     def payment_row(label, values):
-        return [label] + [fmt(values[method][tax], 2) for method in ('cash', 'certiva') for tax in ('igi', 'iva')]
-    table([t('Mes', 'Month'), 'IGI FP 0', 'IVA FP 0', 'IGI FP 21', 'IVA FP 21'],
+        return [label, fmt(values['cash']['igi'], 2), fmt(values['cash']['iva'], 2), fmt(values['certiva']['iva'], 2)]
+    table([t('Mes', 'Month'), 'IGI FP 0', 'IVA FP 0', 'IVA FP 21'],
           [payment_row(month_name(m['month']), m['paymentMethods']) for m in months] +
-          [payment_row('Total', report['paymentMethods'])], [85, 107.5, 107.5, 107.5, 107.5], total=True)
+          [payment_row('Total', report['paymentMethods'])], [85, 140, 140, 150], total=True)
     other = report['paymentMethods'].get('other', [])
     if other:
         story.append(p(t('Otras formas de pago del rango', 'Other payment methods in the range'), subheading))
@@ -146,7 +145,7 @@ def render_report(report, language='es'):
           [[t('Sin datos identificables', 'No identifiable data'), '', '', '']], [185, 100, 115, 115])
 
     story.append(PageBreak())
-    title(t('Rectificaciones por aduana', 'Amendments by customs office'))
+    title(t('Rectificaciones por aduana y patente', 'Amendments by customs office and broker'))
     rect = report['rectificationsByCustoms']
     story.append(p(t('Pedimentos rectificados: pedimentos distintos registrados en 701. El documento puede conservar '
                      'claves AF, IN, RT u otras; no se filtra exclusivamente por ClaveDocumento = R1.',
@@ -154,22 +153,37 @@ def render_report(report, language='es'):
                      'or others; records are not restricted to DocumentCode = R1.')))
     story.append(p(t('Base global con los filtros aplicados: ', 'Global base under the applied filters: ') +
                    fmt(rect['globalDeclarations']) + t(' pedimentos de 501.', ' declarations from 501.')))
-    def rect_row(label, row):
-        return [label, fmt(row['r1']), fmt(row['declarations']), pct(row['officeRate']), pct(row['globalRate'])]
-    table([t('Codigo y aduana', 'Code and customs office'), t('Rectificados', 'Amended'), t('Pedimentos', 'Declarations'),
-           t('% aduana', '% office'), t('% global', '% global')],
-          [rect_row(r['customs'] + ' - ' + CUSTOMS.get(r['customs'], t('Sin descripcion validada', 'Description not verified')), r)
-           for r in rect['rows']] + [rect_row('Total', rect['totals'])], [181, 74, 90, 85, 85], total=True)
-    story.append(p(t('% aduana = rectificados de la aduana / pedimentos de esa aduana x 100. '
-                     '% global = rectificados de la aduana / total de pedimentos filtrados x 100. '
+    def group_row(label, row):
+        return [label, fmt(row['r1']), fmt(row['declarations']), pct(row['groupRate']), pct(row['globalRate'])]
+    table([t('Aduana', 'Customs office'), t('Patente', 'Broker license'), t('Rectificados', 'Amended'),
+           t('Pedimentos', 'Declarations'), t('% aduana / patente', '% office / broker'), '% global'],
+          [[row['customs'] + ' - ' + CUSTOMS.get(row['customs'], t('Sin descripcion validada', 'Description not verified')),
+            *group_row(row['patent'], row)] for row in rect['customsPatentRows']] +
+          [[t('Total', 'Total'), '', fmt(rect['totals']['r1']), fmt(rect['totals']['declarations']),
+            pct(rect['totals']['officeRate']), pct(rect['totals']['globalRate'])]], [180, 55, 75, 85, 65, 55], total=True)
+    story.append(p(t('% aduana / patente = rectificados de esa combinacion / sus pedimentos x 100. '
+                     '% global = rectificados de esa combinacion / total de pedimentos filtrados x 100. '
                      'El total porcentual se recalcula; no se promedian porcentajes.',
-                     '% office = office amended / office declarations x 100. '
-                     '% global = office amended / total filtered declarations x 100. '
+                     '% office / broker = amended for the pair / declarations for the pair x 100. '
+                     '% global = pair amended / total filtered declarations x 100. '
                      'Total percentages are recalculated, not averaged.')))
-    story.append(p(t('Es una frecuencia de rectificacion, no una prueba de error o responsabilidad. '
-                     'No se infieren costos ni responsables logisticos.',
-                     'This is amendment frequency, not proof of error or responsibility. '
-                     'Costs and logistics owners are not inferred.')))
+
+    story.append(PageBreak())
+    title(t('Rectificaciones por patente', 'Amendments by broker license'))
+    story.append(p(t('Agrupa todas las aduanas de la seleccion por patente. Base global: ',
+                     'Combines all selected customs offices by broker license. Global base: ') +
+                   fmt(rect['globalDeclarations']) + t(' pedimentos.', ' declarations.')))
+    table([t('Patente', 'Broker license'), t('Rectificados', 'Amended'), t('Pedimentos', 'Declarations'),
+           t('% patente', '% broker'), '% global'],
+          [group_row(row['patent'], row) for row in rect['patentRows']] +
+          [[t('Total', 'Total'), fmt(rect['totals']['r1']), fmt(rect['totals']['declarations']),
+            pct(rect['totals']['officeRate']), pct(rect['totals']['globalRate'])]], [105, 100, 110, 100, 100], total=True)
+    story.append(p(t('% patente = rectificados de la patente / pedimentos de la patente x 100. '
+                     'Ambas tablas describen la misma base: no se suman sus totales. '
+                     'Una rectificacion no demuestra por si sola un error o responsabilidad.',
+                     '% broker = broker amended / broker declarations x 100. '
+                     'Both tables describe the same base: do not add their totals. '
+                     'An amendment alone does not establish an error or responsibility.')))
 
     story.append(PageBreak())
     title(t('Calidad, criterios y trazabilidad', 'Quality, methodology and provenance'))

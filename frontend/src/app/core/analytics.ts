@@ -18,6 +18,12 @@ export interface RectificationRow {
   officeRate: number | null;
   globalRate: number | null;
 }
+export interface RectificationGroupRow {
+  r1: number | null;
+  declarations: number | null;
+  groupRate: number | null;
+  globalRate: number | null;
+}
 export interface AnalyticsMonth {
   month: number;
   available: boolean;
@@ -57,6 +63,8 @@ export interface AnalyticsReport {
   paymentMethods: PaymentMethods;
   rectificationsByCustoms: {
     rows: (RectificationRow & { customs: string })[];
+    customsPatentRows: (RectificationGroupRow & { customs: string; patent: string })[];
+    patentRows: (RectificationGroupRow & { patent: string })[];
     totals: RectificationRow;
     globalDeclarations: number | null;
     available: boolean;

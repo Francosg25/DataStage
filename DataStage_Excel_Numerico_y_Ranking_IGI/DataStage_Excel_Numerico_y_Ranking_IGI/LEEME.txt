@@ -1,0 +1,81 @@
+DATASTAGE - EXCEL NUMERICO, RANKING IGI Y RECTIFICACIONES POR PATENTE
+14 de octubre de 2026 - Rama Mejoras_Graficas
+
+CAMBIOS
+- Rectificaciones por aduana añade Patente y separa filas por aduana/patente.
+  Debajo aparece una segunda tabla agrupada por patente. Los porcentajes
+  usan los pedimentos de cada grupo y ambas vistas conservan el total
+  global, sin duplicar conteos. El PDF incluye ambas tablas.
+- Se retira la gráfica Eventos de selección aduanera de Control y calidad.
+  Las rectificaciones, alertas y el KPI Selecciones en rojo se conservan.
+- Se retira el KPI IGI FP 21 de Análisis de operaciones y Comparativa mensual,
+  y del resumen PDF. Ambas pantallas muestran ocho indicadores. IVA FP 21
+  permanece. Los cálculos y datos de IGI FP 21 se conservan en la API/CSV.
+- Se retiran IGI mensual en efectivo por PN e IVA mensual en efectivo por PN.
+- Junto a Números de parte con mayor IGI aparece Fracciones con mayor IGI
+  pagado - Forma de pago 0. En móvil se muestran una debajo de la otra.
+
+La gráfica nueva suma el importe IGI de importaciones verificadas en 551,
+registrado en 557 con ClaveContribucion 6 y FormaPago 0, agrupado por fracción.
+Ordena los diez mayores importes positivos, después de sumar todos los PN
+de cada fracción y sus ajustes. Incluye pagos sin PN cuando no se busca un
+PN. No cuenta pagos ni usa el valor de mercancías como sustituto de IGI.
+Respeta rango, moneda, filtros generales y filtros locales PN/fracción.
+El Top 10 puede ser menor que el total. Con cobertura, importes o cruces
+incompletos conserva sin dato. FP 21 y otras formas de pago quedan fuera.
+
+EXCEL: TIPOS NATIVOS
+Los importes, valores monetarios, cantidades, pesos, tasas y conteos
+reconocidos se escriben como números reales, aptos para fórmulas. Las fechas
+válidas se escriben como fechas de Excel; si contienen hora se conserva.
+No se cambia un formato visual sobre texto: cambia el tipo de la celda.
+El formato monetario muestra dos decimales, conservando el dato subyacente.
+PN, fracciones, pedimentos, folios y otros identificadores permanecen en texto
+para conservar ceros iniciales y códigos largos. Los valores inválidos o con
+más de 15 cifras significativas y fechas inválidas conservan su texto original.
+No se convierte cualquier texto que contenga dígitos ni se sustituye por cero.
+
+Se conserva la mejora para omitir celdas y registros vacíos, sin desplazar
+columnas ni combinar celdas. Los encabezados, autofiltros y trazabilidad se
+mantienen. No se modifica ningún Excel ni base de datos existente.
+PARA OBTENER LOS TIPOS NUEVOS HAY QUE GENERAR NUEVAMENTE LOS EXCEL EN LA APP.
+
+APLICAR
+1. Detén backend, worker y frontend con Ctrl+C en sus tres terminales.
+2. Descomprime este ZIP completo en una carpeta.
+3. Ejecuta APLICAR.cmd. La carpeta de destino predeterminada es:
+   C:\Users\mx1safr\OneDrive - JE\Desktop\PROYECTOS GRANDES\DataStage
+4. El aplicador verifica Mejoras_Graficas y respalda los archivos afectados.
+5. Reinicia backend, worker y frontend con tus comandos habituales y .venv.
+6. Genera de nuevo los Excel que necesites con el flujo habitual de la app.
+
+Para indicar otra carpeta desde CMD:
+APLICAR.cmd "C:\ruta\DataStage"
+
+Para revisar el paquete sin copiar archivos:
+"C:\ruta\DataStage\.venv\Scripts\python.exe" aplicar.py "C:\ruta\DataStage" --check
+
+Este paquete contiene 25 archivos de aplicación compatibles, incluidos los
+ajustes previos de indicadores, carga y reorganización. CAMBIOS.diff muestra
+los 14 archivos modificados para esta petición respecto a la entrega anterior.
+No ejecuta git add, commit, pull, push ni cambio de rama. No instala
+dependencias. No copia .data, .venv, documentos operativos ni part_numbers.json.
+El respaldo queda junto al proyecto. Los cambios quedan locales en la rama.
+
+VALIDACION
+158 pruebas de backend y 69 de frontend correctas; Angular compila y los
+archivos Python modificados pasan Ruff. Las celdas numéricas y de fecha se
+comprobaron en los XLSX mensuales y anuales, con negativos, ceros, decimales,
+códigos con ceros iniciales, valores inválidos y límites de precisión.
+SUMA, CONTAR, SUMAR.SI.CONJUNTO, AÑO, diferencia de fechas y BUSCARV exacto
+se ejecutaron al importar un archivo real del exportador en el motor de
+verificación. Cambiar un importe de origen actualiza los resultados.
+
+La interfaz se revisó con la API real de enero a agosto, en español/inglés,
+USD/MXN y móvil de 390 px. La tabla de datos del ranking de abril coincide
+con una suma independiente de 214 registros IGI FP 0 del Excel suministrado.
+El total de todas las fracciones es 1,195,277 MXN / 67,370.98 USD.
+El PDF conserva ocho indicadores y elimina el de IGI FP 21. Los desgloses
+por aduana/patente y por patente conservan los mismos totales. Se verifican
+alias de códigos, registros repetidos, meses distintos, llaves incompletas,
+cobertura insuficiente y rectificaciones sin 501.

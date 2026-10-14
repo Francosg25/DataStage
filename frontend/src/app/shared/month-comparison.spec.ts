@@ -54,7 +54,8 @@ describe("month/year comparison", () => {
       exportUsd: 500,
     };
     const component = create(vi.fn(() => of(data)));
-    expect(component.metrics()).toHaveLength(9);
+    expect(component.metrics()).toHaveLength(8);
+    expect(component.metrics().some((metric) => metric.key === "igiFp21")).toBe(false);
     expect(
       component.metrics().some((metric) => metric.key.startsWith("trade")),
     ).toBe(false);

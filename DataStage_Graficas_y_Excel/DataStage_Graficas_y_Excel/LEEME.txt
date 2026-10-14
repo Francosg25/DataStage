@@ -1,0 +1,68 @@
+DATASTAGE - ORGANIZACION DE GRAFICAS Y EXCEL SIN REGISTROS VACIOS
+14 de octubre de 2026 - Rama Mejoras_Graficas
+
+CAMBIOS
+Panorama general: nueve indicadores y tendencia de valor comercial.
+Comercio y mercancías: rankings por aduana, documento, países y fracción.
+Contribuciones: pagos mensuales, tres gráficas por PN y comparativas por PN.
+Control y calidad: selección aduanera, rectificaciones y alertas de PN.
+Fuentes y métricas: explicación de fuentes y cálculos.
+Cada detalle tiene una sola ubicación. Las tarjetas se concentran en Panorama
+general. La comparación general de meses se consulta en Comparativa mensual.
+
+La tabla mensual de pagos presenta IGI FP 0, IVA FP 0 e IVA FP 21. Se retira
+la columna IGI del bloque FP 21, también en la tabla equivalente del PDF.
+La tarjeta IGI FP 21, el IGI en efectivo y los datos de API/CSV se conservan.
+Los importes y cálculos fiscales no se modifican.
+
+Los Excel nuevos omiten celdas sin contenido y filas completamente vacías.
+Las líneas ASC formadas únicamente por separadores se omiten antes de añadir
+las columnas de trazabilidad. No cuentan como registros de Control_Proceso.
+Los ceros, encabezados, fechas, códigos con ceros iniciales y posiciones de
+los campos se conservan. Las celdas no se combinan ni se desplazan.
+Los archivos Excel ya generados conservan su contenido: para obtener este
+ajuste hay que generar un archivo nuevo desde el flujo habitual de la app.
+No se inicia ningún reproceso automático.
+
+Este paquete incluye la optimización de carga y los indicadores FP 0/21 y
+valores de importación/exportación preparados anteriormente. Es compatible
+con la mejora inicial de gráficas y puede aplicarse aunque no se hayan
+aplicado todos los paquetes posteriores. CAMBIOS.diff muestra los ajustes
+de esta entrega frente a la versión previa de los indicadores.
+
+APLICAR
+1. Detén backend, worker y frontend con Ctrl+C en sus tres terminales.
+2. Descomprime el ZIP completo en una carpeta.
+3. Ejecuta APLICAR.cmd. La carpeta de destino predeterminada es:
+   C:\Users\mx1safr\OneDrive - JE\Desktop\PROYECTOS GRANDES\DataStage
+4. Se comprueba la rama Mejoras_Graficas y se respaldan los archivos afectados.
+5. Reinicia los tres procesos con tus comandos habituales y tu .venv actual.
+
+Para indicar otra carpeta, ejecuta desde CMD:
+APLICAR.cmd "C:\ruta\DataStage"
+
+Para comprobar el paquete sin copiar, desde la carpeta del paquete:
+"C:\ruta\DataStage\.venv\Scripts\python.exe" aplicar.py "C:\ruta\DataStage" --check
+
+El reinicio es necesario: tu comando de Uvicorn no usa recarga automática.
+El proceso anterior puede no incluir los campos FP 21 o la ruta nueva de
+comparativa mensual. Un guion representa sin dato; no significa cero.
+Reinicia también el worker para que las nuevas exportaciones usen el ajuste.
+
+El aplicador usa solo lecturas de Git. No ejecuta add, commit, pull, push ni
+cambio de rama. No instala dependencias. No copia .data, .venv, documentos
+operativos ni part_numbers.json. El respaldo queda junto al proyecto.
+
+VALIDACION
+138 pruebas de backend y 67 de frontend correctas. Angular compila y los
+archivos Python modificados pasan Ruff. La interfaz se comprobó con los
+ocho meses de la API real, en español/inglés, USD/MXN y pantalla móvil de
+390 px. Cambiar de pestaña no vuelve a consultar el reporte. Comparativa
+mensual conserva sus nueve indicadores. El PDF muestra las tres columnas
+monetarias esperadas y los importes originales de abril.
+
+Un ensayo con 1,000 filas y 40 columnas conservó todos los datos y posiciones,
+eliminando 37,000 celdas vacías almacenadas. La reducción del tamaño depende
+de la cantidad de campos vacíos de cada archivo. También se comprobaron los
+Excel mensuales y anuales con líneas vacías entre registros, fechas nativas,
+ceros iniciales, texto con apariencia de fórmula y autofiltros.
