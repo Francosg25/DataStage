@@ -114,7 +114,6 @@
   border-left: 3px solid #aa6413;
   color: #71440f;
 }
-.part-search,
 .pagination,
 .comparison-links {
   display: flex;
@@ -124,18 +123,73 @@
   margin: 18px 0;
   flex-wrap: wrap;
 }
-.part-search label {
+.part-filters {
   display: grid;
-  gap: 6px;
-  font-size: 12px;
-  min-width: 220px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 16px 18px;
+  background: #f2f6f7;
+  border: 1px solid #e1e6e9;
+  border-radius: 6px;
 }
-.part-search input {
+.part-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #435d67;
+  min-width: 0;
+}
+.part-filters input,
+.part-filters select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
   border: 1px solid #b9c9cc;
   border-radius: 4px;
-  padding: 9px;
+  padding: 9px 12px;
+  color: #25343d;
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
 }
-.part-search button,
+.part-filters select {
+  padding-right: 36px;
+}
+.part-filters > button {
+  min-height: 40px;
+  white-space: nowrap;
+}
+@media (max-width: 780px) {
+  .part-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .part-filters > button {
+    justify-self: start;
+  }
+}
+@media (max-width: 520px) {
+  .part-filters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+  }
+}
+.part-filter-status {
+  margin: 10px 0 16px;
+  color: #526570;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.part-analysis .section-heading {
+  margin-top: 0;
+}
+.part-analysis .section-heading > button {
+  flex-shrink: 0;
+}
+.part-filters button,
 .pagination button,
 .section-heading > button {
   display: inline-flex;
@@ -147,7 +201,6 @@
   padding: 8px 12px;
   color: #234c57;
 }
-.part-search ds-icon,
 .section-heading > button ds-icon {
   width: 16px;
   height: 16px;
@@ -251,10 +304,6 @@
   }
   .compare-selectors {
     flex-wrap: wrap;
-  }
-  .part-search label {
-    min-width: 0;
-    width: 100%;
   }
 }
 .analytics-heading {
@@ -407,15 +456,63 @@ select {
   color: #087b72;
 }
 .loading-bar {
+  position: relative;
+  overflow: hidden;
   padding: 8px 12px;
   font-size: 11px;
   color: #087b72;
   background: #e5f5f1;
   border-bottom: 2px solid #11998b;
 }
+.loading-bar::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 35%;
+  background: #087b72;
+  animation: loading-progress 1.4s ease-in-out infinite;
+}
+@keyframes loading-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(290%);
+  }
+}
+.analytics-loading {
+  margin-top: 20px;
+}
+.analytics-loading > .loading-skeleton-text {
+  width: 220px;
+  max-width: 100%;
+  margin-bottom: 24px;
+}
+.loading-chart-panel {
+  border: 1px solid #e1e6e9;
+  border-radius: 6px;
+  padding: 18px;
+  background: #fff;
+}
+.loading-chart-panel > .loading-skeleton-text {
+  width: 230px;
+  max-width: 100%;
+  margin-bottom: 18px;
+}
 .is-loading {
-  opacity: 0.48;
   pointer-events: none;
+}
+.is-loading .table-scroll,
+.is-loading .part-attribution-note {
+  opacity: 0.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar::after {
+    animation: none;
+    width: 100%;
+  }
 }
 .kpi-grid {
   display: grid;
@@ -448,12 +545,19 @@ select {
   flex: none;
 }
 .kpi-value {
+  display: flex;
+  align-items: center;
+  min-height: 1.5em;
   font-size: 25px;
   font-weight: 650;
   color: #253c48;
   white-space: nowrap;
   line-height: 1.5;
   letter-spacing: 0;
+}
+.kpi-value .loading-skeleton-value {
+  height: 1.1em;
+  margin: 0;
 }
 .kpi-bottom {
   display: flex;
@@ -488,6 +592,25 @@ select {
 }
 .spark i:last-child {
   opacity: 1;
+}
+.spark i.spark-missing {
+  height: 0;
+  background: transparent;
+}
+.spark i.spark-zero {
+  height: 1px !important;
+  background: #8b9ca6;
+}
+.metric-scope {
+  margin: 0 0 14px;
+}
+.part-analysis .chart-grid > ds-analytics-chart:first-child {
+  grid-row: span 2;
+}
+@media (max-width: 760px) {
+  .part-analysis .chart-grid > ds-analytics-chart:first-child {
+    grid-row: auto;
+  }
 }
 .kpi-note {
   font-size: 8px;
@@ -1027,43 +1150,31 @@ select {
 }
 
 /* Keep full month names clear of the native select arrow at every width. */
-/* Distribuye los filtros sin recortar sus valores. */
 .filterbar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  align-items: end;
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
 }
-
 .filterbar label,
-.filterbar label.month-filter,
 .filterbar label.wide-filter,
-.filterbar label.source-filter {
+.filterbar .source-filter {
   min-width: 0;
   width: 100%;
-  grid-column: auto;
 }
-
-.filterbar select,
-.compare-selectors select {
-  box-sizing: border-box;
-  width: 100%;
-  height: 40px;
-  padding-inline: 12px 36px;
-}
-
 .compare-selectors label {
   flex: 1 0 160px;
   min-width: 160px;
 }
-
-
-@media (max-width: 480px) {
+.filterbar select,
+.compare-selectors select {
+  box-sizing: border-box;
+  padding-inline: 12px 36px;
+  min-height: 40px;
+}
+@media (max-width: 760px) {
   .filterbar {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   }
-
-  .filterbar .reset-button {
-    grid-column: 1 / -1;
+  .filterbar label.month-filter {
+    min-width: 0;
   }
 }

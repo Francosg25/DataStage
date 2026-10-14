@@ -27,12 +27,16 @@ export interface ChartSeries {
   template: `<section
     class="viz"
     [class.expanded]="expanded()"
+    [attr.aria-busy]="loading()"
     (keydown.escape)="expanded.set(false)"
   >
     <header class="viz-header">
       <div>
         <h2>{{ title() }}</h2>
         <p>{{ subtitle() }}</p>
+        @if (context()) {
+          <p class="chart-context">{{ context() }}</p>
+        }
       </div>
       <div class="viz-tools">
         <button
@@ -42,6 +46,7 @@ export interface ChartSeries {
             i18n.choose('Ver datos de ', 'View data for ') + title()
           "
           [attr.aria-pressed]="table()"
+          [disabled]="loading()"
           (click)="table.set(!table())"
         >
           <ds-icon name="database" />
@@ -53,6 +58,7 @@ export interface ChartSeries {
             i18n.choose('Descargar gráfica ', 'Download chart ') + title()
           "
           (click)="download()"
+          [disabled]="loading() || table() || !hasData()"
         >
           <ds-icon name="download" />
         </button>
@@ -63,19 +69,36 @@ export interface ChartSeries {
             i18n.choose('Ampliar gráfica ', 'Expand chart ') + title()
           "
           [attr.aria-pressed]="expanded()"
+          [disabled]="loading() || !hasData()"
           (click)="expanded.set(!expanded())"
         >
           <ds-icon name="grid" />
         </button>
       </div>
     </header>
-    <div class="plot" [class.hidden]="table()">
+    <div
+      class="plot"
+      [class.hidden]="table()"
+      [style.height.px]="
+        expanded()
+          ? null
+          : horizontal()
+            ? Math.max(280, labels().length * 48 + 48)
+            : null
+      "
+    >
       <canvas
         #canvas
         role="img"
+        [class.chart-loading]="loading()"
+        [attr.aria-hidden]="loading()"
         [attr.aria-label]="title() + '. ' + subtitle()"
       ></canvas>
-      @if (!hasData()) {
+      @if (loading()) {
+        <div class="chart-loading-cover" aria-hidden="true">
+          <div class="loading-skeleton loading-skeleton-chart"></div>
+        </div>
+      } @else if (!hasData()) {
         <div class="no-chart-data">
           {{
             i18n.choose(
@@ -88,29 +111,62 @@ export interface ChartSeries {
     </div>
     @if (table()) {
       <div class="viz-table">
-        <table>
-          <thead>
-            <tr>
-              <th>{{ i18n.choose("Categoría", "Category") }}</th>
-              @for (s of series(); track s.label) {
-                <th>{{ s.label }}</th>
-              }
-            </tr>
-          </thead>
-          <tbody>
-            @for (label of labels(); track $index; let n = $index) {
+        @if (loading()) {
+          <div
+            class="loading-skeleton loading-skeleton-chart"
+            aria-hidden="true"
+          ></div>
+        } @else {
+          <table>
+            <thead>
               <tr>
-                <td>{{ label }}</td>
+                <th>
+                  {{ categoryLabel() || i18n.choose("Categoría", "Category") }}
+                </th>
                 @for (s of series(); track s.label) {
-                  <td>{{ i18n.number(s.values[n], false, 2) }}</td>
+                  <th>{{ s.label }}{{ unit() ? " · " + unit() : "" }}</th>
                 }
               </tr>
-            }
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              @for (label of labels(); track $index; let n = $index) {
+                <tr>
+                  <td>{{ label }}</td>
+                  @for (s of series(); track s.label) {
+                    <td>{{ valueLabel(s.values[n]) }}</td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
       </div>
     }
-    <footer>{{ footnote() }}</footer>
+    <footer>
+      @if (footnote()) {
+        <p>{{ footnote() }}</p>
+      }
+      @if (!loading() && hasMissingData()) {
+        <p class="chart-data-status">
+          {{
+            i18n.choose(
+              "Hay valores sin dato: consulta la tabla. No equivalen a cero.",
+              "Some values are unavailable: open the data table. They are not zero."
+            )
+          }}
+        </p>
+      }
+      @if (!loading() && allZero()) {
+        <p class="chart-data-status">
+          {{
+            i18n.choose(
+              "Todos los valores disponibles son 0.",
+              "All available values are 0."
+            )
+          }}
+        </p>
+      }
+    </footer>
   </section>`,
   styles: [
     `
@@ -142,6 +198,18 @@ export interface ChartSeries {
         font-size: 11px;
         margin-top: 3px;
         line-height: 1.5;
+      }
+      .viz-header .chart-context {
+        color: #526570;
+        font-size: 10px;
+      }
+      .viz footer p {
+        margin: 0;
+        line-height: 1.6;
+      }
+      .viz footer .chart-data-status {
+        margin-top: 4px;
+        color: #526570;
       }
       .viz-tools {
         display: flex;
@@ -176,6 +244,13 @@ export interface ChartSeries {
       }
       .plot.hidden {
         display: none;
+      }
+      .chart-loading {
+        opacity: 0;
+      }
+      .chart-loading-cover {
+        position: absolute;
+        inset: 8px 18px 10px;
       }
       .no-chart-data {
         position: absolute;
@@ -245,10 +320,15 @@ export interface ChartSeries {
   ],
 })
 export class AnalyticsChart {
+  readonly Math = Math;
   i18n = inject(I18n);
   title = input.required<string>();
   subtitle = input("");
   footnote = input("");
+  context = input("");
+  unit = input("");
+  categoryLabel = input("");
+  loading = input(false);
   type = input<"bar" | "line" | "doughnut">("bar");
   horizontal = input(false);
   stacked = input(false);
@@ -280,7 +360,8 @@ export class AnalyticsChart {
       const locale = this.i18n.locale();
       const table = this.table();
       const expanded = this.expanded();
-      if (!canvas) return;
+      const unit = this.unit();
+      if (!canvas || table) return;
       const signature = JSON.stringify({
         labels,
         series,
@@ -290,6 +371,7 @@ export class AnalyticsChart {
         locale,
         table,
         expanded,
+        unit,
       });
       if (signature === this.signature) return;
       this.signature = signature;
@@ -327,8 +409,8 @@ export class AnalyticsChart {
                 maxBarThickness: horizontal ? 24 : 30,
                 pointRadius: 3,
                 pointHoverRadius: 5,
-                tension: 0.28,
-                fill: type === "line",
+                tension: 0,
+                fill: false,
                 spanGaps: false,
               }) as ChartDataset,
           ),
@@ -338,6 +420,11 @@ export class AnalyticsChart {
           responsive: true,
           maintainAspectRatio: false,
           animation: false,
+          interaction: {
+            mode: "index",
+            intersect: false,
+            axis: horizontal ? "y" : "x",
+          },
           indexAxis: horizontal ? "y" : "x",
           onClick: (_, elements) => {
             if (elements.length) this.selected.emit(elements[0].index);
@@ -362,7 +449,13 @@ export class AnalyticsChart {
               cornerRadius: 4,
               callbacks: {
                 label: (ctx) =>
-                  `${ctx.dataset.label}: ${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(Number(horizontal ? ctx.parsed.x : type === "doughnut" ? ctx.parsed : ctx.parsed.y))}`,
+                  `${ctx.dataset.label}: ${this.valueLabel(
+                    horizontal
+                      ? ctx.parsed.x
+                      : type === "doughnut"
+                        ? Number(ctx.parsed)
+                        : ctx.parsed.y,
+                  )}${unit ? " " + unit : ""}`,
               },
             },
           },
@@ -372,9 +465,16 @@ export class AnalyticsChart {
                 scales: {
                   x: {
                     stacked,
+                    beginAtZero: horizontal,
+                    title: {
+                      display: horizontal && !!unit,
+                      text: unit,
+                      color: "#526570",
+                    },
                     grid: { display: horizontal, color: "#edf0f3" },
                     border: { display: false },
                     ticks: {
+                      precision: this.decimalPlaces(),
                       color: "#76838c",
                       font: { size: 10 },
                       maxRotation: 0,
@@ -389,9 +489,16 @@ export class AnalyticsChart {
                   y: {
                     stacked,
                     beginAtZero: true,
+                    title: {
+                      display: !horizontal && !!unit,
+                      text: unit,
+                      color: "#526570",
+                    },
                     grid: { display: !horizontal, color: "#edf0f3" },
                     border: { display: false },
                     ticks: {
+                      autoSkip: !horizontal,
+                      precision: this.decimalPlaces(),
                       color: "#76838c",
                       font: { size: 10 },
                       callback: !horizontal
@@ -401,9 +508,19 @@ export class AnalyticsChart {
                             }).format(Number(v))
                         : (v) => {
                             const label = labels[Number(v)] || "";
-                            return label.length > 24
-                              ? label.slice(0, 22) + "…"
-                              : label;
+                            // Keep the distinguishing code and wrap its description.
+                            const words = label.split(" ");
+                            const lines: string[] = [];
+                            for (const word of words) {
+                              const last = lines.length - 1;
+                              if (
+                                last < 0 ||
+                                (lines[last] + " " + word).length > 25
+                              )
+                                lines.push(word);
+                              else lines[last] += " " + word;
+                            }
+                            return lines;
                           },
                     },
                   },
@@ -415,14 +532,102 @@ export class AnalyticsChart {
   }
   hasData() {
     return this.series().some((s) =>
-      s.values.some((v) => v != null),
+      s.values.some((v) => v != null && Number.isFinite(v)),
     );
   }
+  hasMissingData() {
+    return this.series().some((s) =>
+      this.labels().some(
+        (_, n) => s.values[n] == null || !Number.isFinite(s.values[n]),
+      ),
+    );
+  }
+  allZero() {
+    return (
+      this.hasData() &&
+      this.series().every((s) => s.values.every((v) => v == null || v === 0))
+    );
+  }
+  decimalPlaces() {
+    return ["USD", "MXN"].includes(this.unit())
+      ? 2
+      : this.unit() === "%"
+        ? 1
+        : 0;
+  }
+  valueLabel(value: number | null | undefined) {
+    return value == null || !Number.isFinite(value)
+      ? this.i18n.choose("Sin dato", "Unavailable")
+      : new Intl.NumberFormat(this.i18n.locale(), {
+          minimumFractionDigits: this.decimalPlaces(),
+          maximumFractionDigits: this.decimalPlaces(),
+        }).format(value);
+  }
   download() {
-    if (!this.chart) return;
+    if (
+      !this.chart ||
+      this.loading() ||
+      this.table() ||
+      !this.chart.canvas.width ||
+      !this.hasData()
+    )
+      return;
+    // Include the same scope, units and source notes as the on-screen chart.
+    const source = this.chart.canvas;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(900, source.width);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.font = "16px Arial";
+    const wrap = (text: string) => {
+      const lines: string[] = [];
+      for (const word of text.split(/\s+/)) {
+        const n = lines.length - 1;
+        if (
+          n < 0 ||
+          ctx.measureText(lines[n] + " " + word).width > canvas.width - 48
+        )
+          lines.push(word);
+        else lines[n] += " " + word;
+      }
+      return lines;
+    };
+    const header = [this.title(), this.subtitle(), this.context()]
+      .filter(Boolean)
+      .flatMap(wrap);
+    const footer = wrap(
+      [
+        this.footnote(),
+        this.hasMissingData()
+          ? this.i18n.choose(
+              "Sin dato no equivale a cero.",
+              "Unavailable is not zero.",
+            )
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    const chartHeight = source.height * (canvas.width / source.width);
+    canvas.height = chartHeight + (header.length + footer.length) * 24 + 64;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#25343d";
+    ctx.font = "16px Arial";
+    header.forEach((line, n) => ctx.fillText(line, 24, 28 + n * 24));
+    ctx.drawImage(
+      source,
+      0,
+      header.length * 24 + 24,
+      canvas.width,
+      chartHeight,
+    );
+    footer.forEach((line, n) =>
+      ctx.fillText(line, 24, header.length * 24 + chartHeight + 48 + n * 24),
+    );
     const a = document.createElement("a");
-    a.href = this.chart.toBase64Image();
-    a.download = "DataStage-chart.png";
+    a.href = canvas.toDataURL("image/png");
+    a.download = `DataStage-${this.title().replace(/[^\p{L}\p{N}]+/gu, "-")}.png`;
     a.click();
   }
 }

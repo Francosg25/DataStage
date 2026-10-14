@@ -32,12 +32,26 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
         </select></label
       >
       @for (side of dateSides; track side.key) {
-        <fieldset class="date-selector"><legend>{{ t(side.es,side.en) }}</legend>
+        <fieldset class="date-selector">
+          <legend>{{ t(side.es, side.en) }}</legend>
           <div class="date-fields">
-            <select [attr.aria-label]="t(side.es,side.en)" [ngModel]="datePart(this[side.key],1)" (ngModelChange)="setDate(side.key,1,$event)">
-              @for (m of months; track m) { <option [ngValue]="m">{{ i18n.month(m) }}</option> }
+            <select
+              [attr.aria-label]="t(side.es, side.en)"
+              [ngModel]="datePart(this[side.key], 1)"
+              (ngModelChange)="setDate(side.key, 1, $event)"
+            >
+              @for (m of months; track m) {
+                <option [ngValue]="m">{{ i18n.month(m) }}</option>
+              }
             </select>
-            <input type="number" [attr.aria-label]="t(side.yearEs,side.yearEn)" [ngModel]="datePart(this[side.key],0)" (ngModelChange)="setDate(side.key,0,$event)" min="1900" max="2100" />
+            <input
+              type="number"
+              [attr.aria-label]="t(side.yearEs, side.yearEn)"
+              [ngModel]="datePart(this[side.key], 0)"
+              (ngModelChange)="setDate(side.key, 0, $event)"
+              min="1900"
+              max="2100"
+            />
           </div>
         </fieldset>
       }
@@ -50,9 +64,20 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
       >
     </div>
     @if (loading()) {
-      <p role="status">
+      <p role="status" aria-live="polite">
         {{ t("Actualizando comparativa...", "Updating comparison...") }}
       </p>
+      <div class="comparison-loading" aria-hidden="true">
+        <div class="loading-skeleton loading-skeleton-chart"></div>
+        <div class="comparisons">
+          @for (n of [1, 2, 3, 4, 5, 6]; track n) {
+            <section>
+              <span class="loading-skeleton loading-skeleton-short"></span
+              ><span class="loading-skeleton loading-skeleton-value"></span>
+            </section>
+          }
+        </div>
+      </div>
     }
     @if (error()) {
       <div class="error-message" role="alert">
@@ -85,8 +110,23 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
         >
       </div>
       <ds-analytics-chart
+        [loading]="loading()"
         [title]="metricName()"
         [subtitle]="metricUnit()"
+        [unit]="metricUnit() || t('Cantidad', 'Count')"
+        [context]="
+          source === 'reference'
+            ? t(
+                'Excel de referencia · Todas las operaciones',
+                'Reference workbook · All operations'
+              )
+            : t(
+                'Cargas publicadas · Todas las operaciones',
+                'Published runs · All operations'
+              )
+        "
+        [categoryLabel]="t('Mes y año', 'Month and year')"
+        [footnote]="metricNote()"
         [labels]="labels()"
         [series]="series()"
       />
@@ -116,9 +156,23 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
     }
   `,
   styles: `
-    .date-selector { border: 0; padding: 0; margin: 0; min-width: 220px; flex: 1; }
-    .date-selector legend { color: #405761; font-size: 12px; margin-bottom: 7px; }
-    .date-fields { display: grid; grid-template-columns: minmax(100px,1fr) 85px; gap: 8px; }
+    .date-selector {
+      border: 0;
+      padding: 0;
+      margin: 0;
+      min-width: 220px;
+      flex: 1;
+    }
+    .date-selector legend {
+      color: #405761;
+      font-size: 12px;
+      margin-bottom: 7px;
+    }
+    .date-fields {
+      display: grid;
+      grid-template-columns: minmax(100px, 1fr) 85px;
+      gap: 8px;
+    }
     :host {
       display: block;
       margin: 0 0 30px;
@@ -209,7 +263,9 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
       .selectors label {
         min-width: 100%;
       }
-      .date-selector { min-width: 100%; }
+      .date-selector {
+        min-width: 100%;
+      }
     }
   `,
 })
@@ -226,16 +282,36 @@ export class MonthComparison {
   comparison = `${new Date().getFullYear()}-02`;
   currency: "USD" | "MXN" = "USD";
   metric = "igiPaid";
-  months = Array.from({length:12},(_,i)=>i+1);
+  months = Array.from({ length: 12 }, (_, i) => i + 1);
   readonly dateSides = [
-    {key:'baseline',es:'Mes base',en:'Baseline month',yearEs:'Año base',yearEn:'Baseline year'},
-    {key:'comparison',es:'Mes comparado',en:'Comparison month',yearEs:'Año comparado',yearEn:'Comparison year'},
+    {
+      key: "baseline",
+      es: "Mes base",
+      en: "Baseline month",
+      yearEs: "Año base",
+      yearEn: "Baseline year",
+    },
+    {
+      key: "comparison",
+      es: "Mes comparado",
+      en: "Comparison month",
+      yearEs: "Año comparado",
+      yearEn: "Comparison year",
+    },
   ] as const;
-  datePart(value: string, index: number) { const part = value.split('-')[index]; return part ? Number(part) : null; }
-  setDate(side: 'baseline' | 'comparison', index: number, value: number | null) {
-    const date = this[side].split('-');
-    date[index] = String(value ?? '').padStart(index === 1 ? 2 : 1,'0');
-    this[side] = date.join('-'); this.load();
+  datePart(value: string, index: number) {
+    const part = value.split("-")[index];
+    return part ? Number(part) : null;
+  }
+  setDate(
+    side: "baseline" | "comparison",
+    index: number,
+    value: number | null,
+  ) {
+    const date = this[side].split("-");
+    date[index] = String(value ?? "").padStart(index === 1 ? 2 : 1, "0");
+    this[side] = date.join("-");
+    this.load();
   }
   private requests = new Subject<[AnalyticsFilters, AnalyticsFilters] | null>();
   t(es: string, en: string) {
@@ -249,13 +325,18 @@ export class MonthComparison {
           if (pair) this.error.set("");
           this.result.set(null);
         }),
-        switchMap((pair) => pair ?
-          forkJoin([this.api.analytics(pair[0]), this.api.analytics(pair[1])]).pipe(
-            catchError((e) => {
-              this.error.set(errorText(e));
-              return of(null);
-            }),
-          ) : of(null),
+        switchMap((pair) =>
+          pair
+            ? forkJoin([
+                this.api.analytics(pair[0]),
+                this.api.analytics(pair[1]),
+              ]).pipe(
+                catchError((e) => {
+                  this.error.set(errorText(e));
+                  return of(null);
+                }),
+              )
+            : of(null),
         ),
         takeUntilDestroyed(this.destroy),
       )
@@ -328,18 +409,18 @@ export class MonthComparison {
       },
       {
         key: "igiPaid",
-        name: this.t("IGI pagado", "Import duty paid"),
+        name: this.t("IGI en efectivo · FP 0", "Cash import duty · FP 0"),
         unit: currency,
       },
       {
         key: "ivaPaid",
-        name: this.t("IVA pagado", "VAT paid"),
+        name: this.t("IVA en efectivo · FP 0", "Cash VAT · FP 0"),
         unit: currency,
       },
       { key: "items", name: this.t("Partidas", "Line items"), unit: "" },
       {
         key: "rectifications",
-        name: this.t("Rectificaciones", "Amendments"),
+        name: this.t("Pedimentos rectificados", "Amended declarations"),
         unit: "",
       },
     ];
@@ -349,6 +430,32 @@ export class MonthComparison {
   }
   metricUnit() {
     return this.metrics().find((m) => m.key === this.metric)?.unit || "";
+  }
+  metricNote() {
+    if (["igiPaid", "ivaPaid"].includes(this.metric))
+      return this.t(
+        "Importaciones · 557 · Solo efectivo (FP 0). Crédito FP 21 y otras formas de pago separados. Sin dato no equivale a cero.",
+        "Imports · 557 · Cash only (FP 0). FP 21 credit and other methods are separate. Unavailable is not zero.",
+      );
+    if (this.metric === "rectifications")
+      return this.t(
+        "Pedimentos distintos en 701; incluye cualquier clave de documento.",
+        "Distinct declarations in 701; includes all document codes.",
+      );
+    if (this.metric === "declarations")
+      return this.t(
+        "Llaves distintas por mes en 501: patente + pedimento + aduana.",
+        "Distinct monthly keys in 501: broker license + declaration + customs office.",
+      );
+    if (this.metric === "items")
+      return this.t(
+        "Cantidad de registros de partidas en 551.",
+        "Number of line-item records in 551.",
+      );
+    return this.t(
+      "ValorDolares de 551 convertido por pedimento. No se netean rectificaciones contra originales.",
+      "551 goods value converted per declaration. Amendments are not netted against originals.",
+    );
   }
   labels() {
     return (this.result() || []).map(

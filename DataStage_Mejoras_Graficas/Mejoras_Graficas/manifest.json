@@ -1,0 +1,74 @@
+{
+  "branch": "Mejoras_Graficas",
+  "baseCommit": "c380f331c86d41f75ed8d039a28d7f6ed5ab5878",
+  "files": [
+    {
+      "path": "backend/app/modules/reporting/analytics.py",
+      "sha256": "3cc19a95513459f1e8f09b0d2350305b91e6d827a5e06ca5d1e279b3aee43d06"
+    },
+    {
+      "path": "backend/app/modules/reporting/part_taxes.py",
+      "sha256": "da54674e207d63899e709e8262caaee8777a898c5558728ab9a571b743dc219c"
+    },
+    {
+      "path": "backend/app/modules/reporting/pdf_report.py",
+      "sha256": "b3a866e4421b4445d6efe43d63dd32380d7fd1a08b0fb53b1b6b292ae00d76f2"
+    },
+    {
+      "path": "backend/tests/test_analytics.py",
+      "sha256": "4b3302f51d53ace9d5be7bcf4725ccf66374972055b332dfd2703f0de360dfcf"
+    },
+    {
+      "path": "backend/tests/test_analytics_reporting.py",
+      "sha256": "36a75b0816c79271f805b925c44b9094e878847aa5798214a8da5fb0728d062e"
+    },
+    {
+      "path": "docs/analytics.md",
+      "sha256": "e854aaf1e87861531f8cf3e101d0f6f680504d457c1fbb91baa6ce31b4700853"
+    },
+    {
+      "path": "docs/guia-graficas-calculos.md",
+      "sha256": "c2fcc4dfda51c9bc6dc20773354ce1346c8840b8036513d1ab3d0b5f41b0bf3c"
+    },
+    {
+      "path": "frontend/src/app/core/analytics.ts",
+      "sha256": "c5f444ba5d12eae1cdd940fc6b971769226cb833138a36221b3f80d1daef8e04"
+    },
+    {
+      "path": "frontend/src/app/features/analytics.html",
+      "sha256": "507a10a658b11cc4cdc2099002aea209bd4d68eabc1b6c456280d2a9c581f8ad"
+    },
+    {
+      "path": "frontend/src/app/features/analytics.scss",
+      "sha256": "5840a55a5aa603fd4eb8020f35b976a0954c56defef00c2bbdbff2202302e62d"
+    },
+    {
+      "path": "frontend/src/app/features/analytics.spec.ts",
+      "sha256": "530cb27d0a2175f5f3075368b89366573579b773afa809011ad004a85288e298"
+    },
+    {
+      "path": "frontend/src/app/features/analytics.ts",
+      "sha256": "c9c67ac9622f4002af6ddbbcae453ba7a7aa6a62eea6eedcc73c97c041d45d66"
+    },
+    {
+      "path": "frontend/src/app/features/dashboard.ts",
+      "sha256": "3a290090a12edf0dffb6420b82d36c6cb1319bbe9b6602845e33adf8214632e7"
+    },
+    {
+      "path": "frontend/src/app/shared/analytics-chart.ts",
+      "sha256": "0deac60ec923317dc21af5eee8913015798979f8957146faccb09d901bd8643f"
+    },
+    {
+      "path": "frontend/src/app/shared/month-comparison.ts",
+      "sha256": "87c8465508a76cb2905b96aa47bb8a189bcf30f5db9ab05ff2171e71104f4405"
+    },
+    {
+      "path": "frontend/src/styles.scss",
+      "sha256": "df45132bdda8d629ad597fb918f4793f9364561f0de51511d258cc694dbb5f66"
+    },
+    {
+      "path": "backend/tests/test_chart_semantics.py",
+      "sha256": "703b20a83339bdd4cd9802709e33d5d35144339b3eff3901605d24b421721749"
+    }
+  ]
+}

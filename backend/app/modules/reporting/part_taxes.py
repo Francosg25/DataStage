@@ -106,7 +106,7 @@ def import_payments(tables, payment_method='0'):
         if not tax or normalized(row.get('forma_pago')) != payment_method:
             continue
         operation = operations.get(item_identity(row), set())
-        if len(operation) != 1 or '' in operation:
+        if operation not in ({'1'}, {'2'}):
             unmatched += 1
         elif operation == {'1'}:
             rows.append((row, tax))
@@ -121,18 +121,27 @@ def paid_totals(tables, coverage, currency, rates):
 
 def payment_method_totals(tables, coverage, currency, rates):
     result = {}
-    for method, name in [('0', 'cash'), ('21', 'certiva')]:
+    methods = sorted({normalized(row.get('forma_pago')) for row in tables['557']
+                      if normalized(row.get('clave_contribucion')) in {'3', '6'}} - {'0', '21'})
+    other = []
+    for method, name in [('0', 'cash'), ('21', 'certiva')] + [(m, None) for m in methods]:
         rows, unmatched = import_payments(tables, method)
-        result[name] = {
+        values = {
             tax: strict_sum(convert(row, 'importe_pago', 'MXN', currency, rates)
                             for row, kind in rows if kind == tax)
             if {'551', '557'}.issubset(coverage) and not unmatched else None
             for tax in ('igi', 'iva')
         }
-        result[name]['unmatchedRows'] = unmatched
-    result['otherPaymentRows'] = sum(
-        normalized(row.get('clave_contribucion')) in {'3', '6'}
-        and normalized(row.get('forma_pago')) not in {'0', '21'} for row in tables['557'])
+        values['unmatchedRows'] = unmatched
+        if name:
+            result[name] = values
+        elif rows or unmatched:
+            other.append({'code': method or 'unknown', 'rows': len(rows), **values})
+    # Keep each method separate. FP 13 is previously paid, not new cash;
+    # FP 22 is a guarantee, not the FP 21 credit. Exports never enter these totals.
+    result['other'] = other
+    result['otherPaymentRows'] = sum(row['rows'] for row in other)
+    result['otherUnmatchedRows'] = sum(row['unmatchedRows'] for row in other)
     return result
 
 

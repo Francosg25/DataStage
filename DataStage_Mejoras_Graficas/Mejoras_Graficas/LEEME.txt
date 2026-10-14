@@ -1,0 +1,83 @@
+DATASTAGE — MEJORAS_GRAFICAS
+Preparación local del 13 de octubre de 2026. Sin commit ni push de estos cambios.
+
+CÓMO APLICAR EN TU CARPETA ACTUAL
+
+1. Detén las ventanas de backend, worker y frontend con Ctrl+C.
+2. Extrae TODO este ZIP en una carpeta; no ejecutes APLICAR.cmd dentro del ZIP.
+3. Ejecuta APLICAR.cmd. Está preparado para:
+   C:\Users\mx1safr\OneDrive - JE\Desktop\PROYECTOS GRANDES\DataStage
+   (usa el perfil del usuario de Windows, no un nombre de usuario fijo).
+4. El aplicador comprueba que la rama activa sea exactamente Mejoras_Graficas.
+   Si estás en otra rama, termina sin tocar los archivos. No cambia de rama.
+5. Antes de copiar crea Respaldo_Mejoras_Graficas_FECHA_HORA junto a DataStage.
+   Conserva ahí las versiones anteriores de todos los archivos afectados.
+6. Al terminar, inicia DataStage con los mismos comandos que ya utilizas.
+   Reinicia también el backend para cargar las correcciones de los cálculos.
+7. Los cambios quedan sin preparar para commit. Puedes revisarlos con git diff
+   y git status. No hace falta pull ni push para probarlos.
+
+El paquete reemplaza únicamente los archivos enumerados en manifest.json.
+Incluye las mejoras de carga solicitadas anteriormente. No copia ni modifica
+la base de datos, documentos cargados, part_numbers.json, .venv, .env, paquetes
+o archivos de configuración de Git. No instala nada ni accede a Internet.
+Los archivos afectados se reemplazan completos; sus versiones locales previas
+se conservan en el respaldo. CAMBIOS.diff permite revisar la diferencia respecto
+a Rama_presentacion c380f33 antes de ejecutar el aplicador.
+
+Si prefieres solo revisar primero, desde la carpeta extraída:
+python aplicar.py "C:\Users\mx1safr\OneDrive - JE\Desktop\PROYECTOS GRANDES\DataStage" --check
+
+MEJORAS
+
+- IGI e IVA por PN en gráficas separadas, con escalas propias.
+- Importe sin PN identificado visible junto a las gráficas.
+- Efectivo FP 0, crédito FP 21 y otras formas de pago separados.
+  FP 13: pago ya efectuado. FP 22: garantía en IVA e IEPS.
+- País de origen de importaciones y destino de exportaciones por separado.
+- Pedimentos por aduana y documento contados por llave única, como la tarjeta.
+- Rectificaciones rotuladas como Pedimentos rectificados, sin llamarlas R1.
+- Eventos SEL sin clasificar visibles; no producen una tasa roja falsa.
+- Fuentes incompletas e importes inválidos quedan sin dato, no como cero.
+- Ejes, tablas y tooltips con unidades; etiquetas extensas en varias líneas.
+- PNG con título, periodo, filtros y notas. Vuelve a la gráfica para descargar.
+- Comparaciones internas limitadas al rango seleccionado; cambios de tasas
+  expresados en puntos porcentuales.
+- Carga con brillo animado, altura estable y respeto al movimiento reducido.
+- PDF y documentación alineados con los criterios mostrados en la aplicación.
+
+ALCANCE DE LOS DATOS
+
+El Manual de Consulta (julio 2021) define los niveles de registro y relaciones.
+El Anexo 22 compartido (15 de enero de 2026), apéndices 12 y 13, define las claves
+de contribución y formas de pago usadas en estas etiquetas.
+
+El valor declarado suma filas 551. No reconstruye el estado fiscal final de una
+operación ni resta originales a rectificaciones. Los importes 702 permanecen
+separados. Los meses totalmente ausentes se indican en la cobertura del rango.
+
+Abril, conciliado contra DataStage_Abril_2026.xlsx:
+IGI en efectivo: 1,195,277 MXN; IVA en efectivo: 5,421 MXN.
+IVA FP 21: 31,167,147 MXN; IGI FP 13: 2,180,339 MXN (3 registros).
+250 pedimentos y 3 pedimentos rectificados.
+Con el catálogo del repositorio, los 5,421 MXN de IVA en efectivo quedan sin PN
+identificado; por eso el IVA de PN identificados es cero. Un catálogo local
+distinto puede cambiar la atribución a PN, sin modificar el total de impuestos.
+
+VERIFICACIÓN
+
+- Compilación Angular correcta.
+- 60 pruebas de frontend aprobadas.
+- 287 pruebas de backend y 4,200 subcasos aprobados.
+- Una prueba de integración SQL Server omitida: este entorno no tiene esa conexión.
+- Comprobaciones de navegador con datos reales de abril: escritorio/móvil,
+  español/inglés, USD/MXN, carga, error/reintento, tablas y exportación PNG.
+- Reporte PDF revisado con los importes y las etiquetas nuevas.
+- Aplicador comprobado: rechazo de otra rama, respaldo y restauración ante
+  un fallo de copia; conserva base de datos, catálogo PN y entorno virtual.
+- Ruff correcto en los módulos y pruebas modificados. La revisión global de
+  estilo detecta incidencias preexistentes en worker.py y test_consolidation_range.py;
+  esos archivos no forman parte de esta entrega.
+
+Los cambios están preparados desde el contenido c380f33 de Rama_presentacion.
+No se ha modificado tu computadora ni se ha publicado esta entrega en GitHub.

@@ -1,6 +1,6 @@
 # Guía de gráficas y cálculos de DataStage
 
-Documento funcional y técnico. Revisión del 8 de octubre de 2026. Esta fuente incorpora las tablas FP 0/21 y rectificaciones por aduana. El PDF anterior del 6 de octubre conserva la versión previa; el reporte PDF descargable de la aplicación incluye los criterios actuales junto a cada corte.
+Documento funcional y técnico. Revisión del 13 de octubre de 2026. Contrastada con el Manual de Consulta (julio 2021, páginas 12–23) y el Anexo 22 suministrado (15 de enero de 2026, apéndices 12 y 13, páginas 119–120). Esta fuente incorpora las tablas FP 0/21 y rectificaciones por aduana. El PDF anterior del 6 de octubre conserva la versión previa; el reporte PDF descargable de la aplicación incluye los criterios actuales junto a cada corte.
 
 Esta guía explica de dónde obtiene DataStage cada visualización, qué calcula y qué debe comprobarse al interpretar sus resultados. Cubre Resumen operativo, las cinco vistas de Análisis de operaciones y Comparativa mensual. Está dirigida al equipo que consulta los datos y a quienes deben conciliarlos con los archivos de origen.
 
@@ -28,7 +28,7 @@ El mes analizado es el de la carga o `Periodo`, no un mes recalculado con `Fecha
 
 Una tabla registrada con cero filas puede producir cero; una tabla ausente produce un indicador no disponible. En la referencia, la existencia de una hoja registrada se utiliza para completar cobertura con cero filas en meses identificados. Esa regla de importación no prueba por sí sola que la extracción externa esté completa.
 
-Los totales generales se calculan con los meses disponibles del rango. Para IGI e IVA se exige además cobertura de 551 y 557 en todos los meses disponibles seleccionados. Un mes totalmente ausente se evidencia en cobertura, pero no se inventa ni convierte automáticamente todo el rango en no disponible. Por ello siempre se debe revisar la cobertura junto al total.
+Los totales generales se calculan con los meses disponibles del rango. Cada indicador exige sus tablas de origen en todos los meses disponibles seleccionados. Por ejemplo, 551 para valor declarado y 551/557 para impuestos. Un mes totalmente ausente se evidencia en cobertura, pero no se inventa ni convierte automáticamente todo el rango en no disponible. Por ello siempre se debe revisar la cobertura junto al total.
 
 ## 2 Tablas y campos de origen
 
@@ -91,7 +91,7 @@ El servicio interpreta los valores numéricos con `Decimal`. Los vacíos, textos
 
 La respuesta JSON usa números y la interfaz redondea para mostrar, normalmente a dos decimales en importes. Los formatos compactos de tarjetas y ejes pueden abreviar miles o millones. Debe conciliarse con el valor detallado, no con la etiqueta abreviada de una tarjeta.
 
-Algunas métricas auxiliares históricas del servicio utilizan una suma que omite valores inválidos si existen otros válidos. Se detallan en la sección 10. Esta diferencia no debe ocultarse al comparar un CSV amplio con las métricas monetarias estrictas de las gráficas.
+Todas las sumas numéricas, incluidos los indicadores auxiliares y el grupo «Otros», conservan los valores inválidos como no disponibles; no publican una suma parcial como total.
 
 ## 5 Gráficas del panorama general
 
@@ -99,17 +99,17 @@ Algunas métricas auxiliares históricas del servicio utilizan una suma que omit
 
 **Origen:** tabla 551, campos `ValorDolares` y `TipoOperacion`; 501 aporta el tipo de cambio cuando se solicita MXN. El eje horizontal contiene los meses del rango y el vertical el importe en la moneda elegida. Hay una serie de importaciones, código 1, y otra de exportaciones, código 2.
 
-**Cálculo:** para cada mes y tipo de operación, sumar `ValorDolares` convertido individualmente cuando corresponda. La gráfica dibuja líneas; un valor no disponible interrumpe la línea. Las curvas suavizadas son una decisión visual, no interpolaciones calculadas ni pronósticos entre meses.
+**Cálculo:** para cada mes y tipo de operación, sumar `ValorDolares` convertido individualmente cuando corresponda. La gráfica dibuja líneas; un valor no disponible interrumpe la línea. Se usan segmentos rectos sin relleno. Los puntos representan meses observados; no hay suavizado ni pronósticos entre meses.
 
 **Lectura:** permite comparar valor declarado y su evolución. No mide utilidades, unidades físicas ni facturación de 505. La tarjeta «Valor de mercancías» suma todas las filas 551 elegibles; si hay tipos de operación diferentes de 1 o 2, la tarjeta puede superar la suma de las dos series. Las filas 551 no se deduplican silenciosamente.
 
 ### IGI e IVA por mes y forma de pago
 
-**Origen:** 557 aporta contribución, forma de pago e importe; 551 identifica si la partida corresponde a importación; 501 aporta el tipo de cambio para USD. Se toma clave 6 para IGI y clave 3 para IVA, separando `FormaPago = 0` (efectivo) y `FormaPago = 21` (CERTIVA). La clave 1 corresponde a DTA y no entra como IGI.
+**Origen:** 557 aporta contribución, forma de pago e importe; 551 identifica si la partida corresponde a importación; 501 aporta el tipo de cambio para USD. Se toma clave 6 para IGI y clave 3 para IVA, separando `FormaPago = 0` (efectivo) y `FormaPago = 21` (crédito en IVA e IEPS, identificado en la aplicación como CERTIVA). La clave 1 corresponde a DTA y no entra como IGI.
 
 **Cálculo:** seleccionar por separado los registros de cada forma de pago, relacionarlos con su llave completa de partida y comprobar que 551 tiene una única operación identificable igual a 1. Sumar `ImportePago` por mes, contribución y forma. El importe original es MXN; para USD se divide cada registro entre su tipo de cambio.
 
-No se calculan los impuestos multiplicando una tasa estimada por un valor de mercancía. Se suman los pagos registrados. No se añade 510 a 557 y tampoco se añade 702. Otras formas de pago y exportaciones quedan fuera. Varios registros de pago de una partida se suman como registros distintos; no hay una deduplicación automática de pagos repetidos en origen.
+No se calculan los impuestos multiplicando una tasa estimada por un valor de mercancía. Se suman los pagos registrados. No se añade 510 a 557 y tampoco se añade 702. Las exportaciones quedan fuera; las otras formas de pago de importación aparecen en un desglose independiente y no se añaden a FP 0/21. Varios registros de pago de una partida se suman como registros distintos; no hay una deduplicación automática de pagos repetidos en origen.
 
 **Calidad:** si un pago candidato no tiene partida u operación verificable, se incrementa `unmatchedTaxRows`. Los totales de ambos impuestos para ese conjunto quedan sin dato, aunque el fallo se haya detectado en uno de ellos. Un tipo de cambio inválido afecta al agregado que necesita esa conversión. Sin NP verificable, el pago puede seguir entrando al total del impuesto si la partida y operación sí están verificadas.
 
@@ -121,41 +121,35 @@ La tabla se reutiliza en Panorama general y Contribuciones. Cada forma tiene su 
 
 **Cálculo:** resolver el NP, sumar IGI por combinación NP/fracción, ordenar por IGI descendente y conservar las primeras diez combinaciones con NP inequívoco e IGI positivo. Los empates se ordenan por NP y fracción. El eje de categorías muestra ambos identificadores.
 
-Una misma parte en dos fracciones aparece como dos combinaciones. Las combinaciones fuera del Top 10 no se agrupan en «Otros» en esta gráfica. Los pagos sin NP, con NP ambiguo, IGI cero, negativo o no disponible tampoco forman parte del ranking. Por ello la suma de sus barras no debe equipararse al IGI total del rango. El ranking es el mismo en Panorama general y Contribuciones.
+Una misma parte en dos fracciones aparece como dos combinaciones. Las combinaciones fuera del Top 10 no se agrupan en «Otros» en esta gráfica. Los pagos sin NP, con NP ambiguo, IGI cero o negativo no forman parte del ranking. Si hay importes IGI desconocidos entre PN identificados, el ranking completo queda sin dato porque no puede ordenarse con certeza. Por ello la suma de sus barras no debe equipararse al IGI total del rango. El ranking es el mismo en Panorama general y Contribuciones.
 
 ### Rectificaciones por aduana
 
-**Origen:** pedimentos de 501 y rectificaciones de 701, agrupados por aduana. La tabla muestra código y nombre, R1, total de pedimentos, porcentaje por aduana y porcentaje global. R1 es la etiqueta operativa de las rectificaciones de 701, sin exigir que ClaveDocumento diga R1: el archivo conserva claves AF, IN, RT y otras.
+**Origen:** pedimentos de 501 y rectificaciones de 701, agrupados por aduana. La tabla muestra código y nombre, pedimentos rectificados, total de pedimentos, porcentaje por aduana y porcentaje global. Se cuentan registros distintos de 701 sin exigir que ClaveDocumento diga R1: el archivo conserva claves AF, IN, RT y otras.
 
-Se cuentan llaves distintas (año, mes de carga, patente, pedimento y aduana). Repeticiones de la misma llave se cuentan una vez; apariciones en meses diferentes se conservan por separado. `% aduana = R1 de la aduana / pedimentos 501 de esa aduana * 100`. `% global = R1 de la aduana / total 501 de la selección * 100`. El total global respeta también el filtro de aduana y se muestra explícitamente. Los totales recalculan tasas, no promedian porcentajes. Base cero, llaves inválidas, 701 sin 501 o falta de cobertura producen tasas sin dato, no cero.
+Se cuentan llaves distintas (año, mes de carga, patente, pedimento y aduana). Repeticiones de la misma llave se cuentan una vez; apariciones en meses diferentes se conservan por separado. `% aduana = rectificados de la aduana / pedimentos 501 de esa aduana * 100`. `% global = rectificados de la aduana / total 501 de la selección * 100`. El total global respeta también el filtro de aduana y se muestra explícitamente. Los totales recalculan tasas, no promedian porcentajes. Base cero, llaves inválidas, 701 sin 501 o falta de cobertura producen tasas sin dato, no cero.
 
-La tabla se reutiliza en Control y calidad. Más rectificaciones no demuestra por sí solo un error operativo. No se infieren responsables logísticos, costos ni sustituciones fiscales, ni se netean importes de 702. La imagen muestra 1,105 pedimentos, pero los datos de referencia enero-junio con todas las operaciones arrojan 1,527 y 31 R1; 7/1,527 = 0.46%, consistente con su porcentaje global de Manzanillo. Se muestran todas las aduanas, incluidas las que no tienen rectificaciones. Los conteos por aduana proceden de 501, no se fuerzan a coincidir con la imagen.
+La tabla se reutiliza en Control y calidad. Más rectificaciones no demuestra por sí solo un error operativo. No se infieren responsables logísticos, costos ni sustituciones fiscales, ni se netean importes de 702. La imagen muestra 1,105 pedimentos, pero los datos de referencia enero-junio con todas las operaciones arrojan 1,527 y 31 rectificados; 7/1,527 = 0.46%, consistente con su porcentaje global de Manzanillo. Se muestran todas las aduanas, incluidas las que no tienen rectificaciones. Los conteos por aduana proceden de 501, no se fuerzan a coincidir con la imagen.
 
 ## 6 Gráficas de comercio y mercancías
 
-### Aduanas de despacho
+### Pedimentos por aduana y por clave de documento
 
-**Origen y fórmula:** agrupar filas 501 por `SeccionAduanera` y contar registros por grupo. Se presenta un ranking horizontal. No usa `COUNT DISTINCT` de la llave del pedimento, a diferencia de la tarjeta «Pedimentos».
+**Origen y fórmula:** llaves distintas por mes de 501, agrupadas por `SeccionAduanera` o `ClaveDocumento`. Comparten la población de la tarjeta Pedimentos; las filas repetidas no inflan las barras. Si una misma llave tiene categorías contradictorias, se cuenta una sola vez en Sin especificar. Las llaves incompletas dejan el conteo y ambos rankings sin dato.
 
-Si existen filas 501 repetidas, una aduana puede mostrar más registros que pedimentos únicos. Se muestran ocho grupos principales y el resto se suma en «Otros». Un campo vacío se clasifica como «Sin especificar». Seleccionar una categoría identificable aplica o retira el filtro de aduana al informe; «Otros» y «Sin especificar» no activan ese filtro.
+Se muestran ocho categorías y el resto en Otros. Seleccionar una barra identificable aplica o retira el filtro correspondiente. Otros y Sin especificar no activan filtros. El título «clave de documento» describe las claves A1, AF, IN, RT, etc.; no las confunde con TipoOperacion 1/2. Las descripciones usan el apéndice 2 del Anexo 22 aportado.
 
-### Tipo de operación aduanera
+### Importaciones por país de origen y exportaciones por país de destino
 
-**Origen y fórmula:** agrupar filas 501 por `ClaveDocumento` y contar registros. Aunque el título menciona operación, las categorías son claves de documento, no únicamente la separación importación frente a exportación de `TipoOperacion`.
+Son dos gráficas separadas. Agrupan 551 por `PaisOrigenDestino` y suman `ValorDolares`, convertido individualmente si se solicita MXN. La primera incluye solo TipoOperacion 1; la segunda, solo 2. Un mismo país puede aparecer en ambas con importes distintos. El campo no representa necesariamente el país del proveedor de 505.
 
-Se muestran ocho categorías y «Otros», con la misma regla de conteo de filas. Seleccionar una clave identificable aplica el filtro Documento. Las descripciones provienen del catálogo de interfaz basado en el Anexo 22 aportado; una clave sin correspondencia se identifica como descripción no validada. La etiqueta inglesa es una traducción de interfaz.
-
-### Origen y destino de mercancías
-
-**Origen y fórmula:** agrupar 551 por `PaisOrigenDestino` y sumar `ValorDolares`, con conversión por pedimento si se selecciona MXN. La unidad del eje es monetaria, no número de embarques, unidades o peso.
-
-En importaciones el campo representa origen; en exportaciones representa destino. Con ambas operaciones seleccionadas se agrupan los valores bajo el mismo código de país. Para analizar únicamente orígenes o destinos se debe elegir la operación correspondiente. Se muestran ocho países y «Otros»; los códigos vacíos van a «Sin especificar».
+Cada ranking muestra ocho países y Otros. Campos vacíos van a Sin especificar. Ambas gráficas conservan todos los filtros generales: si se filtra solo importación, la gráfica de exportaciones queda sin registros elegibles.
 
 ### Fracciones arancelarias
 
 **Origen y fórmula:** agrupar 551 por `Fraccion` y sumar el valor de mercancías convertido a la moneda elegida. Las ocho fracciones con mayor agregado se presentan individualmente y las restantes en «Otros».
 
-Esta gráfica compara valor, no IGI pagado ni tasas. Una fracción con mucho valor puede no ser la de mayor IGI. Los grupos monetarios utilizan suma estricta: un valor inválido o no convertible vuelve no disponible ese grupo. «Otros» también queda sin dato si alguno de sus grupos no tiene agregado válido. Los empates se resuelven por clave y los valores no disponibles usan cero únicamente para ordenar, no para presentarse como importes cero.
+Esta gráfica agrupa por Fraccion; no desglosa NICO. Compara valor declarado, no IGI pagado ni tasas. Una fracción con mucho valor puede no ser la de mayor IGI. Los grupos monetarios utilizan suma estricta: un valor inválido o no convertible vuelve no disponible ese grupo. «Otros» también queda sin dato si alguno de sus grupos no tiene agregado válido. Los empates se resuelven por clave y los valores no disponibles usan cero únicamente para ordenar, no para presentarse como importes cero.
 
 ## 7 Selección aduanera y alertas de calidad
 
@@ -163,9 +157,9 @@ Esta gráfica compara valor, no IGI pagado ni tasas. Una fracción con mucho val
 
 **Origen:** SEL, campo `SemaforoFiscal`. Por cada mes se cuentan los registros con código 0 como rojo y con código 1 como verde. Las barras están apiladas y representan eventos de selección, no pedimentos únicos.
 
-Un pedimento puede tener más de un evento. Valores diferentes de 0 o 1 no entran en ninguna de las dos series ni en el denominador del porcentaje rojo. Sin SEL disponible no se sustituye por cero. La gráfica no mide resultados de inspección ni multas.
+Un pedimento puede tener más de un evento. Valores diferentes de 0 o 1 aparecen en una tercera serie Sin clasificar y dejan la tasa de rojo sin dato. Sin SEL disponible no se sustituye por cero. La gráfica no mide resultados de inspección ni multas.
 
-La tarjeta «Selecciones en rojo» se obtiene como 100 multiplicado por eventos rojos dividido entre eventos rojos más verdes. El total del rango se calcula sobre todos sus eventos; no es el promedio simple de los porcentajes mensuales. Con 2 rojos y 8 verdes resulta 20 %. Si no hay eventos rojos o verdes, el porcentaje no está disponible.
+La tarjeta «Selecciones en rojo» se obtiene como 100 multiplicado por eventos rojos dividido entre eventos rojos más verdes. El total del rango se calcula sobre todos sus eventos; no es el promedio simple de los porcentajes mensuales. Con 2 rojos y 8 verdes resulta 20 %. Si no hay eventos rojos o verdes, o existe algún evento sin clasificar, el porcentaje no está disponible.
 
 ### Resolución del número de parte
 
@@ -181,7 +175,7 @@ Las alertas se calculan sobre las llaves identificables de 551 de la selección,
 
 - `invalidNumericValues`: cuenta celdas ausentes o inválidas, no filas. Revisa seis campos de 501: peso, fletes, seguros, embalajes, incrementables y deducibles; tres de 551: valores en dólares, aduana y comercial; ValorDolares de 505; e ImportePago de 510, 557 y 702. Una fila puede aportar varias incidencias.
 - `orphanItems`: cuenta filas 551 del rango sin llave de pedimento presente en 501, antes de los filtros dimensionales. No es un importe.
-- `duplicateDeclarationRows`: filas 501 seleccionadas menos llaves válidas distintas. El nombre visible «Filas 501 adicionales por llave» no debe interpretarse como duplicados exactos exclusivamente: también incluye filas con llave incompleta.
+- `duplicateDeclarationRows`: filas 501 con llave válida menos llaves válidas distintas. Las filas con llave incompleta se cuentan por separado en `invalidDeclarationKeys`.
 - `missingExchangeRates`: filas 501 seleccionadas cuya llave no tiene tipo único y válido. Cuenta filas, no necesariamente pedimentos únicos. No incluye por sí solo todas las filas de otras tablas huérfanas de 501.
 - `invalidItemKeys`: filas 551 con llave de partida incompleta. Las alertas detalladas de NP solo pueden construirse para llaves completas.
 - `unmatchedTaxRows`: registros candidatos de IGI/IVA con forma 0 sin una operación verificable mediante 551. Las exportaciones verificadas se excluyen de los pagos de importación, pero no se marcan como relaciones fallidas.
@@ -194,13 +188,13 @@ Las seis tarjetas del dashboard muestran: pedimentos únicos de 501; valor de me
 
 La variación pequeña de cada tarjeta compara el último mes disponible del rango contra el mes calendario inmediatamente anterior. No compara el total del rango contra otro total. El mes anterior puede quedar fuera del rango seleccionado; si falta o su valor base es cero, no hay porcentaje comparable. En enero esta tarjeta no busca automáticamente diciembre del año anterior.
 
-Las minibarras de las tarjetas son decorativas: usan meses disponibles, convierten valores nulos a cero para calcular alturas y aplican una altura mínima de tres píxeles. No sirven para distinguir un cero de un dato ausente ni reemplazan la gráfica con valores detallados.
+Las minibarras conservan los meses del rango: un valor ausente deja un espacio, cero se representa con una marca neutral en la base y los valores positivos se escalan proporcionalmente. Son auxiliares; los datos exactos están en las tablas.
 
 ### Comparativa dentro del análisis
 
-En Panorama general se eligen dos meses del mismo año y se presentan las seis métricas de las tarjetas. Sean A el valor del mes base y B el del mes comparado. La variación es `(B - A) / abs(A) * 100`. Si cualquiera falta o A es cero, el porcentaje se marca sin base comparable. Un cambio de porcentaje rojo de 20 % a 30 % equivale a un aumento relativo de 50 %, no a 50 puntos porcentuales; la diferencia absoluta sería 10 puntos.
+En Panorama general se eligen dos meses del mismo año y se presentan las seis métricas de las tarjetas. Sean A el valor del mes base y B el del mes comparado. La variación es `(B - A) / abs(A) * 100`. Si cualquiera falta o A es cero, el porcentaje se marca sin base comparable. La tasa de rojo utiliza diferencia en puntos porcentuales (p.p.): de 20 % a 30 % muestra +10 p.p., incluso con base cero. Las demás métricas mantienen la variación relativa.
 
-Los selectores internos permiten elegir cualquiera de los doce meses del año y consultan la serie anual recibida. En esta comparativa general pueden verse meses fuera del rango de las gráficas principales. La comparación por NP, en cambio, sí devuelve sin dato cuando un mes queda fuera del rango del reporte.
+Los selectores de las comparativas internas se limitan al rango seleccionado del reporte. Un mes sin cobertura dentro de ese rango permanece sin dato. La página Comparativa mensual permite elegir libremente otros meses y años.
 
 ### Comparativa mensual entre años
 
@@ -216,7 +210,7 @@ Las dos tablas de Contribuciones muestran los impuestos por combinación NP prin
 
 Cuando el mes está dentro del rango y tiene 551 y 557, la ausencia de pagos para una combinación significa cero. Un agregado de esa combinación que no pudo convertirse permanece sin dato. Sin cobertura o fuera del rango se muestra sin dato. El cálculo de diferencia requiere ambos importes y el porcentaje requiere además base no cero.
 
-Los pagos de partidas sin NP verificable se agrupan como «Sin asignar» por fracción; no se reparten arbitrariamente entre candidatos. Pueden contribuir a los totales de IGI/IVA, aunque se excluyan del Top 10. La búsqueda revisa principal, alternativos y fracción y afecta las filas y su exportación CSV, no las gráficas generales. La paginación de 25 filas no limita los totales ni la descarga completa de resultados filtrados por esa búsqueda.
+Los pagos de partidas sin NP verificable se agrupan como «Sin asignar» por fracción; no se reparten arbitrariamente entre candidatos. Pueden contribuir a los totales de IGI/IVA, aunque se excluyan del Top 10. Los filtros independientes revisan PN principal/alternativos y fracción y afecta las filas y su exportación CSV, no las gráficas generales. La paginación de 25 filas no limita los totales ni la descarga completa de resultados filtrados por esa búsqueda.
 
 ## 9 Gráfica de Resumen operativo
 
@@ -245,7 +239,7 @@ La exportación general CSV contiene metadatos de filtros y las métricas mensua
 | simpleIncidents y seriousIncidents | Filas INCI con grado S o G | Conteo de registros |
 | correctInspections | Filas INCI con grado C | C es correcto, no una incidencia |
 
-Inicialmente esos totales numéricos auxiliares se calculan omitiendo celdas inválidas si hay otras válidas; si hay filas pero ningún valor válido se devuelve sin dato, y si no hay filas, cero. Después el servicio calcula versiones estrictas en la moneda elegida para las familias trade, customs, commercial, invoice, headerPayments, freight, insurance, packing, increments, deductions, import y export, sobrescribiendo el campo de esa moneda. Esta secuencia explica por qué no debe inferirse la política de nulos de cualquier campo solo por su nombre.
+Todos estos totales utilizan suma estricta: un valor vacío, inválido o no finito vuelve no disponible su agregado. Una tabla presente y vacía suma cero. Los campos con sufijo Mxn o Usd conservan la moneda indicada; los rankings y los campos sin sufijo de impuestos usan la moneda de la respuesta.
 
 IGI e IVA utilizan siempre el procedimiento específico de partidas y forma 0 descrito antes. Los rankings monetarios de países, fracciones, proveedores, Incoterms, contribuciones de cabecera y formas de pago también usan conversión individual y suma estricta. Solo países y fracciones se dibujan hoy entre esos rankings monetarios.
 
@@ -270,7 +264,7 @@ Si falta el tipo de cambio, los 2,040 MXN de IGI siguen siendo consultables en M
 7. Sumar primero con precisión completa y redondear al presentar. En rankings revisar la agrupación «Otros» o la exclusión del Top 10, según corresponda.
 8. Comparar el resultado detallado o CSV y conservar evidencia de fuente y versión. Si se corrige una carga, publicar una nueva versión y volver a consultar.
 
-Las herramientas de una gráfica permiten ver su tabla de datos, descargar CSV o PNG y ampliar la vista. Presentan el mismo conjunto calculado; cambiar entre gráfica y tabla no recalcula otra población. La descarga CSV general incluye meses del rango; el CSV por NP incluye las combinaciones buscadas y los meses que tienen datos en esas combinaciones. Una celda vacía exportada no debe reemplazarse masivamente por cero.
+Las herramientas de una gráfica permiten ver su tabla de datos, descargar PNG y ampliar la vista. Las descargas CSV se ofrecen a nivel de reporte y de números de parte. El PNG incluye título, periodo, filtros, moneda y notas de la gráfica. Presentan el mismo conjunto calculado; cambiar entre gráfica y tabla no recalcula otra población. La descarga CSV general incluye meses del rango; el CSV por NP incluye las combinaciones buscadas y los meses que tienen datos en esas combinaciones. Una celda vacía exportada no debe reemplazarse masivamente por cero.
 
 ## 13 Referencias de implementación
 
@@ -291,3 +285,20 @@ Esta revisión se apoya en los siguientes módulos del proyecto. Las referencias
 Las pruebas relevantes están en `backend/tests/test_analytics.py`, `backend/tests/test_part_taxes.py`, `frontend/src/app/features/analytics.spec.ts` y `frontend/src/app/shared/month-comparison.spec.ts`. La publicación mensual y sus versiones se revisan también en `backend/tests/test_month_workflows.py`. Estas pruebas automatizadas no sustituyen la conciliación de la fuente de la empresa ni validan por sí solas una conexión de producción con SQL Server.
 
 Los cambios de esta entrega separan Cargas en Mensuales y Consolidados y dejan Comparativa mensual solo para análisis. El exportador común `backend/app/modules/engine/exporter.py` produce los nuevos XLSX como rangos normales con filtros y encabezados oscuros legibles, sin tablas nativas de Excel. Los archivos ya generados no se reescriben automáticamente. Este formato de salida no modifica las fórmulas del dashboard.
+
+
+
+## 14 Criterios de claridad de esta revisión
+
+- **IGI e IVA por PN:** se muestran en gráficas mensuales separadas, cada una con su propia escala. Se conservan los filtros PN/fracción y el Top 10 de IGI. Los importes de PN sin identificar se presentan explícitamente debajo y siguen formando parte del total general de efectivo. El Top 10 queda sin dato si falta cobertura 551/557/558 o hay un importe IGI desconocido entre los PN identificados.
+- **Formas de pago:** la tabla principal separa FP 0 y FP 21. Una tabla adicional desglosa todas las otras formas presentes en las importaciones, con IGI, IVA y número de registros. FP 13 significa pago ya efectuado; FP 22 es garantía en IVA e IEPS. No se suman al efectivo. Los pagos sin cruce verificable invalidan únicamente la forma de pago afectada.
+- **Selección:** se dibujan también eventos con código distinto de 0/1 como Sin clasificar. La tasa de rojo queda no disponible si existe alguno; no se ocultan para publicar una tasa aparentemente completa.
+- **Rectificaciones e importes:** el valor declarado suma las filas 551 de la fuente activa. No reconstruye una operación fiscal final ni netea rectificaciones contra sus originales. La interfaz y el PDF explican este alcance; 702 permanece separado.
+- **Cargas:** marcadores de posición con brillo muestran el estado real de las consultas. Desaparecen al resolver o fallar; no generan porcentajes ficticios. Se respeta la preferencia de movimiento reducido.
+- **Unidades y precisión:** los ejes, tablas y tooltips distinguen importes monetarios, conteos enteros y porcentajes. Los tooltips monetarios muestran dos decimales; cero y Sin dato tienen estados distintos. Las etiquetas extensas se dividen en líneas y se pueden consultar completas en la tabla.
+
+### Conciliación del Excel de abril de 2026
+
+La lectura independiente y el servicio arrojan: 250 pedimentos, 3 pedimentos rectificados; IGI en efectivo 1,195,277 MXN; IVA en efectivo 5,421 MXN; IVA FP 21 de 31,167,147 MXN; e IGI FP 13 de 2,180,339 MXN en tres registros. Estos últimos importes permanecen separados de FP 0.
+
+Con el catálogo del repositorio, el IVA en efectivo de abril queda sin PN identificado (296.99328052510873 USD). Por eso la gráfica de IVA por PN identificado es cero aunque el total general de IVA en efectivo sea positivo. La nota de atribución muestra la diferencia. Un catálogo local distinto puede modificar la atribución, sin alterar el total de impuestos.

@@ -23,6 +23,7 @@ import { AnalyticsChart, ChartSeries } from "../shared/analytics-chart";
   imports: [FormsModule, NgTemplateOutlet, RouterLink, Icon, AnalyticsChart],
   templateUrl: "./analytics.html",
   styleUrl: "./analytics.scss",
+  host: { "[attr.aria-busy]": "loading()" },
 })
 export class Analytics {
   readonly i18n = inject(I18n);
@@ -130,6 +131,26 @@ export class Analytics {
       return { igi: sum("igi"), iva: sum("iva") };
     });
   });
+  partUnassignedTotals = computed(() => {
+    const rows = this.taxRows().filter((row) => !row.partNumber);
+    const months = this.activeMonths();
+    const covered =
+      months.length &&
+      months.every((month) =>
+        ["551", "557"].every((code) => Object.hasOwn(month.tables, code)),
+      );
+    const sum = (tax: "igi" | "iva") => {
+      if (!covered) return null;
+      if (!rows.length) return 0;
+      const values = months.flatMap((month) =>
+        rows.map((row) => this.taxValue(row, month.month, tax)),
+      );
+      return values.some((value) => value == null)
+        ? null
+        : values.reduce<number>((total, value) => total + value!, 0);
+    };
+    return { igi: sum("igi"), iva: sum("iva") };
+  });
   years = computed(
     () =>
       this.options()?.sources.find((s) => s.id === this.filters.source)
@@ -165,24 +186,24 @@ export class Analytics {
       },
       {
         key: "igiPaid",
-        es: "IGI pagado",
-        en: "Import duty paid (IGI)",
+        es: "IGI en efectivo",
+        en: "Cash import duty (IGI)",
         unit: this.currency(),
         source: "557 · FP 0",
         color: "#2877b5",
       },
       {
         key: "ivaPaid",
-        es: "IVA pagado",
-        en: "VAT paid (IVA)",
+        es: "IVA en efectivo",
+        en: "Cash VAT (IVA)",
         unit: this.currency(),
         source: "557 · FP 0",
         color: "#9b6520",
       },
       {
         key: "rectifications",
-        es: "Rectificaciones",
-        en: "Amendments",
+        es: "Pedimentos rectificados",
+        en: "Amended declarations",
         unit: "",
         source: "701",
         color: "#5a9cac",
@@ -315,6 +336,55 @@ export class Analytics {
   labels() {
     return this.selectedMonths().map((m) => this.i18n.month(m.month, true));
   }
+  chartContext() {
+    const r = this.report();
+    if (!r) return "";
+    const f = r.appliedFilters || this.filters;
+    return [
+      `${this.i18n.month(r.startMonth, true)} – ${this.i18n.month(r.endMonth, true)} ${r.year}`,
+      r.source === "reference"
+        ? this.t("Excel de referencia", "Reference workbook")
+        : this.t("Cargas publicadas", "Published runs"),
+      f.operation
+        ? this.category(f.operation, "operations")
+        : this.t("Todas las operaciones", "All operations"),
+      f.customs ? this.category(f.customs, "customs") : "",
+      f.document ? f.document : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  partContext() {
+    return [
+      this.chartContext(),
+      this.partSearch() ? `PN: ${this.partSearch().trim()}` : "",
+      this.partTariff()
+        ? `${this.t("Fracción", "Tariff")}: ${this.partTariff()}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  tradeSeries(): ChartSeries[] {
+    const series = this.pairSeries(
+      this.moneyKey("import"),
+      this.moneyKey("export"),
+      [this.t("Importaciones", "Imports"), this.t("Exportaciones", "Exports")],
+    );
+    const unclassified = this.series(
+      this.moneyKey("unclassifiedTrade"),
+      this.t("Operación sin clasificar", "Unclassified operation"),
+      "#a16b20",
+    );
+    if (
+      this.selectedMonths().some(
+        (m) => (m.metrics["unclassifiedItems"] || 0) > 0,
+      ) ||
+      unclassified[0].values.some((v) => v != null && v !== 0)
+    )
+      series.push(...unclassified);
+    return series;
+  }
   series(key: string, label: string, color = "#11998b"): ChartSeries[] {
     return [
       {
@@ -352,6 +422,8 @@ export class Analytics {
     return [{ label, color, values: this.ranking(key).map((r) => r.value) }];
   }
   category(key: string, dimension: string): string {
+    if (["originCountries", "destinationCountries"].includes(dimension))
+      dimension = "countries";
     if (key === "other") return this.t("Otros", "Other");
     if (key === "unknown") return this.t("Sin especificar", "Unspecified");
     if (dimension === "operations")
@@ -384,7 +456,7 @@ export class Analytics {
     const month = this.selectedMonths()[index]?.month;
     if (month) {
       this.second.set(month);
-      this.first.set(Math.max(1, month - 1));
+      this.first.set(Math.max(this.report()?.startMonth || 1, month - 1));
     }
   }
   format(value: number | null | undefined, unit = "", compact = false) {
@@ -406,12 +478,40 @@ export class Analytics {
       ? this.t("Sin base comparable", "No comparable baseline")
       : `${value > 0 ? "+" : ""}${this.i18n.number(value, false, 1)}%`;
   }
+  rateDifference(
+    current: number | null | undefined,
+    previous: number | null | undefined,
+  ) {
+    if (current == null || previous == null)
+      return this.t("Sin base comparable", "No comparable baseline");
+    const value = current - previous;
+    return `${value > 0 ? "+" : ""}${this.i18n.number(value, false, 1)} ${this.t("p.p.", "pp")}`;
+  }
+  metricDeltaLabel(key: string) {
+    const r = this.report();
+    return key === "redRate"
+      ? this.rateDifference(r?.latest[key], r?.previous[key])
+      : this.delta(r?.deltas[key]);
+  }
+  comparisonDeltaLabel(key: string) {
+    return key === "redRate"
+      ? this.rateDifference(
+          this.compareValue(this.second(), key),
+          this.compareValue(this.first(), key),
+        )
+      : this.delta(this.compareDelta(key));
+  }
   spark(key: string) {
-    const values = this.activeMonths().map((m) => m.metrics[key] || 0);
-    const max = Math.max(...values, 1);
-    return values.map((v) => Math.max(3, (v / max) * 30));
+    const values = this.selectedMonths().map((m) => m.metrics[key]);
+    const max = Math.max(...values.filter((v): v is number => v != null), 1);
+    return values.map((v) => (v == null ? null : (Math.max(0, v) / max) * 30));
   }
   compareValue(month: number, key: string) {
+    if (
+      month < (this.report()?.startMonth || 1) ||
+      month > (this.report()?.endMonth || 12)
+    )
+      return null;
     return this.report()?.monthly[month - 1]?.metrics[key] ?? null;
   }
   compareDelta(key: string) {
@@ -457,6 +557,12 @@ export class Analytics {
     }));
   }
   topParts() {
+    if (
+      this.report()?.partTaxes.available === false ||
+      this.report()?.partTaxes.observationSourceAvailable === false ||
+      this.identifiedTaxRows().some((r) => r.igi == null)
+    )
+      return [];
     return this.identifiedTaxRows()
       .filter((r) => r.igi != null && r.igi > 0)
       .sort((a, b) => b.igi! - a.igi!)
@@ -468,14 +574,14 @@ export class Analytics {
   partSeries(): ChartSeries[] {
     return [
       {
-        label: this.currency(),
+        label: this.t("IGI en efectivo", "Cash import duty"),
         color: "#2877b5",
         values: this.topParts().map((r) => r.igi),
       },
     ];
   }
-  partTrendSeries(): ChartSeries[] {
-    return [
+  partTrendSeries(tax?: "igi" | "iva"): ChartSeries[] {
+    const series = [
       {
         label: this.t("IGI", "IMPORT DUTY"),
         color: "#2877b5",
@@ -487,6 +593,7 @@ export class Analytics {
         values: this.partMonthlyTotals().map((m) => m.iva),
       },
     ];
+    return tax ? [series[tax === "igi" ? 0 : 1]] : series;
   }
   taxValue(row: PartTaxRow, month: number, tax: "igi" | "iva") {
     if (

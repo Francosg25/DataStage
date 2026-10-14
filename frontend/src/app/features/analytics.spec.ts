@@ -163,6 +163,100 @@ describe("analytics filters and comparisons", () => {
     ).toBe(true);
     expect(component.topParts()).toEqual([]);
   });
+  it("shows April cash VAT without assigning payments to unidentified parts", () => {
+    const { component } = setup();
+    const identified = {
+      ...partRow("PN-APRIL", "84807103"),
+      months: { "4": { igi: 64582.56, iva: 0 } },
+    };
+    const unassigned = {
+      ...partRow(null, "84807103"),
+      months: { "4": { igi: 2788.43, iva: 296.99 } },
+    };
+    const otherTariff = {
+      ...partRow(null, "OTHER"),
+      months: { "4": { igi: 100, iva: 200 } },
+    };
+    component.report.set(
+      partReport([identified, unassigned, otherTariff], 4, 4),
+    );
+    component.selectPartTariff("84807103");
+    expect(component.partMonthlyTotals()).toEqual([{ igi: 64582.56, iva: 0 }]);
+    expect(component.partUnassignedTotals()).toEqual({
+      igi: 2788.43,
+      iva: 296.99,
+    });
+    component.searchParts("PN-APRIL");
+    expect(component.partUnassignedTotals()).toEqual({ igi: 0, iva: 0 });
+  });
+  it("keeps unavailable unassigned payments distinct from real zero", () => {
+    const { component } = setup();
+    const row = { ...partRow(null), months: { "4": { igi: null, iva: 0 } } };
+    const report = partReport([row], 4, 4);
+    component.report.set(report);
+    expect(component.partUnassignedTotals()).toEqual({ igi: null, iva: 0 });
+    report.monthly[3].available = false;
+    component.report.set({ ...report });
+    expect(component.partUnassignedTotals()).toEqual({ igi: null, iva: null });
+  });
+  it("does not label partial unassigned amounts or an incomplete top ten as complete", () => {
+    const { component } = setup();
+    const report = partReport([partRow(null), partRow("KNOWN")], 1, 2);
+    delete report.monthly[1].tables["557"];
+    report.partTaxes.available = false;
+    component.report.set(report);
+    expect(component.partUnassignedTotals()).toEqual({ igi: null, iva: null });
+    expect(component.topParts()).toEqual([]);
+    component.report.set(
+      partReport(
+        [{ ...partRow("UNKNOWN"), igi: null }, partRow("KNOWN")],
+        1,
+        2,
+      ),
+    );
+    expect(component.topParts()).toEqual([]);
+  });
+  it("shows each tax on its own scale without changing its monthly values", () => {
+    const { component } = setup();
+    component.report.set(partReport([partRow("PN", "123", 100000)], 1, 1));
+    expect(component.partTrendSeries("igi")[0].values).toEqual([100000]);
+    expect(component.partTrendSeries("iva")[0].values).toEqual([20]);
+    expect(component.partTrendSeries("igi")).toHaveLength(1);
+  });
+  it("keeps missing spark values empty and comparisons within the selected range", () => {
+    const { component } = setup();
+    component.report.set({
+      startMonth: 1,
+      endMonth: 3,
+      monthly: [
+        { month: 1, available: true, metrics: { declarations: 10 } },
+        { month: 2, available: true, metrics: { declarations: 0 } },
+        { month: 3, available: false, metrics: { declarations: null } },
+        { month: 4, available: true, metrics: { declarations: 30 } },
+      ],
+    } as unknown as AnalyticsReport);
+    expect(component.spark("declarations")).toEqual([30, 0, null]);
+    expect(component.compareValue(4, "declarations")).toBeNull();
+  });
+  it("keeps unknown trade operations visible rather than dropping their value", () => {
+    const { component } = setup();
+    component.report.set({
+      startMonth: 1,
+      endMonth: 1,
+      currency: "USD",
+      monthly: [
+        {
+          month: 1,
+          metrics: { importUsd: 100, exportUsd: 20, unclassifiedTradeUsd: 3 },
+        },
+      ],
+    } as unknown as AnalyticsReport);
+    expect(component.tradeSeries().map((s) => s.values)).toEqual([
+      [100],
+      [20],
+      [3],
+    ]);
+  });
   function setup() {
     const first = new Subject<AnalyticsReport>();
     const second = new Subject<AnalyticsReport>();
@@ -264,6 +358,13 @@ describe("analytics filters and comparisons", () => {
     expect(component.compareDelta("tradeUsd")).toBe(-100);
     component.second.set(3);
     expect(component.compareDelta("tradeUsd")).toBeNull();
+  });
+  it("expresses rate changes as percentage points, including a zero baseline", () => {
+    const { component } = setup();
+    component.i18n.set("es");
+    expect(component.rateDifference(30, 20)).toBe("+10 p.p.");
+    expect(component.rateDifference(5, 0)).toBe("+5 p.p.");
+    expect(component.rateDifference(5, null)).toBe("Sin base comparable");
   });
   it("uses the selected currency and describes codes without changing identifiers", () => {
     const { component, analytics } = setup();

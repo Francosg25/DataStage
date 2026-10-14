@@ -53,23 +53,22 @@ El Excel IGI abril 2025 a marzo 2026 es referencia de presentación. No se incor
 La tabla mensual usa `paymentMethods` en cada mes y en el total. Separa IGI/IVA
 de importación por `FormaPago=0` (efectivo) y `FormaPago=21` (CERTIVA). No suma
 crédito y efectivo. Las tarjetas y el análisis por NP siguen midiendo FP 0.
-Otros medios se excluyen explícitamente y se cuenta su presencia en 557.
+Otros medios se desglosan por código en `paymentMethods.other`, con IGI, IVA, registros de importación y cruces pendientes. `otherPaymentRows` cuenta importaciones verificadas; `otherUnmatchedRows` cuenta registros sin operación verificable. FP 13 es pago ya efectuado y FP 22 garantía en IVA e IEPS; no se añaden al efectivo.
 El cruce con 551 no multiplica pagos cuando hay partidas repetidas. Un cruce
 incompleto o ambiguo invalida el total de la forma afectada, no el de la otra.
 
-`rectificationsByCustoms` agrupa llaves únicas de 701 y 501 por aduana. R1 es la
-etiqueta operativa de rectificaciones registradas en 701: las claves de documento
+`rectificationsByCustoms` agrupa llaves únicas de 701 y 501 por aduana. La etiqueta visible es Pedimentos rectificados; el campo `r1` se conserva como alias de compatibilidad del contrato: las claves de documento
 del Excel de ejemplo son AF, IN, RT, etc., no la cadena R1. Los meses forman parte
 de la llave, de modo que apariciones en meses distintos se mantienen separadas.
 No se deduplican las filas de pago 557 por igualdad de monto.
 
-- `% aduana = R1 de la aduana / pedimentos 501 de esa aduana * 100`.
-- `% global = R1 de la aduana / pedimentos 501 de toda la selección * 100`.
+- `% aduana = rectificados de la aduana / pedimentos 501 de esa aduana * 100`.
+- `% global = rectificados de la aduana / pedimentos 501 de toda la selección * 100`.
 - El filtro de aduana también restringe la base global. Su valor se muestra en pantalla.
 - Los totales porcentuales se recalculan con los conteos, no con promedios de tasas.
 - Base cero, llaves inválidas, 701 sin 501 o cobertura incompleta no generan tasas falsas.
 - La imagen ilustrativa suma 1,105 pedimentos visibles. En el Excel de referencia,
-  enero-junio de 2026 con todas las operaciones suma 1,527 pedimentos y 31 R1:
+  enero-junio de 2026 con todas las operaciones suma 1,527 pedimentos y 31 rectificados:
   7/1,527 = 0.46%, consistente con el porcentaje global de Manzanillo del ejemplo.
   Se muestran también aduanas sin rectificaciones. Los conteos 501 de Altamira y
   AIFA en esta selección difieren de la imagen; no se reemplazan por valores manuales.
@@ -104,7 +103,7 @@ La conciliación normaliza campos numéricos de la especificación y excluye las
 
 ## Interfaz
 
-La ruta `/analytics` conserva sus cinco vistas existentes. El panorama integra dos gráficas (mercancías e IGI por NP) y las tablas de FP 0/21 y rectificaciones por aduana. Contribuciones reutiliza la tabla de pagos y conserva las comparativas de IGI/IVA por NP. Control y calidad reutiliza rectificaciones y conserva las alertas NP. Se mantienen filtros, CSV, PNG y ampliación; PDF sustituye la impresión de la pestaña. ES/EN actualiza etiquetas y formatos regionales. Resumen muestra por defecto los últimos seis meses publicados, con selector de 3/6/12; los totales generales no se recortan. El comparador `/annual` sigue siendo de solo análisis. Cargas separa mensuales y consolidados. Los Excel permanecen como rangos normales con autofiltros, sin tablas nativas, y encabezados de alto contraste.
+La ruta `/analytics` conserva sus cinco vistas existentes. El panorama integra valor declarado, Top 10 de IGI por PN y dos tendencias separadas de IGI/IVA por PN y las tablas de FP 0/21 y rectificaciones por aduana. Contribuciones reutiliza la tabla de pagos y conserva las comparativas de IGI/IVA por NP. Control y calidad reutiliza rectificaciones y conserva las alertas NP. Se mantienen filtros, CSV, PNG y ampliación; PDF sustituye la impresión de la pestaña. ES/EN actualiza etiquetas y formatos regionales. Resumen muestra por defecto los últimos seis meses publicados, con selector de 3/6/12; los totales generales no se recortan. El comparador `/annual` sigue siendo de solo análisis. Cargas separa mensuales y consolidados. Los Excel permanecen como rangos normales con autofiltros, sin tablas nativas, y encabezados de alto contraste.
 
 `get_analytics` en Foundry usa el mismo servicio y agrega evidencia de fuentes/versiones. Envía un resumen acotado de NP (20 filas, conteos completos, sin texto de observaciones), no todas las alertas al modelo. El enlace al asistente sólo prepara una pregunta; no la envía automáticamente.
 
@@ -123,3 +122,18 @@ La eliminación múltiple requiere Admin y admite hasta 24 meses por operación.
 La primera versión agrega en Python usando Decimal, con consultas de columnas específicas y filtro SQL de ámbito, versión y año. El snapshot de referencia se cachea por ruta y modificación. Para muchos millones de filas conviene materializar agregados versionados en SQL, conservando este contrato y verificando sus totales antes de sustituir el lector.
 
 La prueba automatizada cubre precisión, cero/nulo, granularidad, filtros, autorización, meses ausentes y lectura de versiones publicadas. El modo SQLite no sustituye una validación de integración con SQL Server real. Los Excel no incluyen telemetría suficiente para derivar duración o tasa de éxito del worker; no se fabrican esos indicadores.
+
+
+
+## Revisión de claridad — 13 de octubre de 2026
+
+- Rankings 501 por aduana/documento/operación usan llaves distintas, como el KPI. Una llave con categorías contradictorias se cuenta una vez en `unknown`; llaves incompletas dejan el conteo y los rankings sin dato.
+- `originCountries` incluye solo importaciones y `destinationCountries` solo exportaciones. `countries` se conserva para compatibilidad; las gráficas usan los dos desgloses separados.
+- La cobertura de agregados es la intersección de tablas en los meses disponibles. `coverage.incompleteTables` identifica ausencias parciales y `invalidDeclarationKeys` identifica llaves incompletas. Una tabla vacía registrada es cero; una ausente no lo es.
+- Todas las sumas numéricas usan `strict_sum`, incluidos campos auxiliares y Otros. Las partidas monetarias no se deduplican silenciosamente.
+- SEL añade `unclassifiedSelections`. Cualquier evento distinto de 0/1 invalida `redRate` y permanece visible. Los eventos no son pedimentos únicos.
+- El Top 10 de IGI queda sin dato con cobertura de PN incompleta o importes desconocidos entre los PN identificados. Las tendencias conservan cada mes válido y usan escalas independientes para IGI e IVA.
+- Las comparativas internas respetan el rango seleccionado. Los tooltips y tablas muestran moneda y precisión; PNG conserva contexto y notas. Resumen operativo ofrece su propia tabla de datos y explica que cuenta filas de todas las tablas.
+- El PDF usa las mismas definiciones de efectivo, crédito, otras formas y pedimentos rectificados. No se cambia el significado fiscal de las operaciones: el valor declarado no netea originales/rectificaciones y las diferencias 702 permanecen separadas.
+
+Referencias aportadas: Manual de Consulta, julio 2021, páginas 12–23; Anexo 22 del 15 de enero de 2026, páginas 119–120 (apéndices 12 y 13). Pruebas adicionales en `backend/tests/test_chart_semantics.py` y `frontend/src/app/features/analytics.spec.ts`.

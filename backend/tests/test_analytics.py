@@ -66,7 +66,8 @@ def test_reference_grains_currency_and_null_months(system, tmp_path):
     assert data['totals']['headerPaymentsMxn'] == 10
     assert data['totals']['itemPaymentsMxn'] == 50
     assert data['totals']['paymentDifferencesMxn'] == 5
-    assert data['totals']['redRate'] == 50
+    assert data['totals']['redRate'] is None  # SEL contains an unclassified code 9.
+    assert data['totals']['unclassifiedSelections'] == 1
     assert data['totals']['correctInspections'] == 1
     assert data['totals']['seriousIncidents'] == 1
     assert data['monthly'][1]['metrics']['tradeUsd'] == 0
@@ -110,3 +111,4 @@ def test_published_uses_only_active_monthly_version(system):
     assert data['monthly'][3]['available']
     assert data['monthly'][3]['runId']
     assert data['totals']['headerPaymentsMxn'] is None
+

@@ -65,17 +65,26 @@ Chart.register(...registerables);
         [attr.aria-label]="'Cargando resumen' | t"
       />
     }
-    <div class="stats-grid">
+    <div class="stats-grid" [attr.aria-busy]="loading()">
       @for (card of cards(); track card.label) {
         <article class="stat-card">
           <div class="stat-top">
             <span>{{ card.label | t }}</span
             ><span class="stat-icon"><ds-icon [name]="card.icon" /></span>
           </div>
-          <strong>{{
-            (card.value === null ? "—" : (card.value | dsNumber)) | t
-          }}</strong
-          ><small>{{ card.description | t }}</small>
+          <strong>
+            @if (loading()) {
+              <span
+                class="loading-skeleton loading-skeleton-value"
+                aria-hidden="true"
+              ></span>
+            } @else {
+              <span class="metric-ready">{{
+                (card.value === null ? "—" : (card.value | dsNumber)) | t
+              }}</span>
+            }
+          </strong>
+          <small>{{ card.description | t }}</small>
         </article>
       }
     </div>
@@ -103,6 +112,8 @@ Chart.register(...registerables);
         <div
           class="chart-container"
           [class.chart-empty]="!overview()?.monthly?.length"
+          [class.chart-loading]="loading()"
+          [attr.aria-busy]="loading()"
         >
           <canvas
             #chart
@@ -110,7 +121,13 @@ Chart.register(...registerables);
               'Gráfico de registros procesados por periodo' | t
             "
             role="img"
+            [attr.aria-hidden]="loading()"
           ></canvas>
+          @if (loading()) {
+            <div class="dashboard-chart-loading" aria-hidden="true">
+              <div class="loading-skeleton loading-skeleton-chart"></div>
+            </div>
+          }
           @if (!loading() && !overview()?.monthly?.length) {
             <ds-empty
               [title]="'Aún no hay actividad' | t"
@@ -121,6 +138,41 @@ Chart.register(...registerables);
             />
           }
         </div>
+        <p class="activity-note">
+          {{
+            i18n.choose(
+              "Filas de todas las tablas de cada carga mensual activa. Cada barra conserva su mes y año; no es un conteo de pedimentos.",
+              "Rows across all tables in each active monthly upload. Each bar retains its month and year; this is not a declaration count."
+            )
+          }}
+        </p>
+        <details class="activity-data">
+          <summary>
+            {{ i18n.choose("Ver datos de actividad", "View activity data") }}
+          </summary>
+          @if (!loading()) {
+            <table>
+              <thead>
+                <tr>
+                  <th>{{ i18n.choose("Periodo", "Period") }}</th>
+                  <th>
+                    {{
+                      i18n.choose("Registros procesados", "Processed records")
+                    }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (month of visibleMonths(); track month.period) {
+                  <tr>
+                    <td>{{ i18n.t(month.period.replace("_", " ")) }}</td>
+                    <td>{{ month.rows | dsNumber }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </details>
       </section>
       <section class="panel next-panel">
         <span class="eyebrow"> {{ "TU FLUJO DE TRABAJO" | t }} </span>
@@ -179,6 +231,50 @@ Chart.register(...registerables);
       .panel-heading {
         flex-wrap: wrap;
         gap: 12px;
+      }
+      .chart-container {
+        position: relative;
+      }
+      .stat-card > strong {
+        display: flex;
+        align-items: center;
+        min-height: 1.5em;
+      }
+      .stat-card > strong .loading-skeleton-value {
+        height: 1.1em;
+        margin: 0;
+      }
+      .chart-container.chart-loading canvas {
+        opacity: 0;
+      }
+      .dashboard-chart-loading {
+        position: absolute;
+        inset: 0;
+      }
+      .activity-note,
+      .activity-data {
+        font-size: 12px;
+        line-height: 1.6;
+        color: #526570;
+        margin-top: 12px;
+      }
+      .activity-data summary {
+        cursor: pointer;
+        color: #234c57;
+      }
+      .activity-data table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .activity-data th,
+      .activity-data td {
+        padding: 6px;
+        border-bottom: 1px solid #e1e6e9;
+        text-align: right;
+      }
+      .activity-data th:first-child,
+      .activity-data td:first-child {
+        text-align: left;
       }
     `,
   ],
@@ -279,7 +375,19 @@ export class Dashboard implements AfterViewInit {
         locale: this.i18n.locale(),
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        animation: window.matchMedia?.("(prefers-reduced-motion: reduce)")
+          .matches
+          ? false
+          : { duration: 240 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) =>
+                `${this.i18n.choose("Registros procesados", "Processed records")}: ${this.i18n.number(ctx.parsed.y, false, 0)}`,
+            },
+          },
+        },
         scales: {
           x: {
             grid: { display: false },
@@ -287,6 +395,10 @@ export class Dashboard implements AfterViewInit {
           },
           y: {
             beginAtZero: true,
+            title: {
+              display: true,
+              text: this.i18n.choose("Registros", "Records"),
+            },
             border: { display: false },
             grid: { color: "#edf1f3" },
             ticks: { color: "#75828a", precision: 0, font: { size: 11 } },

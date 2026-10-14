@@ -31,7 +31,9 @@ def test_payment_methods_remain_separate_and_ignore_exports_and_other_taxes():
     ]}
     usd = payment_method_totals(tables, {'551', '557'}, 'USD', exchange_rates([imported, exported]))
     assert usd == {'cash': {'igi': 5, 'iva': 4, 'unmatchedRows': 0},
-                   'certiva': {'igi': 2, 'iva': 16, 'unmatchedRows': 0}, 'otherPaymentRows': 1}
+                   'certiva': {'igi': 2, 'iva': 16, 'unmatchedRows': 0}, 'otherPaymentRows': 1,
+                   'otherUnmatchedRows': 0,
+                   'other': [{'code': '9', 'rows': 1, 'igi': 49.95, 'iva': 0, 'unmatchedRows': 0}]}
     mxn = payment_method_totals(tables, {'551', '557'}, 'MXN', {})
     assert mxn['cash']['igi'] == 100
     assert mxn['certiva']['iva'] == 320
@@ -151,3 +153,4 @@ def test_pdf_handles_empty_data_and_escapes_source_markup(system, tmp_path):
     assert report['rectificationsByCustoms']['totals']['r1'] is None
     assert report['paymentMethods']['cash']['igi'] is None
     assert render_report(report).startswith(b'%PDF-')
+

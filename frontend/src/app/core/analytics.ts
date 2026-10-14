@@ -3,6 +3,14 @@ export interface PaymentMethods {
   cash: { igi: number | null; iva: number | null; unmatchedRows: number };
   certiva: { igi: number | null; iva: number | null; unmatchedRows: number };
   otherPaymentRows: number;
+  otherUnmatchedRows?: number;
+  other?: {
+    code: string;
+    rows: number;
+    igi: number | null;
+    iva: number | null;
+    unmatchedRows: number;
+  }[];
 }
 export interface RectificationRow {
   r1: number | null;
@@ -72,6 +80,8 @@ export interface AnalyticsReport {
     duplicateDeclarationRows: number;
     processingFiltersApplied: boolean;
     missingExchangeRates: number;
+    incompleteTables?: string[];
+    invalidDeclarationKeys?: number;
   };
   filters: { customs: string[]; documents: string[]; operations: string[] };
 }

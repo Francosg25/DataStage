@@ -111,17 +111,33 @@ def render_report(report, language='es'):
     story.append(PageBreak())
     title(t('Contribuciones por forma de pago', 'Taxes by payment method'))
     story.append(p(t('Importaciones verificadas en 551. Importes de 557 separados por FormaPago: '
-                     'FP 0 = efectivo; FP 21 = CERTIVA. CERTIVA no se suma al efectivo.',
+                     'FP 0 = efectivo; FP 21 = credito en IVA e IEPS (CERTIVA). El credito no se suma al efectivo.',
                      'Imports verified in 551. Amounts from 557 split by payment method: '
-                     'FP 0 = cash; FP 21 = CERTIVA. CERTIVA is not added to cash.')))
+                     'FP 0 = cash; FP 21 = VAT/excise credit (CERTIVA). Credit is not added to cash.')))
     def payment_row(label, values):
         return [label] + [fmt(values[method][tax], 2) for method in ('cash', 'certiva') for tax in ('igi', 'iva')]
     table([t('Mes', 'Month'), 'IGI FP 0', 'IVA FP 0', 'IGI FP 21', 'IVA FP 21'],
           [payment_row(month_name(m['month']), m['paymentMethods']) for m in months] +
           [payment_row('Total', report['paymentMethods'])], [85, 107.5, 107.5, 107.5, 107.5], total=True)
+    other = report['paymentMethods'].get('other', [])
+    if other:
+        story.append(p(t('Otras formas de pago del rango', 'Other payment methods in the range'), subheading))
+        names = {'13': t('Pago ya efectuado', 'Previously paid'),
+                 '22': t('Garantia en IVA e IEPS', 'VAT/excise guarantee')}
+        table([t('Forma de pago', 'Payment method'), t('Registros importacion', 'Import records'), 'IGI', 'IVA'],
+              [[('FP ' + row['code'] + ' - ' + names.get(row['code'], t('Otra forma', 'Other method'))),
+                fmt(row['rows']), fmt(row['igi'], 2), fmt(row['iva'], 2)] for row in other], [215, 100, 100, 100])
+        story.append(p(t('No se suman al efectivo. FP 13 corresponde a pago ya efectuado; FP 22 es garantia, no credito FP 21.',
+                         'Not added to cash. FP 13 is previously paid; FP 22 is a guarantee, not FP 21 credit.')))
+        if any(row['unmatchedRows'] for row in other):
+            story.append(p(t('Hay registros sin partida u operacion verificable; los importes de su forma de pago quedan sin dato.',
+                             'Some records have no verified item or operation; amounts for their payment method are unavailable.')))
     story.append(p(t('Principales numeros de parte por IGI en efectivo', 'Top part numbers by cash import duty'), subheading))
     top = sorted([r for r in report['partTaxes']['rows'] if r['partNumber'] and r['igi'] is not None and r['igi'] > 0],
                  key=lambda r: (-r['igi'], r['partNumber'], r['tariff']))[:10]
+    if not report['partTaxes']['available'] or not report['partTaxes']['observationSourceAvailable'] or any(
+            r['partNumber'] and r['igi'] is None for r in report['partTaxes']['rows']):
+        top = []
     table([t('Numero de parte', 'Part number'), t('Fraccion', 'Tariff'), 'IGI FP 0', 'IVA FP 0'],
           [[r['partNumber'], r['tariff'], fmt(r['igi'], 2), fmt(r['iva'], 2)] for r in top] or
           [[t('Sin datos identificables', 'No identifiable data'), '', '', '']], [185, 100, 115, 115])
@@ -129,23 +145,23 @@ def render_report(report, language='es'):
     story.append(PageBreak())
     title(t('Rectificaciones por aduana', 'Amendments by customs office'))
     rect = report['rectificationsByCustoms']
-    story.append(p(t('R1: pedimentos distintos registrados en 701. El documento puede conservar '
+    story.append(p(t('Pedimentos rectificados: pedimentos distintos registrados en 701. El documento puede conservar '
                      'claves AF, IN, RT u otras; no se filtra exclusivamente por ClaveDocumento = R1.',
-                     'R1: distinct declarations recorded in 701. Document codes may remain AF, IN, RT '
+                     'Amended declarations: distinct declarations recorded in 701. Document codes may remain AF, IN, RT '
                      'or others; records are not restricted to DocumentCode = R1.')))
     story.append(p(t('Base global con los filtros aplicados: ', 'Global base under the applied filters: ') +
                    fmt(rect['globalDeclarations']) + t(' pedimentos de 501.', ' declarations from 501.')))
     def rect_row(label, row):
         return [label, fmt(row['r1']), fmt(row['declarations']), pct(row['officeRate']), pct(row['globalRate'])]
-    table([t('Codigo y aduana', 'Code and customs office'), 'R1', t('Pedimentos', 'Declarations'),
+    table([t('Codigo y aduana', 'Code and customs office'), t('Rectificados', 'Amended'), t('Pedimentos', 'Declarations'),
            t('% aduana', '% office'), t('% global', '% global')],
           [rect_row(r['customs'] + ' - ' + CUSTOMS.get(r['customs'], t('Sin descripcion validada', 'Description not verified')), r)
-           for r in rect['rows']] + [rect_row('Total', rect['totals'])], [207, 48, 90, 85, 85], total=True)
-    story.append(p(t('% aduana = R1 de la aduana / pedimentos de esa aduana x 100. '
-                     '% global = R1 de la aduana / total de pedimentos filtrados x 100. '
+           for r in rect['rows']] + [rect_row('Total', rect['totals'])], [181, 74, 90, 85, 85], total=True)
+    story.append(p(t('% aduana = rectificados de la aduana / pedimentos de esa aduana x 100. '
+                     '% global = rectificados de la aduana / total de pedimentos filtrados x 100. '
                      'El total porcentual se recalcula; no se promedian porcentajes.',
-                     '% office = office R1 / office declarations x 100. '
-                     '% global = office R1 / total filtered declarations x 100. '
+                     '% office = office amended / office declarations x 100. '
+                     '% global = office amended / total filtered declarations x 100. '
                      'Total percentages are recalculated, not averaged.')))
     story.append(p(t('Es una frecuencia de rectificacion, no una prueba de error o responsabilidad. '
                      'No se infieren costos ni responsables logisticos.',
@@ -180,9 +196,13 @@ def render_report(report, language='es'):
          'USD = MXN payment amount / declaration exchange rate in 501. No current spot rate is used. '
          'Invalid values, missing rates or ambiguous matches leave the aggregate unavailable.'),
         ('N/D no equivale a cero. Los totales corresponden a meses disponibles. Si un mes disponible '
-         'carece de 551/557 o 501/701, su respectivo total de contribuciones o rectificaciones queda N/D.',
-         'N/A is not zero. Totals cover available months. If an available month lacks 551/557 or '
-         '501/701, the respective tax or amendment total is N/A.'),
+         'carece de una tabla requerida, el agregado afectado queda N/D.',
+         'N/A is not zero. Totals cover available months. If an available month lacks a required table, '
+         'the affected aggregate is N/A.'),
+        ('Valor declarado suma registros 551. No reconstruye el estado final de las operaciones ni '
+         'netea rectificaciones contra originales. Las diferencias 702 permanecen separadas.',
+         'Declared value sums 551 records. It does not reconstruct final operation states or net '
+         'amendments against originals. Differences in 702 remain separate.'),
         ('NP identifica el principal y OTRO NP un alternativo del mismo articulo; el importe se asigna '
          'una sola vez. Las alertas permanecen hasta corregir la fuente.',
          'NP identifies the principal and OTRO NP an alternate for the same item; amounts are assigned '
@@ -223,3 +243,4 @@ def render_report(report, language='es'):
 
     doc.build(story, onFirstPage=page, onLaterPages=page)
     return output.getvalue()
+
