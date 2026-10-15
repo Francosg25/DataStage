@@ -59,10 +59,15 @@ import { Icon, Status, DataTable } from "../shared/ui";
         <div class="heading-actions">
           <ds-status [value]="r.functionalResult || r.status" />
           @if (r.exportDocumentId) {
-            <button mat-flat-button (click)="download()" [disabled]="busy()">
+            <button mat-flat-button (click)="download()" [disabled]="busy() || r.exportStatus !== 'ready'">
               <ds-icon name="download" /> {{ "Descargar Excel" | t }}
             </button>
-          } @else if (terminal(r)) {
+            @if (terminal(r) && canExport()) {
+              <button mat-stroked-button (click)="export(true)" [disabled]="busy()">
+                {{ "Regenerar Excel" | t }}
+              </button>
+            }
+          } @else if (terminal(r) && canExport()) {
             <button mat-stroked-button (click)="export()" [disabled]="busy()">
               {{ "Generar Excel" | t }}
             </button>
@@ -396,6 +401,9 @@ export class RunDetail {
   canReprocess() {
     return this.auth.hasRole("Admin", "Reprocessor");
   }
+  canExport() {
+    return this.auth.hasRole("Admin", "Operator", "Reprocessor");
+  }
   download() {
     const id = this.run()?.exportDocumentId;
     if (!id) return;
@@ -434,10 +442,11 @@ export class RunDetail {
         },
       });
   }
-  export() {
+  export(regenerate = false) {
+    if (this.busy()) return;
     this.busy.set(true);
     this.api
-      .export(this.id, this.exportKey)
+      .export(this.id, this.exportKey, regenerate)
       .pipe(takeUntilDestroyed(this.destroy))
       .subscribe({
         next: (r) => {

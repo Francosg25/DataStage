@@ -176,11 +176,14 @@ export class Api {
       { headers: { "Idempotency-Key": key } },
     );
   }
-  export(id: string, key: string) {
+  export(id: string, key: string, regenerate = false) {
     return this.http.post<Run>(
       `${this.base}/runs/${encodeURIComponent(id)}/exports`,
       {},
-      { headers: { "Idempotency-Key": key } },
+      {
+        headers: { "Idempotency-Key": key },
+        params: regenerate ? { regenerate: true } : {},
+      },
     );
   }
   download(id: string) {

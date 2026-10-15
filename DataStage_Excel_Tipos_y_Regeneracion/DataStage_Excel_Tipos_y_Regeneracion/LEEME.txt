@@ -1,0 +1,90 @@
+DATASTAGE - NUMEROS, FECHAS Y REGENERACION DEL EXCEL
+15 de octubre de 2026 - Mejoras_Graficas
+
+APLICAR
+1. Deten backend, worker y frontend con Ctrl+C.
+2. Extrae TODO el ZIP a una carpeta.
+3. Ejecuta APLICAR.bat.
+   Ruta predeterminada:
+   C:\Users\mx1safr\OneDrive - JE\Desktop\PROYECTOS GRANDES\DataStage
+4. Reinicia backend, worker y frontend con tus comandos habituales y .venv.
+5. Abre el detalle de un proceso completado en el historial.
+6. Pulsa Regenerar Excel. Espera a que termine y pulsa Descargar Excel.
+
+DESCARGAR NO ES REGENERAR
+Descargar Excel devuelve el XLSX guardado al ejecutar ese proceso.
+Cambiar el codigo o reiniciar los servicios no convierte los XLSX anteriores.
+Regenerar Excel crea otro archivo desde el resultado de ese proceso.
+No vuelve a cargar los ASC, no cambia la version publicada del mes y no
+duplica filas en la base de datos. El documento anterior se conserva.
+Cada proceso mensual o consolidado se regenera por separado cuando lo necesites.
+Reiniciar el WORKER es necesario: ese proceso es el que escribe los XLSX.
+
+TIPOS DE CELDA
+- Importes, valores comerciales, precios, cantidades, pesos, tasas y conteos:
+  numeros reales para SUMA, SUMAR.SI.CONJUNTO, CONTAR y operaciones.
+- FormaPago, ClaveContribucion, TipoOperacion, TipoPedimento, TipoFecha,
+  TipoTasa, SemaforoFiscal y otras categorias numericas conocidas: numeros.
+  Si un codigo original es 00 o 01 se conserva su apariencia con formato
+  00, aunque el valor subyacente sea el numero 0 o 1.
+- Fechas validas: fechas reales. Si contienen hora, se conserva.
+- HoraSeleccion, HoraInicioReconocimiento y HoraFinReconocimiento: horas
+  reales, para restarlas y calcular duraciones.
+- Total_Contribuciones en Resumen: conteo entero, no importe monetario.
+- Pedimento, Patente, Aduana, Fraccion, NICO, PN, RFC, folios, guias, cuentas
+  y otras referencias: texto para conservar ceros iniciales y su identidad.
+  Para BUSCARV/BUSCARX por esos campos, la llave del otro archivo tambien
+  debe ser texto. No se cambia automaticamente el tipo de identificadores.
+
+SEPARADORES Y VALORES INVALIDOS
+Se admiten numeros de origen con punto decimal, por ejemplo 1234.50,
+agrupacion 1,234.50 y 1,234,567.89, negativos, signos y formatos contables.
+Se admite decimal con coma cuando corresponde a los patrones soportados,
+por ejemplo 1234,50 o 0,125, y agrupacion 1.234,50.
+Una coma seguida de tres cifras en un grupo como 1,234 se interpreta como
+separador de miles, siguiendo la convencion con punto decimal de los ASC.
+Las agrupaciones malformadas, textos invalidos y valores de mas de 15
+cifras significativas se conservan como texto. No se sustituyen por cero.
+El formato visible no redondea ni recorta el valor subyacente almacenado.
+
+COMPROBAR EN EXCEL
+En un ImportePago valido, =ESNUMERO(celda) debe devolver VERDADERO.
+En una fecha valida, =ESNUMERO(celda) tambien devuelve VERDADERO: Excel
+guarda las fechas como numeros de serie y les aplica formato de fecha.
+En FormaPago, =celda=0 debe funcionar para el codigo cero.
+En un pedimento o PN, =ESTEXTO(celda) debe devolver VERDADERO.
+
+ALCANCE Y RESPALDO
+Solo afecta cinco archivos de la exportacion y su boton. Los cambios de API,
+traduccion y pantalla se aplican a los bloques necesarios; no se sustituyen
+los archivos completos. El exportador se actualiza completo.
+El aplicador comprueba todos los bloques ANTES de escribir. Si tu version
+es incompatible, indica el archivo y termina sin aplicar cambios.
+Respalda los archivos en Respaldo_Excel_Tipos_fecha_hora junto al proyecto.
+No ejecuta git add, commit, pull, push ni cambio de rama. No instala paquetes.
+No copia bases de datos, diccionarios PN, documentos operativos ni graficas.
+No modifica los Excel que ya tienes descargados.
+
+Puedes comprobar el destino sin aplicar:
+"C:\ruta\DataStage\.venv\Scripts\python.exe" aplicar.py "C:\ruta\DataStage" --check
+
+Para otra carpeta:
+APLICAR.bat "C:\ruta\DataStage"
+
+CAMBIOS.diff contiene los cambios exactos para revision.
+Las pruebas de regresion de esta entrega se incluyen en pruebas/.
+
+VALIDACION REALIZADA
+189 pruebas de backend y 85 pruebas de frontend correctas.
+Angular compila en produccion. Ruff no encuentra errores en los Python afectados.
+Se simulo un XLSX antiguo con importes en texto y se comprobo que regenerarlo
+crea un documento con numeros reales sin repetir el procesamiento, sin duplicar
+filas y sin cambiar el periodo publicado. Las solicitudes repetidas no duplican
+la exportacion en cola; descargar o solicitar una exportacion normal conserva
+el comportamiento anterior.
+Se ejercito el exportador con las 26 hojas de datos del archivo de abril:
+45,371 celdas numericas, 19,468 fechas y 373 horas nativas. Se conservaron
+184,918 celdas con identificadores y otros textos.
+Se comprobo el aplicador con finales CRLF de Windows, cambios locales ajenos
+a los bloques afectados, reaplicacion, rama incorrecta, archivo incompatible y
+restauracion ante un bloqueo de escritura simulado. No se ejecuto en tu PC.

@@ -359,16 +359,16 @@ def reprocess_run(run_id: str, body: ReprocessRequest, request: Request, respons
     _accepted(response, run)
     return run_response(session, run)
 
-def ensure_export(session, principal, key, run_id):
+def ensure_export(session, principal, key, run_id, *, regenerate=False):
     principal.require("Operator", "Reprocessor")
     run = get_run(session, run_id, principal.scope_id)
-    request_hash = fingerprint({"action": "export", "run": run_id})
+    request_hash = fingerprint({"action": "export", "run": run_id, **({"regenerate": True} if regenerate else {})})
     previous = replay(session, principal.scope_id, key, request_hash)
     if previous:
         return previous
     if not run.result_document_id:
         raise ApplicationError(409, "NO_RESULT", "Espera a que finalice el procesamiento")
-    if run.export_status != "ready":
+    if regenerate or run.export_status != "ready":
         pending = session.scalar(select(Job.id).where(Job.run_id == run_id, Job.kind == "export", Job.status.in_(["pending", "running"])))
         pending_outbox = session.scalar(select(OutboxMessage.id).where(OutboxMessage.run_id == run_id,
                                  OutboxMessage.event_type == "export.requested", OutboxMessage.status == "pending"))
@@ -380,8 +380,9 @@ def ensure_export(session, principal, key, run_id):
     return run
 
 @router.post("/runs/{run_id}/exports", status_code=202, response_model=RunResponse)
-def request_export(run_id: str, response: Response, session: DB, principal: Identity, key: Idempotency):
-    run = ensure_export(session, principal, key, run_id)
+def request_export(run_id: str, response: Response, session: DB, principal: Identity, key: Idempotency,
+                   regenerate: bool = False):
+    run = ensure_export(session, principal, key, run_id, regenerate=regenerate)
     commit_or_conflict(session)
     _accepted(response, run)
     return run_response(session, run)

@@ -124,6 +124,7 @@ export const ENGLISH: Record<string, string> = {
   "Formatos de origen": "Source formats",
   "Fuentes del periodo": "Period sources",
   "Generar Excel": "Generate Excel",
+  "Regenerar Excel": "Regenerate Excel",
   "Gráfico de registros procesados por periodo":
     "Chart of processed records by period",
   "Guardando el archivo y creando la ejecución…":
