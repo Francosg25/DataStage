@@ -63,7 +63,10 @@ export interface AnalyticsReport {
   paymentMethods: PaymentMethods;
   rectificationsByCustoms: {
     rows: (RectificationRow & { customs: string })[];
-    customsPatentRows: (RectificationGroupRow & { customs: string; patent: string })[];
+    customsPatentRows: (RectificationGroupRow & {
+      customs: string;
+      patent: string;
+    })[];
     patentRows: (RectificationGroupRow & { patent: string })[];
     totals: RectificationRow;
     globalDeclarations: number | null;
@@ -109,7 +112,11 @@ export interface AnalyticsReport {
   filters: { customs: string[]; documents: string[]; operations: string[] };
 }
 export interface AnalyticsOptions {
-  sources: { id: string; years: number[] }[];
+  sources: {
+    id: string;
+    years: number[];
+    latestPeriod?: { year: number; month: number } | null;
+  }[];
   defaultSource: string;
 }
 export interface AnalyticsFilters {

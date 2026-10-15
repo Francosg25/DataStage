@@ -104,14 +104,22 @@ def _dataset_revision(session, settings, scope, source, year):
     return (id(session.get_bind()), tuple(tuple(row) for row in rows))
 
 
+def _source_option(source, periods):
+    latest = max(periods, default=None)
+    return {'id': source, 'years': sorted({year for year, _ in periods}, reverse=True),
+            'latestPeriod': {'year': latest[0], 'month': latest[1]} if latest else None}
+
+
 def options(session, settings, scope):
-    years = list(session.scalars(select(Period.year).where(
-        Period.scope_id == scope, Period.active_run_id.is_not(None)).distinct().order_by(Period.year.desc())))
+    periods = list(session.execute(select(Period.year, Period.month)
+        .join(Run, Period.active_run_id == Run.id).where(
+            Period.scope_id == scope, Run.scope_id == scope, Run.kind == 'monthly',
+            Run.publication_status == 'published')))
     reference = reference_dataset(settings, scope)
-    sources = [{'id': 'published', 'years': years}]
+    sources = [_source_option('published', periods)]
     if reference:
-        sources.append({'id': 'reference', 'years': sorted({p['year'] for p in reference['periods']}, reverse=True)})
-    return {'sources': sources, 'defaultSource': 'published' if years else 'reference' if reference else 'published'}
+        sources.append(_source_option('reference', [(p['year'], p['month']) for p in reference['periods']]))
+    return {'sources': sources, 'defaultSource': 'published' if periods else 'reference' if reference else 'published'}
 
 
 def ranking(rows, key, field=None, limit=8):

@@ -31,11 +31,10 @@ export interface ChartSeries {
     (keydown.escape)="expanded.set(false)"
   >
     <header class="viz-header">
-      <div>
+      <div class="viz-title">
         <h2>{{ title() }}</h2>
-        <p>{{ subtitle() }}</p>
-        @if (context()) {
-          <p class="chart-context">{{ context() }}</p>
+        @if (unit()) {
+          <span class="chart-unit">{{ unit() }}</span>
         }
       </div>
       <div class="viz-tools">
@@ -142,31 +141,36 @@ export interface ChartSeries {
         }
       </div>
     }
-    <footer>
-      @if (footnote()) {
-        <p>{{ footnote() }}</p>
-      }
-      @if (!loading() && hasMissingData()) {
-        <p class="chart-data-status">
-          {{
-            i18n.choose(
-              "Hay valores sin dato: consulta la tabla. No equivalen a cero.",
-              "Some values are unavailable: open the data table. They are not zero."
-            )
-          }}
-        </p>
-      }
-      @if (!loading() && allZero()) {
-        <p class="chart-data-status">
-          {{
-            i18n.choose(
-              "Todos los valores disponibles son 0.",
-              "All available values are 0."
-            )
-          }}
-        </p>
-      }
-    </footer>
+    @if (hasDetails() || (!loading() && (hasMissingData() || allZero()))) {
+      <footer>
+        @if (hasDetails()) {
+          <details class="chart-details">
+            <summary>{{ i18n.choose("Detalles", "Details") }}</summary>
+            <div class="chart-details-body">
+              @if (subtitle() && subtitle() !== unit()) {
+                <p>{{ subtitle() }}</p>
+              }
+              @if (context()) {
+                <p>{{ context() }}</p>
+              }
+              @if (footnote()) {
+                <p>{{ footnote() }}</p>
+              }
+            </div>
+          </details>
+        }
+        @if (!loading() && hasMissingData()) {
+          <p class="chart-data-status">
+            {{ i18n.choose("Valores sin dato", "Unavailable values") }}
+          </p>
+        }
+        @if (!loading() && allZero()) {
+          <p class="chart-data-status">
+            {{ i18n.choose("Valores disponibles: 0", "Available values: 0") }}
+          </p>
+        }
+      </footer>
+    }
   </section>`,
   styles: [
     `
@@ -194,14 +198,40 @@ export interface ChartSeries {
         line-height: 1.4;
         letter-spacing: 0;
       }
-      .viz-header p {
-        font-size: 11px;
-        margin-top: 3px;
-        line-height: 1.5;
+      .viz-title {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+        min-width: 0;
       }
-      .viz-header .chart-context {
-        color: #526570;
+      .chart-unit {
+        flex: none;
+        padding: 2px 6px;
+        border-radius: 3px;
+        background: #f1f5f6;
+        color: #657984;
         font-size: 10px;
+      }
+      .chart-details summary {
+        width: fit-content;
+        cursor: pointer;
+        color: #526570;
+        font-size: 11px;
+        padding: 4px 0;
+      }
+      .chart-details summary:focus-visible {
+        outline: 2px solid #0a8c80;
+        outline-offset: 2px;
+      }
+      .chart-details-body {
+        display: grid;
+        gap: 5px;
+        margin-top: 6px;
+        padding: 10px 12px;
+        border-radius: 4px;
+        background: #f5f8f9;
+        overflow-wrap: anywhere;
       }
       .viz footer p {
         margin: 0;
@@ -535,6 +565,13 @@ export class AnalyticsChart {
       s.values.some((v) => v != null && Number.isFinite(v)),
     );
   }
+  hasDetails() {
+    return !!(
+      (this.subtitle() && this.subtitle() !== this.unit()) ||
+      this.context() ||
+      this.footnote()
+    );
+  }
   hasMissingData() {
     return this.series().some((s) =>
       this.labels().some(
@@ -572,7 +609,7 @@ export class AnalyticsChart {
       !this.hasData()
     )
       return;
-    // Include the same scope, units and source notes as the on-screen chart.
+    // Exports keep scope and source notes from the optional details panel.
     const source = this.chart.canvas;
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(900, source.width);

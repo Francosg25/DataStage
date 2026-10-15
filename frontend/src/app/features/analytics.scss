@@ -190,6 +190,7 @@
   flex-shrink: 0;
 }
 .part-filters button,
+.alert-search button,
 .pagination button,
 .section-heading > button {
   display: inline-flex;
@@ -200,6 +201,39 @@
   background: #fff;
   padding: 8px 12px;
   color: #234c57;
+}
+.alert-search {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+.alert-search label {
+  display: grid;
+  flex: 1 1 240px;
+  max-width: 420px;
+  gap: 7px;
+  color: #435d67;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+}
+.alert-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid #b9c9cc;
+  border-radius: 4px;
+  background: #fff;
+  color: #25343d;
+  font: inherit;
+  font-weight: 400;
+}
+.alert-search button {
+  min-height: 40px;
 }
 .section-heading > button ds-icon {
   width: 16px;
@@ -409,6 +443,43 @@ select {
   color: #657984;
   font-size: 11px;
 }
+.filter-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.latest-month-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 40px;
+  max-width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #b8d7d2;
+  border-radius: 4px;
+  background: #edf7f5;
+  color: #087b72;
+  font-size: 12px;
+  font-weight: 600;
+}
+.latest-month-button[aria-pressed="true"] {
+  background: #dcefe9;
+  border-color: #0a8c80;
+}
+.latest-month-button ds-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.latest-month-period {
+  font-size: 11px;
+  font-weight: 400;
+}
 .report-status {
   font-size: 10px;
   display: flex;
@@ -484,11 +555,6 @@ select {
 }
 .analytics-loading {
   margin-top: 20px;
-}
-.analytics-loading > .loading-skeleton-text {
-  width: 220px;
-  max-width: 100%;
-  margin-bottom: 24px;
 }
 .loading-chart-panel {
   border: 1px solid #e1e6e9;
@@ -600,9 +666,6 @@ select {
 .spark i.spark-zero {
   height: 1px !important;
   background: #8b9ca6;
-}
-.metric-scope {
-  margin: 0 0 14px;
 }
 .kpi-note {
   font-size: 10px;

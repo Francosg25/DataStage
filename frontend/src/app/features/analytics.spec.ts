@@ -3,9 +3,238 @@ import { of, Subject, throwError } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { Api } from "../core/api";
 import { Analytics } from "./analytics";
-import { AnalyticsReport, PartTaxRow } from "../core/analytics";
+import {
+  AnalyticsOptions,
+  AnalyticsReport,
+  PartAlert,
+  PartTaxRow,
+} from "../core/analytics";
 
 describe("analytics filters and comparisons", () => {
+  function pendingReport(alerts: PartAlert[]) {
+    return { partTaxes: { alerts } } as unknown as AnalyticsReport;
+  }
+  function pendingAlert(index: number, candidates: string[] = []): PartAlert {
+    return {
+      year: 2026,
+      month: 6,
+      patent: "3658",
+      declaration: String(index),
+      customs: "730",
+      tariff: "85045091",
+      sequence: "1",
+      status: candidates.length > 1 ? "ambiguous" : "missing",
+      candidates,
+      observations: [],
+    };
+  }
+  it("searches candidates across every pending page before pagination and preserves independent PN filters", () => {
+    const { component, analytics } = setup();
+    const alerts = Array.from({ length: 76 }, (_, index) =>
+      pendingAlert(index),
+    );
+    alerts[55] = pendingAlert(55, ["1606-5YY3019", "1606-5YY3020"]);
+    component.report.set(pendingReport(alerts));
+    component.partSearch.set("OTHER-PN");
+    component.partTariff.set("84733004");
+    component.alertPage.set(2);
+    component.searchAlerts("  5yy3020  ");
+    expect(component.filteredAlerts()).toEqual([alerts[55]]);
+    expect(component.visibleAlerts()).toEqual([alerts[55]]);
+    expect(component.alertPage()).toBe(0);
+    expect(component.alertPages()).toBe(1);
+    expect(component.partSearch()).toBe("OTHER-PN");
+    expect(component.partTariff()).toBe("84733004");
+    expect(component.report()?.partTaxes.alerts).toHaveLength(76);
+    expect(analytics).toHaveBeenCalledTimes(1);
+  });
+  it("finds PN mentioned only in 558 observations and distinguishes no matches from an empty search", () => {
+    const { component } = setup();
+    const missing = {
+      ...pendingAlert(1),
+      observations: ["No.Parte 1651-EQM0165EN | P.O 123"],
+    };
+    component.report.set(pendingReport([missing, pendingAlert(2)]));
+    component.searchAlerts("eqm0165");
+    expect(component.visibleAlerts()).toEqual([missing]);
+    component.searchAlerts("NOT-PRESENT");
+    expect(component.filteredAlerts()).toEqual([]);
+    expect(component.alertPages()).toBe(1);
+    component.searchAlerts("  ");
+    expect(component.filteredAlerts()).toHaveLength(2);
+    component.searchAlerts("");
+    expect(component.filteredAlerts()).toHaveLength(2);
+    expect(component.alertPage()).toBe(0);
+  });
+  it("paginates matching results and exports all of them with their candidate and observation evidence", () => {
+    const { component } = setup();
+    const matches = Array.from({ length: 26 }, (_, index) => ({
+      ...pendingAlert(index, ["1616-5TP1037", "OTHER-PN"]),
+      observations: ["NP 1616-5TP1037N", "P.O 789"],
+    }));
+    component.report.set(pendingReport([pendingAlert(99), ...matches]));
+    component.searchAlerts("1616-5TP1037");
+    expect(component.alertPages()).toBe(2);
+    expect(component.visibleAlerts()).toHaveLength(25);
+    component.alertPage.set(1);
+    expect(component.visibleAlerts()).toEqual([matches[25]]);
+    const exportRows = vi
+      .spyOn(
+        component as unknown as {
+          exportRows(headers: string[], rows: unknown[][], name: string): void;
+        },
+        "exportRows",
+      )
+      .mockImplementation(() => {});
+    component.exportAlerts();
+    const [headers, rows] = exportRows.mock.calls[0];
+    expect(headers.slice(-2)).toEqual(["candidates", "observations_558"]);
+    expect(rows).toHaveLength(26);
+    expect(rows[0].slice(-2)).toEqual([
+      "1616-5TP1037 | OTHER-PN",
+      "NP 1616-5TP1037N | P.O 789",
+    ]);
+    component.searchAlerts("");
+    expect(component.filteredAlerts()).toHaveLength(27);
+    expect(component.alertPage()).toBe(0);
+  });
+  it("clears pending PN search on Reset and when switching the source", () => {
+    const { component } = setup();
+    component.searchAlerts("1606");
+    component.reset();
+    expect(component.alertSearch()).toBe("");
+    component.searchAlerts("1606");
+    component.filters.source = "published";
+    component.sourceChanged();
+    expect(component.alertSearch()).toBe("");
+  });
+  it("opens with the annual range and selects the latest loaded period independently of the visible report", () => {
+    const { component, analytics } = setup();
+    expect(analytics.mock.calls[0][0]).toMatchObject({
+      year: 2026,
+      startMonth: 1,
+      endMonth: 12,
+    });
+    component.filters = {
+      source: "reference",
+      year: 2025,
+      startMonth: 4,
+      endMonth: 4,
+      operation: "1",
+      customs: "240",
+      document: "A1",
+      currency: "MXN",
+    };
+    component.report.set({ year: 2025, latestMonth: 4 } as AnalyticsReport);
+    component.loading.set(false);
+    component.selectLatestMonth();
+    expect(analytics).toHaveBeenCalledTimes(2);
+    expect(analytics.mock.calls.at(-1)?.[0]).toEqual({
+      source: "reference",
+      year: 2026,
+      startMonth: 9,
+      endMonth: 9,
+      operation: "1",
+      customs: "240",
+      document: "A1",
+      currency: "MXN",
+    });
+    expect(component.isLatestPeriod()).toBe(true);
+    component.reset();
+    expect(analytics.mock.calls.at(-1)?.[0]).toMatchObject({
+      year: 2026,
+      startMonth: 1,
+      endMonth: 12,
+    });
+    expect(component.isLatestPeriod()).toBe(false);
+  });
+  it("uses the selected source's latest year and month across a year boundary", () => {
+    const { component, analytics } = setup({
+      defaultSource: "reference",
+      sources: [
+        {
+          id: "reference",
+          years: [2026],
+          latestPeriod: { year: 2026, month: 9 },
+        },
+        {
+          id: "published",
+          years: [2027, 2026],
+          latestPeriod: { year: 2027, month: 1 },
+        },
+      ],
+    });
+    component.filters.source = "published";
+    component.filters.year = 2026;
+    component.filters.startMonth = 12;
+    component.filters.endMonth = 12;
+    component.loading.set(false);
+    component.selectLatestMonth();
+    expect(analytics.mock.calls.at(-1)?.[0]).toMatchObject({
+      source: "published",
+      year: 2027,
+      startMonth: 1,
+      endMonth: 1,
+    });
+    expect(component.latestPeriod()).toEqual({ year: 2027, month: 1 });
+  });
+  it("does not invent a month for empty sources or request data while already loading", () => {
+    const { component, analytics } = setup();
+    component.selectLatestMonth();
+    expect(analytics).toHaveBeenCalledTimes(1);
+    component.loading.set(false);
+    component.filters.source = "published";
+    const original = { ...component.filters };
+    expect(component.latestPeriod()).toBeNull();
+    component.selectLatestMonth();
+    expect(component.filters).toEqual(original);
+    expect(component.isLatestPeriod()).toBe(false);
+    expect(analytics).toHaveBeenCalledTimes(1);
+  });
+  it("keeps import/export values and colors aligned with their KPI cards in both currencies and languages", () => {
+    const { component } = setup();
+    for (const currency of ["USD", "MXN"] as const) {
+      component.report.set({
+        currency,
+        startMonth: 1,
+        endMonth: 1,
+        monthly: [
+          {
+            month: 1,
+            metrics: {
+              importUsd: 100,
+              exportUsd: 200,
+              importMxn: 1700,
+              exportMxn: 3400,
+            },
+          },
+        ],
+      } as unknown as AnalyticsReport);
+      for (const language of ["es", "en"] as const) {
+        component.i18n.set(language);
+        const series = component.tradeSeries();
+        const definitions = component.metricDefinitions;
+        expect(series[0].color).toBe("#447ec0");
+        expect(series[1].color).toBe("#22978a");
+        expect(series[0].color).toBe(
+          definitions.find((m) => m.key === component.moneyKey("import"))
+            ?.color,
+        );
+        expect(series[1].color).toBe(
+          definitions.find((m) => m.key === component.moneyKey("export"))
+            ?.color,
+        );
+        expect(series.map((s) => s.label)).toEqual(
+          language === "es"
+            ? ["Importaciones", "Exportaciones"]
+            : ["Imports", "Exports"],
+        );
+        expect(series.map((s) => s.values)).toEqual(
+          currency === "USD" ? [[100], [200]] : [[1700], [3400]],
+        );
+      }
+    }
+  });
   it("shows eight indicators with cash IGI and VAT plus FP 21 VAT in both languages", () => {
     const { component } = setup();
     expect(component.metricDefinitions).toHaveLength(8);
@@ -24,7 +253,9 @@ describe("analytics filters and comparisons", () => {
         ?.es,
     ).toBe("IVA · FP 21");
     component.i18n.set("en");
-    expect(component.metricDefinitions.some((metric) => metric.key === "igiFp21")).toBe(false);
+    expect(
+      component.metricDefinitions.some((metric) => metric.key === "igiFp21"),
+    ).toBe(false);
     expect(
       component.metricDefinitions.find((metric) => metric.key === "ivaFp21")
         ?.source,
@@ -120,13 +351,15 @@ describe("analytics filters and comparisons", () => {
   }
   it("ranks tariffs by all cash duty amounts, including unassigned PN and net adjustments", () => {
     const { component } = setup();
-    component.report.set(partReport([
-      partRow("PN-A", "85044099", 100),
-      partRow("PN-B", "85044099", 300),
-      partRow(null, "84733004", 1000),
-      partRow("PN-C", "84733004", -100),
-      partRow("PN-ZERO", "00000000", 0),
-    ]));
+    component.report.set(
+      partReport([
+        partRow("PN-A", "85044099", 100),
+        partRow("PN-B", "85044099", 300),
+        partRow(null, "84733004", 1000),
+        partRow("PN-C", "84733004", -100),
+        partRow("PN-ZERO", "00000000", 0),
+      ]),
+    );
     expect(component.topTariffTaxes()).toEqual([
       { tariff: "84733004", igi: 900 },
       { tariff: "85044099", igi: 400 },
@@ -134,26 +367,41 @@ describe("analytics filters and comparisons", () => {
     expect(component.tariffTaxLabels()).toEqual(["84733004", "85044099"]);
     expect(component.tariffTaxSeries()[0].values).toEqual([900, 400]);
     component.selectPartTariff("85044099");
-    expect(component.topTariffTaxes()).toEqual([{ tariff: "85044099", igi: 400 }]);
+    expect(component.topTariffTaxes()).toEqual([
+      { tariff: "85044099", igi: 400 },
+    ]);
     component.searchParts("PN-A");
     expect(component.tariffTaxSeries()[0].values).toEqual([100]);
   });
   it("filters before taking the top ten tariffs and handles unknown amounts and missing coverage", () => {
     const { component } = setup();
-    const rows = Array.from({ length: 12 }, (_, i) => partRow(`PN-${i}`, String(i).padStart(8, "0"), i + 1));
+    const rows = Array.from({ length: 12 }, (_, i) =>
+      partRow(`PN-${i}`, String(i).padStart(8, "0"), i + 1),
+    );
     const report = partReport(rows);
     report.partTaxes.observationSourceAvailable = false;
     component.report.set(report);
     expect(component.topTariffTaxes()).toHaveLength(10);
-    expect(component.topTariffTaxes()[0]).toEqual({ tariff: "00000011", igi: 12 });
+    expect(component.topTariffTaxes()[0]).toEqual({
+      tariff: "00000011",
+      igi: 12,
+    });
     component.selectPartTariff("00000000");
     expect(component.tariffTaxSeries()[0].values).toEqual([1]);
     component.clearPartFilters();
-    component.report.set(partReport([...rows, { ...partRow(null), igi: null }]));
+    component.report.set(
+      partReport([...rows, { ...partRow(null), igi: null }]),
+    );
     expect(component.topTariffTaxes()).toEqual([]);
-    component.report.set({ ...report, partTaxes: { ...report.partTaxes, available: false } });
+    component.report.set({
+      ...report,
+      partTaxes: { ...report.partTaxes, available: false },
+    });
     expect(component.topTariffTaxes()).toEqual([]);
-    component.report.set({ ...report, partTaxes: { ...report.partTaxes, unmatchedTaxRows: 1 } });
+    component.report.set({
+      ...report,
+      partTaxes: { ...report.partTaxes, unmatchedTaxRows: 1 },
+    });
     expect(component.topTariffTaxes()).toEqual([]);
   });
   it("combines independent PN and tariff filters, including aliases, and resets pagination", () => {
@@ -361,7 +609,19 @@ describe("analytics filters and comparisons", () => {
       [3],
     ]);
   });
-  function setup() {
+  function setup(
+    options: AnalyticsOptions = {
+      defaultSource: "reference",
+      sources: [
+        {
+          id: "reference",
+          years: [2026],
+          latestPeriod: { year: 2026, month: 9 },
+        },
+        { id: "published", years: [], latestPeriod: null },
+      ],
+    },
+  ) {
     const first = new Subject<AnalyticsReport>();
     const second = new Subject<AnalyticsReport>();
     const analytics = vi
@@ -376,11 +636,7 @@ describe("analytics filters and comparisons", () => {
         {
           provide: Api,
           useValue: {
-            analyticsOptions: () =>
-              of({
-                defaultSource: "reference",
-                sources: [{ id: "reference", years: [2026] }],
-              }),
+            analyticsOptions: () => of(options),
             analytics,
             analyticsPdf,
           },

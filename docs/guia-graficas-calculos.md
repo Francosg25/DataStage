@@ -26,6 +26,10 @@ El archivo «05. IGI PAGADO ABRIL 25 - MARZO 26 vAO.xlsx» es referencia para la
 
 El mes analizado es el de la carga o `Periodo`, no un mes recalculado con `FechaPagoReal`. Un registro con fecha de pago distinta sigue perteneciendo al mes de su fuente. La interfaz muestra meses disponibles frente a meses solicitados. Un mes sin fuente es «sin dato», no un mes con actividad cero.
 
+En Análisis de operaciones, «Último mes cargado» ajusta automáticamente el año y ambos límites del rango al período más reciente disponible de la fuente seleccionada. Conserva los demás filtros y la moneda. Por ejemplo, si la última carga mensual publicada corresponde a septiembre de 2026, selecciona septiembre–septiembre de 2026, aunque hoy sea octubre o se esté consultando abril. Se determina por año/mes de la fuente, no por la fecha de reprocesamiento de una carga antigua. «Restablecer» vuelve al rango enero–diciembre del año seleccionado. El botón se deshabilita si la fuente no tiene meses disponibles.
+
+El valor de importaciones se identifica en azul y el valor de exportaciones en verde, con los mismos colores en las tarjetas y la gráfica mensual. La leyenda descriptiva «Indicadores del rango…» se retiró de encima de las tarjetas; la cobertura permanece en el estado del informe.
+
 Una tabla registrada con cero filas puede producir cero; una tabla ausente produce un indicador no disponible. En la referencia, la existencia de una hoja registrada se utiliza para completar cobertura con cero filas en meses identificados. Esa regla de importación no prueba por sí sola que la extracción externa esté completa.
 
 Los totales generales se calculan con los meses disponibles del rango. Cada indicador exige sus tablas de origen en todos los meses disponibles seleccionados. Por ejemplo, 551 para valor declarado y 551/557 para impuestos. Un mes totalmente ausente se evidencia en cobertura, pero no se inventa ni convierte automáticamente todo el rango en no disponible. Por ello siempre se debe revisar la cobertura junto al total.
@@ -65,6 +69,10 @@ La llave anterior se amplía con fracción arancelaria y secuencia de fracción.
 ### Aplicación de filtros
 
 El análisis permite fuente, año, mes inicial, mes final, operación, aduana, documento y moneda. Los filtros dimensionales se aplican primero a 501. Las demás tablas se restringen por pertenencia a las llaves de pedimento admitidas, sin expandir cada fila por el número de facturas o contribuciones relacionadas. En 551, SEL e INCI también se comprueban sus propios campos de operación y documento.
+
+El buscador «Buscar PN en pendientes», en Control y calidad, compara el texto completo o parcial con candidatos de PN y observaciones 558 de todos los pendientes del rango seleccionado, sin distinguir mayúsculas. La búsqueda ocurre antes de la paginación y cada cambio vuelve a la primera página. El contador informa coincidencias y total; el CSV exporta todas las coincidencias e incluye las observaciones. El buscador no corrige ni asigna un PN, no cambia los importes y es independiente del filtro PN de Contribuciones.
+
+En las gráficas, «Detalles» permite consultar fuentes, alcance y criterios que antes ocupaban texto fijo en la cabecera o pie. Permanece cerrado al abrir la gráfica. Los títulos, unidades, ejes y etiquetas de series continúan visibles; las condiciones de datos ausentes o cero se indican con una nota breve. El PNG descargado conserva el contexto y las notas para que el alcance del dato acompañe a la imagen exportada.
 
 Sin filtros dimensionales, cada tabla conserva sus filas aunque alguna carezca de correspondencia con 501; por eso existen controles de partidas huérfanas. Con filtros, las filas sin cabecera elegible dejan de entrar en los agregados filtrados. Un filtro de exportaciones produce cero IGI/IVA de importación cuando hay cobertura y no hay pagos de importación elegibles.
 

@@ -8,6 +8,10 @@ El contrato de lectura es `GET /api/v1/reports/analytics/options` y `GET /api/v1
 
 El servicio agrega cada tabla independientemente. Los filtros por operación, aduana y documento se relacionan mediante pertenencia a las llaves de 501, sin multiplicar filas por facturas o contribuciones. Las métricas por tabla conservan sus propias unidades y granularidad.
 
+El análisis abre con el rango enero–diciembre. El botón «Último mes cargado» selecciona el año y el mes más recientes disponibles de la fuente elegida y fija Desde/Hasta en ese mismo mes. Conserva operación, aduana, documento y moneda. `/analytics/options` entrega `latestPeriod` por fuente, independiente del rango visible; para cargas publicadas solo considera ejecuciones mensuales activas y publicadas del ámbito autenticado. No usa el mes del reloj ni la fecha de una recarga de un período antiguo. Sin meses disponibles el botón queda deshabilitado. «Restablecer» recupera enero–diciembre del año seleccionado.
+
+Se retiró la leyenda «Indicadores del rango…» encima de los KPI. Los colores de valor de importaciones y exportaciones se comparten entre tarjetas y evolución mensual: importaciones azul `#447ec0`, exportaciones verde `#22978a`, tanto en USD como en MXN.
+
 El Manual de Consulta Data Stage, julio 2021, aporta las definiciones de 501, 551, contribuciones, selección e incidencias. El documento es una referencia de estructura de datos, no una certificación de normativa actual ni un catálogo actualizado de claves aduaneras.
 
 ## Definiciones
@@ -108,6 +112,10 @@ El comando utiliza `openpyxl`, incluido en las dependencias de pruebas del lock;
 La conciliación normaliza campos numéricos de la especificación y excluye las columnas de procedencia de la comparación. Preserva diferencias en identificadores y texto. En los archivos suministrados hay diferencias como `NumeroGuia` con ceros iniciales perdidos, `IdentificadorCaso` convertido en fecha y representaciones de hora. El consolidado se utiliza como base anual identificada, sin corregir ni sobrescribir los Excel.
 
 ## Interfaz
+
+«Números de parte pendientes de corrección» dispone de búsqueda parcial de PN, sin distinguir mayúsculas, en los candidatos detectados y en las observaciones 558. Filtra todos los pendientes del rango antes de paginar, vuelve a la primera página al cambiar la búsqueda y muestra resultados frente al total. Es un filtro local, independiente del buscador de Contribuciones, sin consultas adicionales ni cambios de clasificación. El CSV incluye todas las coincidencias, no solo la página visible, y conserva candidatos y observaciones. Limpiar búsqueda restaura todos los pendientes. Restablecer y cambiar de fuente limpian también esta búsqueda.
+
+Las gráficas de operaciones y comparativa mensual muestran por defecto título, unidad, ejes y etiquetas de series. Los subtítulos explicativos, el contexto repetido y las notas largas están en «Detalles», cerrado por defecto y accesible con teclado. Las condiciones reales de valores ausentes o cero mantienen un estado breve visible. Ver datos, PNG y ampliación conservan su funcionamiento; el PNG sigue incluyendo alcance y notas para identificar el corte fuera de la aplicación.
 
 La ruta `/analytics` conserva cinco vistas, con contenido propio en cada una. Panorama general muestra las ocho tarjetas y la tendencia del valor de mercancías; el enlace de comparación abre `/annual`. Comercio y mercancías contiene los cinco rankings comerciales. Contribuciones contiene la tabla de pagos, los rankings de IGI pagado por PN y por fracción, uno junto al otro, y las comparativas de IGI/IVA por PN. Control y calidad contiene rectificaciones y alertas NP; se retiró la gráfica de eventos de selección aduanera. Fuentes y métricas explica los cálculos. Las tarjetas aparecen únicamente en Panorama general. Las tablas de pagos y rectificaciones y las gráficas PN no se repiten en otras pestañas. La comparación general de meses se consulta en Comparativa mensual; los controles de meses por PN permanecen en Contribuciones.
 

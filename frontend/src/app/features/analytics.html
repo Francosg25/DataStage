@@ -139,9 +139,26 @@
       }
     </select></label
   >
-  <button type="button" class="reset-button" (click)="reset()">
-    {{ t('Restablecer','Reset') }}
-  </button>
+  <div class="filter-actions">
+    <button
+      type="button"
+      class="latest-month-button"
+      (click)="selectLatestMonth()"
+      [disabled]="loading() || !latestPeriod()"
+      [attr.aria-pressed]="isLatestPeriod()"
+    >
+      <ds-icon name="calendar" />
+      {{ t('Último mes cargado','Latest loaded month') }} @if (latestPeriod();
+      as latest) {
+      <span class="latest-month-period"
+        >{{ i18n.month(latest.month,true) }} {{ latest.year }}</span
+      >
+      }
+    </button>
+    <button type="button" class="reset-button" (click)="reset()">
+      {{ t('Restablecer','Reset') }}
+    </button>
+  </div>
 </div>
 @if (error()) {
 <div class="error-message" role="alert">
@@ -154,7 +171,6 @@
 </div>
 } @if (loading() && !report()) {
 <section class="analytics-loading" aria-hidden="true">
-  <div class="loading-skeleton loading-skeleton-text"></div>
   <div class="kpi-grid">
     @for (metric of metricDefinitions; track metric.key) {
     <article class="kpi" [style.--metric-color]="metric.color">
@@ -266,15 +282,8 @@ r.partTaxes.invalidItemKeys > 0) {
       >{{ t('Ir a cargas mensuales','Go to monthly uploads') }}</a
     >
   </section>
-  } @else { @if (tab() !== 'definitions') {
-  <p class="data-note metric-scope">
-    {{ t('Indicadores del rango:','Range metrics:') }} {{
-    i18n.month(r.startMonth,true) }}–{{ i18n.month(r.endMonth,true) }} {{ r.year
-    }} · {{ r.coverage.availableMonths.length }}/{{ r.coverage.requestedMonths
-    }} {{ t('meses disponibles','months available') }}. {{ t('0 = valor
-    observado · — = sin dato.','0 = observed value · — = unavailable.') }}
-  </p>
-  @if (r.coverage.incompleteTables?.length) {
+  } @else { @if (tab() !== 'definitions') { @if
+  (r.coverage.incompleteTables?.length) {
   <p class="data-warning">
     {{ t('Cobertura incompleta en meses disponibles. Los agregados afectados
     quedan sin dato. Tablas:','Incomplete coverage in available months. Affected
@@ -389,30 +398,7 @@ r.partTaxes.invalidItemKeys > 0) {
       [footnote]="t('ClaveDocumento del pedimento · Anexo 22, apéndice 2. 8 principales + Otros. Selecciona una barra para filtrar.','Declaration document code · Anexo 22, appendix 2. Top 8 + Other. Select a bar to filter.')"
       (selected)="crossFilter('document','documents',$event)"
     />
-    <ds-analytics-chart
-      [loading]="loading()"
-      [title]="t('Importaciones por país de origen','Imports by country of origin')"
-      [subtitle]="t('Valor declarado · Importaciones · 551','Declared value · Imports · 551')"
-      [unit]="currency()"
-      [context]="chartContext()"
-      [categoryLabel]="t('País de origen','Country of origin')"
-      [horizontal]="true"
-      [labels]="rankLabels('originCountries')"
-      [series]="rankSeries('originCountries',t('Importaciones','Imports'),'#138679')"
-      [footnote]="t('PaísOrigenDestino de partidas de importación. 8 principales + Otros; no es el país del proveedor.','Country of origin from import line items. Top 8 + Other; this is not the supplier country.')"
-    />
-    <ds-analytics-chart
-      [loading]="loading()"
-      [title]="t('Exportaciones por país de destino','Exports by destination country')"
-      [subtitle]="t('Valor declarado · Exportaciones · 551','Declared value · Exports · 551')"
-      [unit]="currency()"
-      [context]="chartContext()"
-      [categoryLabel]="t('País de destino','Destination country')"
-      [horizontal]="true"
-      [labels]="rankLabels('destinationCountries')"
-      [series]="rankSeries('destinationCountries',t('Exportaciones','Exports'))"
-      [footnote]="t('PaísOrigenDestino de partidas de exportación. 8 principales + Otros.','Destination country from export line items. Top 8 + Other.')"
-    />
+    
     <ds-analytics-chart
       [loading]="loading()"
       [title]="t('Valor declarado por fracción arancelaria','Declared value by tariff code')"
@@ -536,9 +522,29 @@ r.partTaxes.invalidItemKeys > 0) {
     <button
       type="button"
       (click)="exportAlerts()"
-      [disabled]="loading() || !r.partTaxes.alerts.length"
+      [disabled]="loading() || !filteredAlerts().length"
     >
       <ds-icon name="download" /> CSV
+    </button>
+  </div>
+  <div class="alert-search">
+    <label>
+      {{ t('Buscar PN en pendientes','Search pending PN') }}
+      <input
+        type="search"
+        autocomplete="off"
+        [ngModel]="alertSearch()"
+        (ngModelChange)="searchAlerts($event)"
+        [placeholder]="t('PN completo o parcial','Full or partial PN')"
+        [disabled]="loading()"
+      />
+    </label>
+    <button
+      type="button"
+      (click)="searchAlerts('')"
+      [disabled]="loading() || !alertSearch()"
+    >
+      {{ t('Limpiar búsqueda','Clear search') }}
     </button>
   </div>
   @if (!r.partTaxes.observationSourceAvailable) {
@@ -580,9 +586,10 @@ r.partTaxes.invalidItemKeys > 0) {
         } @empty {
         <tr>
           <td colspan="5">
-            {{ t('No hay alertas en las partidas identificables de esta
-            selección.','No alerts in identifiable line items for this
-            selection.') }}
+            {{ alertSearch().trim() ? t('No hay pendientes que coincidan con
+            este PN.','No pending items match this PN.') : t('No hay alertas en
+            las partidas identificables de esta selección.','No alerts in
+            identifiable line items for this selection.') }}
           </td>
         </tr>
         }
@@ -591,8 +598,10 @@ r.partTaxes.invalidItemKeys > 0) {
   </div>
   <div class="pagination">
     <span
-      >{{ format(r.partTaxes.alerts.length) }} {{ t('pendientes','pending') }} ·
-      {{ t('Página','Page') }} {{ alertPage() + 1 }}</span
+      >{{ format(filteredAlerts().length) }} {{ t('de','of') }} {{
+      format(r.partTaxes.alerts.length) }} {{ t('pendientes','pending') }} · {{
+      t('Página','Page') }} {{ alertPage() + 1 }} {{ t('de','of') }} {{
+      alertPages() }}</span
     ><button
       (click)="alertPage.set(alertPage() - 1)"
       [disabled]="alertPage() === 0"
@@ -601,7 +610,7 @@ r.partTaxes.invalidItemKeys > 0) {
       ‹</button
     ><button
       (click)="alertPage.set(alertPage() + 1)"
-      [disabled]="(alertPage() + 1) * pageSize >= r.partTaxes.alerts.length"
+      [disabled]="alertPage() + 1 >= alertPages()"
       [attr.aria-label]="t('Página siguiente','Next page')"
     >
       ›
@@ -705,18 +714,19 @@ r.partTaxes.invalidItemKeys > 0) {
         {{ t('Pedimentos rectificados cuenta pedimentos distintos en 701, sin
         exigir ClaveDocumento R1: el archivo conserva claves AF, IN, RT y otras.
         Llave: año, mes, patente, pedimento y aduana. % grupo = rectificados /
-        pedimentos 501 de la misma aduana y patente, o de la misma patente × 100.
-        % global = rectificados del grupo / total 501 con los mismos filtros × 100. El total recalcula la
-        tasa, no promedia porcentajes. Meses diferentes se cuentan por separado.
-        Una rectificación no demuestra por sí sola un error operativo.',
-        'Amended declarations counts distinct declarations in 701 without
-        requiring document code R1: files retain AF, IN, RT and other codes.
-        Key: year, month, broker, declaration and customs office. % group =
-        amended / 501 declarations for the office/broker pair or broker × 100. % global = group amended /
-        all 501 declarations under the same filters × 100. The total
-        recalculates the rate rather than averaging percentages. Different
-        months are counted separately. An amendment alone is not proof of an
-        operational error.') }}
+        pedimentos 501 de la misma aduana y patente, o de la misma patente ×
+        100. % global = rectificados del grupo / total 501 con los mismos
+        filtros × 100. El total recalcula la tasa, no promedia porcentajes.
+        Meses diferentes se cuentan por separado. Una rectificación no demuestra
+        por sí sola un error operativo.', 'Amended declarations counts distinct
+        declarations in 701 without requiring document code R1: files retain AF,
+        IN, RT and other codes. Key: year, month, broker, declaration and
+        customs office. % group = amended / 501 declarations for the
+        office/broker pair or broker × 100. % global = group amended / all 501
+        declarations under the same filters × 100. The total recalculates the
+        rate rather than averaging percentages. Different months are counted
+        separately. An amendment alone is not proof of an operational error.')
+        }}
       </dd>
       <dt>
         {{ t('Valor declarado y rectificaciones','Declared value and
@@ -883,8 +893,8 @@ r.partTaxes.invalidItemKeys > 0) {
     @if (taxRows().length > identifiedTaxRows().length) {
     <p class="data-note part-attribution-note">
       {{ t('Pagos en efectivo fuera del ranking por PN por falta de un PN
-      identificado:','Cash payments excluded from the PN ranking because no PN was
-      identified:') }} {{ t('IGI','IMPORT DUTY') }} {{
+      identificado:','Cash payments excluded from the PN ranking because no PN
+      was identified:') }} {{ t('IGI','IMPORT DUTY') }} {{
       format(partUnassignedTotals().igi,currency()) }} · {{ t('IVA','VAT') }} {{
       format(partUnassignedTotals().iva,currency()) }} {{ currency() }}.
     </p>
@@ -922,7 +932,7 @@ r.partTaxes.invalidItemKeys > 0) {
               {{ t('Efectivo','Cash') }} · FP 0
             </th>
             <th colspan="1" scope="colgroup" class="certiva-heading">
-              {{ t('CERTIVA','VAT/excise credit') }} · FP 21
+              {{ t('Crédito IVA/IEPS','CERTIVA') }} · FP 21
             </th>
           </tr>
           <tr>
@@ -1030,7 +1040,8 @@ r.partTaxes.invalidItemKeys > 0) {
     <div class="section-heading">
       <div>
         <h2 id="rectifications-title">
-          {{ t('Rectificaciones por aduana y patente','Amendments by customs office and broker license') }}
+          {{ t('Rectificaciones por aduana y patente','Amendments by customs
+          office and broker license') }}
         </h2>
         <p>
           {{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{
@@ -1061,17 +1072,23 @@ r.partTaxes.invalidItemKeys > 0) {
             <th scope="col">
               {{ t('Total pedimentos','Total declarations') }}
             </th>
-            <th scope="col">{{ t('% aduana / patente','% office / broker') }}</th>
+            <th scope="col">
+              {{ t('% aduana / patente','% office / broker') }}
+            </th>
             <th scope="col">% global</th>
           </tr>
         </thead>
         <tbody>
-          @for (row of rect.customsPatentRows; track row.customs + ':' + row.patent) {
+          @for (row of rect.customsPatentRows; track row.customs + ':' +
+          row.patent) {
           <tr>
             <th scope="row" class="customs-name">
               {{ category(row.customs, 'customs') }}
             </th>
-            <td>{{ row.patent === 'unknown' ? t('Sin especificar','Unspecified') : row.patent }}</td>
+            <td>
+              {{ row.patent === 'unknown' ? t('Sin especificar','Unspecified') :
+              row.patent }}
+            </td>
             <td>{{ format(row.r1) }}</td>
             <td>{{ format(row.declarations) }}</td>
             <td>{{ percentage(row.groupRate) }}</td>
@@ -1109,55 +1126,96 @@ r.partTaxes.invalidItemKeys > 0) {
     }
     <p class="data-note">
       {{ t('Pedimentos distintos registrados en 701, cualquiera que sea su clave
-      de documento. % aduana / patente = rectificados / pedimentos de esa combinación. % global
-      = rectificados de la combinación / base global filtrada. Una rectificación no
-      demuestra por sí sola un error.','Distinct declarations recorded in 701,
-      regardless of document code. % office / broker = amended / declarations for that pair. %
-      global = pair amended / filtered global base. An amendment alone does
-      not establish an error.') }}
+      de documento. % aduana / patente = rectificados / pedimentos de esa
+      combinación. % global = rectificados de la combinación / base global
+      filtrada. Una rectificación no demuestra por sí sola un error.','Distinct
+      declarations recorded in 701, regardless of document code. % office /
+      broker = amended / declarations for that pair. % global = pair amended /
+      filtered global base. An amendment alone does not establish an error.') }}
     </p>
   </section>
 
-  <section class="report-data-section" aria-labelledby="rectifications-patent-title">
+  <section
+    class="report-data-section"
+    aria-labelledby="rectifications-patent-title"
+  >
     <div class="section-heading">
       <div>
-        <h2 id="rectifications-patent-title">{{ t('Rectificaciones por patente','Amendments by broker license') }}</h2>
-        <p>{{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{ r.year }} · 501 / 701</p>
+        <h2 id="rectifications-patent-title">
+          {{ t('Rectificaciones por patente','Amendments by broker license') }}
+        </h2>
+        <p>
+          {{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{
+          r.year }} · 501 / 701
+        </p>
       </div>
-      <span class="data-source">{{ t('Base global filtrada:','Filtered global base:') }} <b>{{ format(rect.globalDeclarations) }}</b> {{ t('pedimentos','declarations') }}</span>
+      <span class="data-source"
+        >{{ t('Base global filtrada:','Filtered global base:') }}
+        <b>{{ format(rect.globalDeclarations) }}</b> {{
+        t('pedimentos','declarations') }}</span
+      >
     </div>
-    <div class="table-scroll" tabindex="0" [attr.aria-label]="t('Rectificaciones por patente','Amendments by broker license')">
+    <div
+      class="table-scroll"
+      tabindex="0"
+      [attr.aria-label]="t('Rectificaciones por patente','Amendments by broker license')"
+    >
       <table class="analysis-table financial-table">
-        <thead><tr>
-          <th scope="col">{{ t('Patente','Broker license') }}</th>
-          <th scope="col">{{ t('Pedimentos rectificados','Amended declarations') }}</th>
-          <th scope="col">{{ t('Total pedimentos','Total declarations') }}</th>
-          <th scope="col">{{ t('% patente','% broker') }}</th>
-          <th scope="col">% global</th>
-        </tr></thead>
+        <thead>
+          <tr>
+            <th scope="col">{{ t('Patente','Broker license') }}</th>
+            <th scope="col">
+              {{ t('Pedimentos rectificados','Amended declarations') }}
+            </th>
+            <th scope="col">
+              {{ t('Total pedimentos','Total declarations') }}
+            </th>
+            <th scope="col">{{ t('% patente','% broker') }}</th>
+            <th scope="col">% global</th>
+          </tr>
+        </thead>
         <tbody>
           @for (row of rect.patentRows; track row.patent) {
           <tr>
-            <th scope="row">{{ row.patent === 'unknown' ? t('Sin especificar','Unspecified') : row.patent }}</th>
+            <th scope="row">
+              {{ row.patent === 'unknown' ? t('Sin especificar','Unspecified') :
+              row.patent }}
+            </th>
             <td>{{ format(row.r1) }}</td>
             <td>{{ format(row.declarations) }}</td>
             <td>{{ percentage(row.groupRate) }}</td>
             <td>{{ percentage(row.globalRate) }}</td>
           </tr>
           } @empty {
-          <tr><td colspan="5">{{ t('Sin registros para esta selección.','No records for this selection.') }}</td></tr>
+          <tr>
+            <td colspan="5">
+              {{ t('Sin registros para esta selección.','No records for this
+              selection.') }}
+            </td>
+          </tr>
           }
         </tbody>
-        <tfoot><tr>
-          <th scope="row">Total</th>
-          <td>{{ format(rect.totals.r1) }}</td>
-          <td>{{ format(rect.totals.declarations) }}</td>
-          <td>{{ percentage(rect.totals.officeRate) }}</td>
-          <td>{{ percentage(rect.totals.globalRate) }}</td>
-        </tr></tfoot>
+        <tfoot>
+          <tr>
+            <th scope="row">Total</th>
+            <td>{{ format(rect.totals.r1) }}</td>
+            <td>{{ format(rect.totals.declarations) }}</td>
+            <td>{{ percentage(rect.totals.officeRate) }}</td>
+            <td>{{ percentage(rect.totals.globalRate) }}</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
-    <p class="data-note">{{ t('Cada patente reúne sus pedimentos de todas las aduanas de la selección. % patente = rectificados de esa patente / pedimentos de esa patente. % global = rectificados de esa patente / base global filtrada. Ambas tablas representan los mismos pedimentos; sus totales no se suman.','Each broker license combines its declarations across the selected customs offices. % broker = broker amended / broker declarations. % global = broker amended / filtered global base. Both tables describe the same declarations; their totals are not added together.') }}</p>
+    <p class="data-note">
+      {{ t('Cada patente reúne sus pedimentos de todas las aduanas de la
+      selección. % patente = rectificados de esa patente / pedimentos de esa
+      patente. % global = rectificados de esa patente / base global filtrada.
+      Ambas tablas representan los mismos pedimentos; sus totales no se
+      suman.','Each broker license combines its declarations across the selected
+      customs offices. % broker = broker amended / broker declarations. % global
+      = broker amended / filtered global base. Both tables describe the same
+      declarations; their totals are not added together.') }}
+    </p>
   </section>
 </ng-template>
 }

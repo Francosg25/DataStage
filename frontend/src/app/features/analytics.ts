@@ -40,8 +40,10 @@ export class Analytics {
   partSearch = signal("");
   partTariff = signal("");
   partPage = signal(0);
+  alertSearch = signal("");
   alertPage = signal(0);
   readonly pageSize = 25;
+  readonly tradeColors = { import: "#447ec0", export: "#22978a" };
   readonly taxTypes = ["igi", "iva"] as const;
   taxRows = computed(() => {
     const search = this.partSearch().trim().toLowerCase();
@@ -79,8 +81,22 @@ export class Analytics {
       (this.partPage() + 1) * this.pageSize,
     ),
   );
+  filteredAlerts = computed(() => {
+    const search = this.alertSearch().trim().toUpperCase();
+    const alerts = this.report()?.partTaxes?.alerts || [];
+    return search
+      ? alerts.filter((alert) =>
+          [...alert.candidates, ...alert.observations].some((value) =>
+            value.toUpperCase().includes(search),
+          ),
+        )
+      : alerts;
+  });
+  alertPages = computed(() =>
+    Math.max(1, Math.ceil(this.filteredAlerts().length / this.pageSize)),
+  );
   visibleAlerts = computed(() =>
-    (this.report()?.partTaxes?.alerts || []).slice(
+    this.filteredAlerts().slice(
       this.alertPage() * this.pageSize,
       (this.alertPage() + 1) * this.pageSize,
     ),
@@ -182,7 +198,7 @@ export class Analytics {
         en: "Import goods value",
         unit: this.currency(),
         source: "551 · IMP",
-        color: "#447ec0",
+        color: this.tradeColors.import,
       },
       {
         key: this.moneyKey("export"),
@@ -190,7 +206,7 @@ export class Analytics {
         en: "Export goods value",
         unit: this.currency(),
         source: "551 · EXP",
-        color: "#22978a",
+        color: this.tradeColors.export,
       },
       {
         key: "igiPaid",
@@ -322,6 +338,7 @@ export class Analytics {
   }
   sourceChanged() {
     this.clearPartFilters();
+    this.searchAlerts("");
     this.filters.year =
       this.options()?.sources.find((s) => s.id === this.filters.source)
         ?.years[0] || new Date().getFullYear();
@@ -332,6 +349,7 @@ export class Analytics {
   }
   reset() {
     this.clearPartFilters();
+    this.searchAlerts("");
     this.filters = {
       ...this.filters,
       startMonth: 1,
@@ -339,6 +357,32 @@ export class Analytics {
       operation: "",
       customs: "",
       document: "",
+    };
+    this.load();
+  }
+  latestPeriod() {
+    return (
+      this.options()?.sources.find((s) => s.id === this.filters.source)
+        ?.latestPeriod || null
+    );
+  }
+  isLatestPeriod() {
+    const latest = this.latestPeriod();
+    return (
+      !!latest &&
+      this.filters.year === latest.year &&
+      this.filters.startMonth === latest.month &&
+      this.filters.endMonth === latest.month
+    );
+  }
+  selectLatestMonth() {
+    const latest = this.latestPeriod();
+    if (!latest || this.loading()) return;
+    this.filters = {
+      ...this.filters,
+      year: latest.year,
+      startMonth: latest.month,
+      endMonth: latest.month,
     };
     this.load();
   }
@@ -382,11 +426,18 @@ export class Analytics {
       .join(" · ");
   }
   tradeSeries(): ChartSeries[] {
-    const series = this.pairSeries(
-      this.moneyKey("import"),
-      this.moneyKey("export"),
-      [this.t("Importaciones", "Imports"), this.t("Exportaciones", "Exports")],
-    );
+    const series = [
+      ...this.series(
+        this.moneyKey("import"),
+        this.t("Importaciones", "Imports"),
+        this.tradeColors.import,
+      ),
+      ...this.series(
+        this.moneyKey("export"),
+        this.t("Exportaciones", "Exports"),
+        this.tradeColors.export,
+      ),
+    ];
     const unclassified = this.series(
       this.moneyKey("unclassifiedTrade"),
       this.t("Operación sin clasificar", "Unclassified operation"),
@@ -408,24 +459,6 @@ export class Analytics {
         color,
         values: this.selectedMonths().map((m) => m.metrics[key]),
       },
-    ];
-  }
-  pairSeries(
-    first: string,
-    second: string,
-    labels: [string, string],
-  ): ChartSeries[] {
-    return [
-      ...this.series(
-        first,
-        labels[0],
-        first === "igiPaid" ? "#2877b5" : "#11998b",
-      ),
-      ...this.series(
-        second,
-        labels[1],
-        second === "ivaPaid" ? "#9b6520" : "#447ec0",
-      ),
     ];
   }
   ranking(key: string): Ranking[] {
@@ -601,13 +634,18 @@ export class Analytics {
   topTariffTaxes = computed(() => {
     const parts = this.report()?.partTaxes;
     const rows = this.taxRows();
-    if (!parts?.available || parts.unmatchedTaxRows ||
-      rows.some((row) => row.igi == null || !row.tariff)) return [];
+    if (
+      !parts?.available ||
+      parts.unmatchedTaxRows ||
+      rows.some((row) => row.igi == null || !row.tariff)
+    )
+      return [];
     const totals = new Map<string, number>();
     for (const row of rows) {
       totals.set(row.tariff, (totals.get(row.tariff) || 0) + row.igi!);
     }
-    return [...totals].map(([tariff, igi]) => ({ tariff, igi }))
+    return [...totals]
+      .map(([tariff, igi]) => ({ tariff, igi }))
       .filter((row) => row.igi > 0)
       .sort((a, b) => b.igi - a.igi || a.tariff.localeCompare(b.tariff))
       .slice(0, 10);
@@ -616,11 +654,13 @@ export class Analytics {
     return this.topTariffTaxes().map((row) => row.tariff);
   }
   tariffTaxSeries(): ChartSeries[] {
-    return [{
-      label: this.t("IGI pagado · FP 0", "Paid import duty · FP 0"),
-      color: "#138679",
-      values: this.topTariffTaxes().map((row) => row.igi),
-    }];
+    return [
+      {
+        label: this.t("IGI pagado · FP 0", "Paid import duty · FP 0"),
+        color: "#138679",
+        values: this.topTariffTaxes().map((row) => row.igi),
+      },
+    ];
   }
   partTrendSeries(tax?: "igi" | "iva"): ChartSeries[] {
     const series = [
@@ -679,6 +719,10 @@ export class Analytics {
     this.partTariff.set("");
     this.partPage.set(0);
   }
+  searchAlerts(value: string) {
+    this.alertSearch.set(value);
+    this.alertPage.set(0);
+  }
   exportParts() {
     this.exportRows(
       [
@@ -718,8 +762,9 @@ export class Analytics {
         "item_sequence",
         "status",
         "candidates",
+        "observations_558",
       ],
-      (this.report()?.partTaxes?.alerts || []).map((r) => [
+      this.filteredAlerts().map((r) => [
         r.year,
         r.month,
         r.patent,
@@ -729,6 +774,7 @@ export class Analytics {
         r.sequence,
         r.status,
         r.candidates.join(" | "),
+        r.observations.join(" | "),
       ]),
       "NP-alerts",
     );
