@@ -1,7 +1,8 @@
-"""Transactional supplier identity review and immutable, paired report snapshots.
+"""Cumulative supplier lists and immutable, paired monthly report snapshots.
 
-Only 505 supplies a supplier's fiscal identity. A 501 RFC belongs to the
-contributor; V1/IM in 507 is an IMMEX authorization, never a supplier RFC.
+505 supplies all new supplier identities. 507 only corroborates virtual
+operations for suppliers identified by 505 or the initial lists. A 501 RFC belongs to the contributor and
+V1/IM in 507 is an IMMEX authorization, never a supplier RFC.
 Mutators do not commit: publication, audit and catalog share the caller's unit
 of work. A scope row serializes decisions and report creation across workers.
 """
@@ -11,7 +12,6 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from functools import lru_cache
 import hashlib
-from io import BytesIO
 import json
 import re
 import unicodedata
@@ -48,6 +48,7 @@ COUNTRIES = {
     "United States": "USA", "US": "USA", "China": "CHN", "CN": "CHN",
 }
 FIELDS = ("name", "taxId", "country", "address", "externalNumber", "internalNumber", "postalCode", "city", "state")
+CONFIRMED_NAMES = {"PTMAEC": "PTMCORPORATION"}
 
 
 def normalized(value):
@@ -55,10 +56,44 @@ def normalized(value):
     return re.sub(r"[^A-Z0-9]", "", unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode().upper())
 
 
+@lru_cache(maxsize=4096)
+def _name_core(value):
+    """Normalize trailing legal abbreviations while retaining subsidiary names."""
+    words = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode().upper()
+    if normalized(words) in CONFIRMED_NAMES:
+        return CONFIRMED_NAMES[normalized(words)]
+    words = words.replace("&", " AND ").replace("IND'L", "INDUSTRIAL")
+    words = re.sub(r"\bIND\b", "INDUSTRIAL", words)
+    words = re.sub(r"\b(?:MFTY|MANUFCATURY)\b", "MANUFACTORY", words)
+    words = re.sub(r"[^A-Z0-9]+", " ", words).strip()
+    words = re.sub(r"\s+(?:REPUBLIKA SRBIJA|OHIO)$", "", words)
+    suffix = r"(?:INCORPORATED|CORPORATION|LIMITED|COMPANY|GMBH|CORP|INC|LLC|LTD|LDT|LIMTED|LT|L TO|LTDA|SRL|SPA|SA|CO|KG|BV|AG|S R L|S P A|S A)"
+    core = re.sub(r"(?:\s+" + suffix + r")+$", "", words).strip()
+    return normalized(core) if len(normalized(core)) >= 4 else normalized(value)
+
+
+def _national_rfc(value):
+    value = fiscal(value)
+    if not RFC.fullmatch(value):
+        return ""
+    # Swiss identifiers can resemble an RFC, but their six digits are not a date.
+    match = re.fullmatch(r"[A-ZÑ&]{3,4}(\d{6})[A-Z0-9]{3}", value)
+    try:
+        datetime.strptime(match.group(1), "%y%m%d")
+    except ValueError:
+        return ""
+    return value
+
+
 def fiscal(value):
     value = re.sub(r"[^A-Z0-9Ñ&]", "", str(value or "").upper())
-    return "" if normalized(value) in {"NA", "NONE", "NULL", "SINDATO", "NOAPLICA", "USA", "MEX", "CHN",
+    return "" if not value.strip("0") or normalized(value) in {"NA", "SN", "SINNUMERO", "NODISPONIBLE", "UNKNOWN",
+                                        "NONE", "NULL", "SINDATO", "NOAPLICA", "USA", "MEX", "CHN",
                                         "XEXX010101000", "XAXX010101000"} else value
+
+
+def _tax_key(value):
+    return re.sub(r"^(?:IT|DE|FR|NL|BE|GB)(?=\d{8,}$)", "", fiscal(value))
 
 
 def _hash(value):
@@ -157,6 +192,11 @@ def _supplier_data(item):
             "taxId": item.tax_id, "country": item.country}
 
 
+def _excluded(item):
+    data = json.loads(item.data_json)
+    return bool(data.get("customerOnly") or data.get("aliasOf") or data.get("sourceOnly"))
+
+
 def _observations(session, scope, supplier_id=None, active=None):
     query = select(SupplierObservation).where(SupplierObservation.scope_id == scope)
     if supplier_id is not None:
@@ -169,7 +209,7 @@ def _observations(session, scope, supplier_id=None, active=None):
 def _virtual(item, observations):
     if item.virtual_confirmation == 1 or any(o.active and o.virtual_confirmed for o in observations):
         return True
-    return False if item.virtual_confirmation == 0 else None
+    return False if item.virtual_confirmation == 0 or any(o.active and o.source_row_id and not o.source_row_id.startswith("507:") for o in observations) else None
 
 
 def supplier_response(session, item, *, evidence=False):
@@ -177,7 +217,7 @@ def supplier_response(session, item, *, evidence=False):
         .where(SupplierObservation.scope_id == item.scope_id, SupplierObservation.supplier_id == item.id,
                SupplierObservation.active == 1)).one()
     data = _supplier_data(item)
-    virtual = True if item.virtual_confirmation == 1 or virtual_support else False if item.virtual_confirmation == 0 else None
+    virtual = True if item.virtual_confirmation == 1 or virtual_support else False if item.virtual_confirmation == 0 or count else None
     result = {**data, "id": item.id, "kind": item.kind, "municipality": data.get("city", ""),
               "version": item.version, "virtualOperations": virtual,
               "virtualConfirmation": None if item.virtual_confirmation is None else bool(item.virtual_confirmation),
@@ -231,10 +271,13 @@ def list_suppliers(session, scope, search="", kind=None):
     key = normalized(search)
     items = list(session.scalars(select(Supplier).where(Supplier.scope_id == scope).order_by(Supplier.name, Supplier.id)))
     return [supplier_response(session, item) for item in items
-            if (not kind or item.kind == kind) and (not key or key in normalized(item.name + item.tax_id + item.country))]
+            if not _excluded(item)
+            and (not kind or item.kind == kind) and (not key or key in normalized(item.name + item.tax_id + item.country))]
 
 
 def _new_supplier(session, scope, data, actor, *, original_status=None, manual=False, reason=""):
+    if manual:
+        data = {**data, "manuallyConfirmed": True}
     confirmation = data.get("virtualOperations")
     if manual and data["type"] == "national" and confirmation is None:
         _error("VIRTUAL_CONFIRMATION_REQUIRED", "Confirma Sí o No para operaciones virtuales", 400)
@@ -269,9 +312,9 @@ def _similar(items, data):
     result = []
     name = normalized(data["name"])
     for item in items:
-        if item.kind != data["type"]:
+        if item.kind != data["type"] and not _provisional_country(data):
             continue
-        same_tax = bool(item.tax_id and data["taxId"] and fiscal(item.tax_id) == fiscal(data["taxId"]))
+        same_tax = bool(fiscal(item.tax_id) and fiscal(data["taxId"]) and fiscal(item.tax_id) == fiscal(data["taxId"]))
         ratio = SequenceMatcher(None, item.name_key, name).ratio() if min(len(item.name_key), len(name)) > 4 else 0
         # Never fuzzy-match RFCs when the national template has no supplier name.
         if RFC.fullmatch(item.name.upper()) or RFC.fullmatch(data["name"].upper()):
@@ -279,6 +322,87 @@ def _similar(items, data):
         if same_tax or ratio >= .86:
             result.append(item)
     return result
+
+
+def _provisional_country(data):
+    # A missing country, or MEX paired with a foreign tax number, is insufficient
+    # to reclassify a known supplier. It is not permission to guess a new country.
+    return not data.get("country") or (data.get("country") == "MEX" and not RFC.fullmatch(fiscal(data.get("taxId"))))
+
+
+def _known_tax_ids(session, scope):
+    result = {}
+    rows = session.execute(select(SupplierObservation.supplier_id, SupplierObservation.candidate_json).where(
+        SupplierObservation.scope_id == scope, SupplierObservation.active == 1,
+        SupplierObservation.status == "resolved", SupplierObservation.supplier_id.is_not(None)))
+    for supplier_id, raw in rows:
+        tax_id = fiscal(json.loads(raw).get("taxId"))
+        if tax_id:
+            result.setdefault(supplier_id, set()).add(tax_id)
+    return result
+
+
+def _automatic_matches(items, data, known_tax_ids):
+    """Prefer a confirmed name, then full/core names and supporting invoice IDs.
+
+    Optional fields do not prevent a unique spelling match. Distinct subsidiary
+    words are retained, and uncertain matches become separate rows.
+    """
+    ranked = {"confirmed": [], "name": [], "legal": [], "tax": [], "address": []}
+    name, tax_id = normalized(data.get("name")), fiscal(data.get("taxId"))
+    canonical = CONFIRMED_NAMES.get(name, name)
+    for item in items:
+        if _excluded(item):
+            continue
+        if data["type"] == "national" and item.kind == "national":
+            if _national_rfc(tax_id) and item.tax_id == tax_id:
+                ranked["tax"].append(item)
+            continue
+        if not name or item.kind == "national":
+            continue
+        known = {_tax_key(item.tax_id)} - {""}
+        known.update(_tax_key(value) for value in known_tax_ids.get(item.id, set()))
+        same_tax = bool(tax_id and _tax_key(tax_id) in known)
+        if item.kind != data["type"] and not _provisional_country(data):
+            continue
+        same_country = bool(data.get("country") and data["country"] == item.country)
+        same_name = item.name_key == name
+        legal_name = _name_core(item.name).rstrip("S") == _name_core(data.get("name")).rstrip("S")
+        core, other_core = _name_core(data.get("name")), _name_core(item.name)
+        ratio = SequenceMatcher(None, other_core, core).ratio() if min(len(core), len(other_core)) >= 10 else 0
+        location = _supplier_data(item)
+        street = normalized(data.get("address"))
+        address_support = (same_country and street and street == normalized(location.get("address"))
+                           and any(normalized(data.get(field)) and normalized(data.get(field)) == normalized(location.get(field))
+                                   for field in ("postalCode", "city")))
+        if canonical != name and item.name_key == canonical:
+            ranked["confirmed"].append(item)
+        elif same_name:
+            ranked["name"].append(item)
+        elif legal_name:
+            ranked["legal"].append(item)
+        elif same_tax and (ratio >= .92 or (len(_tax_key(tax_id)) >= 8 and _tax_key(tax_id).isdigit())):
+            ranked["tax"].append(item)
+        elif ratio >= .96 and (same_country or not item.country or _provisional_country(data) or address_support):
+            ranked["address"].append(item)
+    return next((matches for matches in ranked.values() if matches), [])
+
+
+def _review_key(observation):
+    data = json.loads(observation.candidate_json)
+    tax_id = fiscal(data.get("taxId"))
+    return (data["type"], data.get("country", ""), "tax" if tax_id else "name",
+            tax_id or _name_core(data.get("name")), observation.reason == "equivalence_revoked")
+
+
+def _alias_signature(data):
+    return data["type"], _name_core(data.get("name")), fiscal(data.get("taxId")), data.get("country", "")
+
+
+def _pending_count(session, scope):
+    rows = session.execute(select(SupplierObservation.candidate_json, SupplierObservation.reason).where(
+        SupplierObservation.scope_id == scope, SupplierObservation.active == 1, SupplierObservation.status == "pending"))
+    return len({_review_key(row) for row in rows})
 
 
 def _alias(session, scope, identity_key):
@@ -309,6 +433,9 @@ def create_supplier(session, principal, data):
         _error("SUPPLIER_ALREADY_EXISTS", "El proveedor ya existe en el catálogo")
     item = _new_supplier(session, principal.scope_id, data, principal.id, manual=True, reason=data.get("reason", ""))
     _remember(session, principal.scope_id, data, item, "new", data.get("reason", ""))
+    _resolve_supported_pending(session, principal.scope_id, items + [item],
+                               _confirmed_rfcs(_observations(session, principal.scope_id, active=True)))
+    session.flush()
     finalize_ready_monthly_reports(session, principal.scope_id, principal.id)
     return supplier_response(session, item, evidence=True)
 
@@ -320,6 +447,8 @@ def update_supplier(session, principal, supplier_id, data, expected_version):
     _expected(item, expected_version)
     before = _supplier_data(item)
     updated = _data(data, existing=before)
+    updated["manuallyConfirmed"] = True
+    updated.pop("customerOnly", None)
     if updated["type"] != item.kind:
         _error("SUPPLIER_TYPE_IMMUTABLE", "El tipo de proveedor no puede cambiar")
     others = list(session.scalars(select(Supplier).where(Supplier.scope_id == principal.scope_id, Supplier.id != item.id)))
@@ -335,6 +464,9 @@ def update_supplier(session, principal, supplier_id, data, expected_version):
     session.flush()
     audit(session, principal.scope_id, principal.id, "supplier.updated", supplierId=item.id,
           before=before, after=updated, reason=data.get("reason", ""))
+    _resolve_supported_pending(session, principal.scope_id, others + [item],
+                               _confirmed_rfcs(_observations(session, principal.scope_id, active=True)))
+    session.flush()
     finalize_ready_monthly_reports(session, principal.scope_id, principal.id)
     return supplier_response(session, item, evidence=True)
 
@@ -412,12 +544,16 @@ def _extract_rows(rows):
                 joined[code].setdefault(key, []).append(row)
     for row in rows["505"]:
         headers = _join_operation(joined["501"], row)
+        if {str(h.get("tipo_operacion")) for h in headers} == {"2"}:
+            # Export invoices identify customers, not suppliers. Known national
+            # counterparties can still receive separate 507 virtual evidence.
+            continue
         identifiers = _join_operation(joined["507"], row)
         country = _country(row.get("pais_facturacion"))
         tax_id = fiscal(row.get("indent_fiscal_proveedor"))
         contributor_rfcs = {fiscal(h.get("rfc")) for h in headers if h.get("rfc")}
         invalid_identity = tax_id in contributor_rfcs if tax_id else False
-        data = _data({"type": "national" if country == "MEX" else "foreign",
+        data = _data({"type": "national" if _national_rfc(tax_id) and not invalid_identity and country in {"", "MEX"} else "foreign",
                       "name": row.get("proveedor_mercancia"), "taxId": tax_id,
                       "country": country, "address": row.get("calle_proveedor"),
                       "externalNumber": row.get("num_exterior_proveedor"),
@@ -444,20 +580,48 @@ def _extract_rows(rows):
 
 
 def _assign(session, scope, observation, items, cache=None, confirmed_rfcs=frozenset()):
+    if cache is None:
+        cache = {}
+    known = cache.setdefault("tax_ids", None)
+    if known is None:
+        known = cache["tax_ids"] = _known_tax_ids(session, scope)
+    if "aliases" not in cache:
+        aliases = list(session.scalars(select(SupplierEquivalence).where(SupplierEquivalence.scope_id == scope)))
+        exact_aliases, related_aliases = {}, {}
+        for alias in aliases:
+            exact_aliases[alias.identity_key] = alias
+            related_aliases.setdefault(_alias_signature(json.loads(alias.identity_json)), []).append(alias)
+        cache["aliases"] = exact_aliases, related_aliases
     key = (observation.identity_key, bool(observation.virtual_confirmed))
-    cached = cache.get(key) if cache is not None else None
-    if cached and cached[0] == len(items):
+    stamp = (len(items), cache.get("revision", 0))
+    cached = cache.get(key)
+    if cached and cached[0] == stamp:
         observation.supplier_id, observation.status, observation.reason, observation.suggestions_json = cached[1:]
-        return
-    _assign_uncached(session, scope, observation, items, confirmed_rfcs)
-    if cache is not None:
-        cache[key] = (len(items), observation.supplier_id, observation.status, observation.reason,
-                      observation.suggestions_json or "[]")
+    else:
+        _assign_uncached(session, scope, observation, items, confirmed_rfcs, known, cache["aliases"])
+    if observation.status == "resolved" and observation.supplier_id:
+        tax_id = fiscal(json.loads(observation.candidate_json).get("taxId"))
+        if tax_id and tax_id not in known.setdefault(observation.supplier_id, set()):
+            known[observation.supplier_id].add(tax_id)
+            cache["revision"] = cache.get("revision", 0) + 1
+    cache[key] = ((len(items), cache.get("revision", 0)), observation.supplier_id, observation.status,
+                  observation.reason, observation.suggestions_json or "[]")
 
 
-def _assign_uncached(session, scope, observation, items, confirmed_rfcs):
+def _assign_uncached(session, scope, observation, items, confirmed_rfcs, known_tax_ids, aliases):
     data = json.loads(observation.candidate_json)
-    alias = _alias(session, scope, observation.identity_key)
+    data["taxId"] = fiscal(data.get("taxId"))
+    exact_aliases, related_aliases = aliases
+    alias = exact_aliases.get(observation.identity_key)
+    if alias is None:
+        related = related_aliases.get(_alias_signature(data), [])
+        if len({(a.supplier_id, a.active) for a in related}) == 1:
+            alias = related[0]
+        elif related:
+            observation.status = "pending"
+            observation.reason = "equivalence_revoked" if any(not a.active for a in related) else "conflicting_data"
+            observation.suggestions_json = json_text(sorted({a.supplier_id for a in related}))
+            return
     if alias is not None and alias.active:
         target = _scoped(session, Supplier, alias.supplier_id, scope)
         observation.supplier_id, observation.status, observation.reason = target.id, "resolved", ""
@@ -468,31 +632,43 @@ def _assign_uncached(session, scope, observation, items, confirmed_rfcs):
         observation.status, observation.reason = "pending", "equivalence_revoked"
         observation.suggestions_json = json_text([alias.supplier_id])
         return
-    matches = _exact(items, data)
-    suggestions = _similar(items, data)
-    if observation.reason == "missing_identity":
-        observation.suggestions_json = json_text([s.id for s in suggestions])
-        return
+    # Old installations may already contain unassigned candidates extracted
+    # before the RFC-only national rule. Correct those without reuploading ASC.
+    kind = "national" if _national_rfc(data.get("taxId")) and data.get("country") in {"", "MEX"} else "foreign"
+    if kind != data["type"]:
+        data["type"] = kind
+        observation.candidate_json = json_text(data)
+        observation.identity_key = _identity(data)
+    matches = _automatic_matches(items, data, known_tax_ids)
     if len(matches) == 1:
         target = matches[0]
-        # Same fiscal identity but materially different name is reviewable.
-        canonical_rfc_name = bool(RFC.fullmatch(target.name.upper()))
-        address_conflict = _contradictory_data(_supplier_data(target), data)
-        if (target.name_key != normalized(data["name"]) and not canonical_rfc_name) or address_conflict:
-            observation.reason = "conflicting_data"
-        else:
-            observation.supplier_id, observation.status, observation.reason = target.id, "resolved", ""
-            return
-    elif suggestions or len(matches) > 1:
-        observation.reason = "conflicting_data" if any(s.name_key == normalized(data["name"]) for s in suggestions) else "similar_name"
-    elif data["type"] == "national" and not observation.virtual_confirmed and data["taxId"] not in confirmed_rfcs:
-        observation.reason = "virtual_confirmation"
-    else:
-        target = _new_supplier(session, scope, data, "worker")
-        items.append(target)
+        # Fill source gaps when a later invoice supplies the same identity.
+        current = _supplier_data(target)
+        changed = False
+        for field in ("country", "taxId", "address", "externalNumber", "internalNumber", "postalCode", "city", "state"):
+            if not current.get(field) and data.get(field):
+                current[field] = data[field]
+                changed = True
+        if changed:
+            target.country, target.tax_id = current["country"], current["taxId"]
+            target.data_json = json_text(current)
+            target.version += 1
         observation.supplier_id, observation.status, observation.reason = target.id, "resolved", ""
+        observation.suggestions_json = "[]"
         return
-    observation.suggestions_json = json_text([s.id for s in (suggestions or matches)])
+    # Only a completely blank identity is unusable. Optional invoice fields
+    # never require a user's decision before the two workbooks can be produced.
+    if not data.get("name") and not data.get("taxId"):
+        observation.status, observation.reason = "excluded", "empty_supplier"
+        return
+    # An uncertain match stays a separate row rather than silently overwriting
+    # another supplier. Punctuation and uniquely supported typos match above.
+    if not data.get("name"):
+        data["name"] = data["taxId"]
+    target = _new_supplier(session, scope, data, "worker")
+    items.append(target)
+    observation.supplier_id, observation.status, observation.reason = target.id, "resolved", ""
+    observation.suggestions_json = "[]"
 
 
 def _contradictory_data(left, right):
@@ -509,11 +685,7 @@ def _contradictory_data(left, right):
 
 def _add_counterparty_evidence(session, scope, run_id, period_id, period_name, rows, items, by_source,
                                source_kind="monthly"):
-    """A 507 CN RFC may corroborate an existing supplier without creating one.
-
-    Virtual pedimentos frequently have no 505 invoice. Their counterpart still
-    corroborates an already identified RFC after a strict join to 501.
-    """
+    """Corroborate virtual history, without deriving any new supplier from 507."""
     headers = {}
     for row in rows["501"]:
         for key in _operation_keys(row):
@@ -535,8 +707,7 @@ def _add_counterparty_evidence(session, scope, run_id, period_id, period_name, r
                 existing.version += 1
             continue
         target = matches[0] if matches else None
-        # Unmatched counterparty evidence is retained without creating a
-        # supplier. A later 505 can identify it and inherit the live support.
+        # Unknown export/undirected counterparties remain evidence only.
         data = _data({"type": "national", "name": "", "taxId": rfc, "country": "MEX"}, validate=False)
         data["name"] = ""
         observation = SupplierObservation(id=str(uuid4()), scope_id=scope, run_id=run_id, source_kind=source_kind,
@@ -572,11 +743,79 @@ def _link_unmatched_evidence(observations, items):
 
 
 def _resolve_supported_pending(session, scope, items, confirmed_rfcs):
-    # Newly arrived independent virtual evidence can complete an older national
-    # alta that was waiting only for the Yes/No confirmation.
-    for observation in _observations(session, scope, active=True):
-        if observation.status == "pending" and observation.reason == "virtual_confirmation":
-            _assign(session, scope, observation, items, confirmed_rfcs=confirmed_rfcs)
+    # Complete older source gaps using identities learned later in the history.
+    # Revoked/manual decisions still pass through the same authoritative guard.
+    pending = [o for o in _observations(session, scope, active=True) if o.status == "pending"]
+    cache = {}
+    resolved = 0
+    for observation in pending:
+        _assign(session, scope, observation, items, cache, confirmed_rfcs)
+        if observation.status == "resolved":
+            observation.version += 1
+            resolved += 1
+    return resolved
+
+
+def _retire_customer_observations(session, scope, observations, items):
+    """Repair legacy extraction without deleting catalog, evidence or reports."""
+    verified = set(session.scalars(select(SupplierEquivalence.supplier_id).where(
+        SupplierEquivalence.scope_id == scope, SupplierEquivalence.active == 1)))
+    by_supplier = {}
+    retired = 0
+    for observation in observations:
+        if not observation.source_row_id.startswith("507:"):
+            records = json.loads(observation.evidence_json)
+            operations = {str(r.get("values", {}).get("tipo_operacion")) for r in records if r.get("table") == "501"}
+            if operations == {"2"} and observation.supplier_id not in verified and observation.status != "excluded":
+                observation.status, observation.reason = "excluded", "customer"
+                observation.version += 1
+                retired += 1
+        if observation.supplier_id:
+            by_supplier.setdefault(observation.supplier_id, []).append(observation)
+    for item in items:
+        data = _supplier_data(item)
+        sources = by_supplier.get(item.id, [])
+        customer_only = (bool(sources) and all(o.status == "excluded" for o in sources)
+                         and item.original_status is None and item.id not in verified and not data.get("manuallyConfirmed"))
+        if bool(data.get("customerOnly")) != customer_only:
+            data["customerOnly"] = customer_only
+            item.data_json = json_text(data)
+            item.version += 1
+    return retired
+
+
+def _reconcile_supplier_aliases(session, scope, observations, items):
+    """Keep seed rows intact and reuse them for previously detected variants."""
+    seeds = [item for item in items if item.original_status is not None and not _excluded(item)]
+    by_supplier = {}
+    for observation in observations:
+        if observation.supplier_id:
+            by_supplier.setdefault(observation.supplier_id, []).append(observation)
+    known = _known_tax_ids(session, scope)
+    for item in items:
+        data = _supplier_data(item)
+        if item.original_status is not None or data.get("manuallyConfirmed") or data.get("aliasOf"):
+            continue
+        sources = by_supplier.get(item.id, [])
+        if (item.kind == "national" and sources
+                and all(o.source_row_id.startswith("507:") for o in sources)):
+            data["sourceOnly"] = True
+            item.data_json = json_text(data)
+            continue
+        matches = _automatic_matches(seeds, data, known)
+        if len(matches) != 1:
+            continue
+        target = matches[0]
+        for observation in sources:
+            observation.supplier_id = target.id
+            observation.version += 1
+        session.execute(update(SupplierEquivalence).where(SupplierEquivalence.scope_id == scope,
+            SupplierEquivalence.supplier_id == item.id).values(supplier_id=target.id,
+            version=SupplierEquivalence.version + 1))
+        data["aliasOf"] = target.id
+        item.data_json = json_text(data)
+        item.version += 1
+        audit(session, scope, "system", "suppliers.variant_reconciled", supplierId=item.id, targetId=target.id)
 
 
 def _virtual_counterpart(identifier):
@@ -662,7 +901,7 @@ def ingest_baseline(session, principal, payload):
 import_baseline = ingest_baseline
 
 
-def sync_active_history(session, scope, actor="system"):
+def sync_active_history(session, scope, actor="system", *, schedule_missing_report=False):
     """Detect unseen 505 rows and retire evidence from replaced/deleted months."""
     _lock(session, scope, actor)
     active = list(session.execute(select(Run, Period).join(Period, Period.active_run_id == Run.id)
@@ -681,6 +920,7 @@ def sync_active_history(session, scope, actor="system"):
             observation.active = int(observation.run_id in active_ids)
     by_source = {(o.run_id, o.source_row_id): o for o in existing}
     items = list(session.scalars(select(Supplier).where(Supplier.scope_id == scope)))
+    retired_customers = _retire_customer_observations(session, scope, existing, items)
     assignment_cache = {}
     added = 0
     work = [(run, period, _rows_for_run(session, run.id, period.id)) for run, period in active]
@@ -707,12 +947,19 @@ def sync_active_history(session, scope, actor="system"):
         _add_counterparty_evidence(session, scope, run.id, period.id, period.name, rows, items, by_source)
     _link_unmatched_evidence(by_source.values(), items)
     session.flush()
-    _resolve_supported_pending(session, scope, items, confirmed_rfcs)
+    resolved = _resolve_supported_pending(session, scope, items, confirmed_rfcs)
     _link_unmatched_evidence(by_source.values(), items)
+    _retire_customer_observations(session, scope, by_source.values(), items)
+    _reconcile_supplier_aliases(session, scope, by_source.values(), items)
     session.flush()
     if added:
         audit(session, scope, actor, "suppliers.detected", observations=added, activeRuns=sorted(active_ids))
+    if resolved or retired_customers:
+        audit(session, scope, actor, "suppliers.reconciled", resolved=resolved, customerObservations=retired_customers)
     finalize_ready_monthly_reports(session, scope, actor)
+    if schedule_missing_report and active:
+        latest_run = max((run for run, _ in active), key=lambda run: (run.created_at, run.id))
+        request_monthly_report(session, latest_run, actor)
     return summary(session, scope)
 
 
@@ -745,7 +992,7 @@ def list_reviews(session, scope, search=""):
     groups = {}
     for observation in _observations(session, scope, active=True):
         if observation.status == "pending" and (not key or key in normalized(observation.candidate_json + observation.period_name)):
-            groups.setdefault(observation.identity_key, []).append(observation)
+            groups.setdefault(_review_key(observation), []).append(observation)
     results = []
     for observations in groups.values():
         result = review_response(session, observations[0])
@@ -758,7 +1005,8 @@ def list_reviews(session, scope, search=""):
 
 def get_review_evidence(session, scope, review_id, offset=0, limit=100):
     item = _scoped(session, SupplierObservation, review_id, scope)
-    observations = [o for o in _observations(session, scope, active=True) if o.identity_key == item.identity_key]
+    observations = [o for o in _observations(session, scope, active=True)
+                    if o.status == "pending" and _review_key(o) == _review_key(item)]
     return {"items": [_evidence_response(o) for o in observations[offset:offset + limit]],
             "total": len(observations), "offset": offset, "limit": limit}
 
@@ -799,11 +1047,17 @@ def resolve_review(session, principal, review_id, decision, supplier_id=None,
         item.virtual_confirmation, item.virtual_reason = int(virtual_operations), reason
         item.version += 1
     original_candidate = json.loads(observation.candidate_json)
+    review_key = _review_key(observation)
     alias = _remember(session, principal.scope_id, original_candidate, item, decision, reason)
     for other in _observations(session, principal.scope_id):
-        if other.identity_key == observation.identity_key:
+        if other.status == "pending" and _review_key(other) == review_key:
+            _remember(session, principal.scope_id, json.loads(other.candidate_json), item, decision, reason)
             other.supplier_id, other.status, other.reason = item.id, "resolved", ""
             other.version += 1
+    session.flush()
+    items = list(session.scalars(select(Supplier).where(Supplier.scope_id == principal.scope_id)))
+    observations = _observations(session, principal.scope_id, active=True)
+    _resolve_supported_pending(session, principal.scope_id, items, _confirmed_rfcs(observations))
     session.flush()
     audit(session, principal.scope_id, principal.id, "supplier.review_resolved", reviewId=review_id,
           supplierId=item.id, decision=decision, equivalenceId=alias.id, reason=reason,
@@ -836,12 +1090,22 @@ def update_equivalence(session, principal, alias_id, supplier_id=None, expected_
     alias = _scoped(session, SupplierEquivalence, alias_id, principal.scope_id)
     _expected(alias, expected_version)
     before = equivalence_response(session, alias)
+    signature = _alias_signature(json.loads(alias.identity_json))
+    aliases = list(session.scalars(select(SupplierEquivalence).where(SupplierEquivalence.scope_id == principal.scope_id)))
+    family = [a for a in aliases if a.supplier_id == alias.supplier_id and _alias_signature(json.loads(a.identity_json)) == signature]
     if supplier_id is not None:
         target = _scoped(session, Supplier, supplier_id, principal.scope_id)
         alias.supplier_id = target.id
-    alias.active, alias.reason, alias.version = int(active), reason, alias.version + 1
+    for related in family:
+        related.supplier_id, related.active, related.reason = alias.supplier_id, int(active), reason
+        related.version += 1
+    exact_aliases = {a.identity_key: a for a in aliases}
+    family_ids = {a.id for a in family}
     for observation in _observations(session, principal.scope_id):
-        if observation.identity_key == alias.identity_key:
+        explicit = exact_aliases.get(observation.identity_key)
+        if (observation.identity_key == alias.identity_key or
+                (_alias_signature(json.loads(observation.candidate_json)) == signature
+                 and (explicit is None or explicit.id in family_ids))):
             observation.supplier_id = alias.supplier_id if active else None
             observation.status = "resolved" if active else "pending"
             observation.reason = "" if active else "equivalence_revoked"
@@ -855,31 +1119,37 @@ def update_equivalence(session, principal, alias_id, supplier_id=None, expected_
 
 
 def summary(session, scope):
-    # Counts stay cheap as the cumulative provenance grows; no source JSON is
-    # needed to display the navigation and summary badges.
-    counts = dict(session.execute(select(Supplier.kind, func.count(Supplier.id))
-                  .where(Supplier.scope_id == scope).group_by(Supplier.kind)).all())
-    return {"catalog": sum(counts.values()), "national": counts.get("national", 0),
+    # Read only catalog fields and pending identities, never provenance blobs.
+    counts = {"national": 0, "foreign": 0}
+    for kind, raw in session.execute(select(Supplier.kind, Supplier.data_json).where(Supplier.scope_id == scope)):
+        if not any(json.loads(raw).get(key) for key in ("customerOnly", "aliasOf", "sourceOnly")):
+            counts[kind] += 1
+    state = session.get(SupplierScope, scope)
+    return {"catalog": sum(counts.values()), "initialized": bool(state and state.seeded), "national": counts.get("national", 0),
             "foreign": counts.get("foreign", 0),
-            "pending": session.scalar(select(func.count(SupplierObservation.identity_key.distinct())).where(
-                SupplierObservation.scope_id == scope, SupplierObservation.active == 1,
-                SupplierObservation.status == "pending")),
+            "pending": _pending_count(session, scope),
             "equivalences": session.scalar(select(func.count(SupplierEquivalence.id)).where(
                 SupplierEquivalence.scope_id == scope, SupplierEquivalence.active == 1)),
             "reports": session.scalar(select(func.count(SupplierReport.id)).where(SupplierReport.scope_id == scope))}
 
 
-def initialize_seed(session, principal, seed_payload):
+def initialize_seed(session, principal, seed_payload, *, synchronize=True):
     """Explicit seed import, preserving original columns, values and statuses."""
     principal.require("Admin")
     state = _lock(session, principal.scope_id, principal.id)
-    if state.seeded:
-        return summary(session, principal.scope_id)
-    if session.scalar(select(Supplier.id).where(Supplier.scope_id == principal.scope_id).limit(1)):
-        _error("SUPPLIER_SEED_NOT_EMPTY", "Inicializa las listas antes de incorporar movimientos")
-    schemas = seed_payload.get("schemas", DEFAULT_SCHEMAS)
+    items = list(session.scalars(select(Supplier).where(Supplier.scope_id == principal.scope_id)))
+    known_tax_ids = _known_tax_ids(session, principal.scope_id)
+    existing_items, used_ids = list(items), set()
+    schemas = dict(seed_payload.get("schemas", DEFAULT_SCHEMAS))
     if any(schemas.get(kind) != DEFAULT_SCHEMAS[kind] for kind in DEFAULT_SCHEMAS):
         _error("INVALID_SUPPLIER_SCHEMA", "Las columnas de las listas no coinciden con las listas originales", 400)
+    fingerprint = _hash({kind: seed_payload.get(kind, []) for kind in DEFAULT_SCHEMAS})
+    previous_schemas = json.loads(state.schemas_json)
+    if state.seeded and previous_schemas.get("_seedFingerprint") == fingerprint:
+        return summary(session, principal.scope_id)
+    # Templates are imported once and copied into each immutable report.
+    schemas["_templates"] = {**previous_schemas.get("_templates", {}), **schemas.get("_templates", {})}
+    schemas["_seedFingerprint"] = fingerprint
     state.schemas_json = json_text(schemas)
     for kind in ("national", "foreign"):
         for position, raw in enumerate(seed_payload.get(kind, [])):
@@ -888,24 +1158,50 @@ def initialize_seed(session, principal, seed_payload):
                           "taxId": raw.get("taxId", raw.get("RFC", "")), "country": "MEX"}
                 virtual = raw.get("virtualOperations", raw.get("Operaciones virtuales"))
                 if type(virtual) is not bool:
-                    virtual = normalized(virtual) in {"SI", "YES", "TRUE", "1"} if virtual is not None else None
+                    virtual = normalized(virtual) in {"SI", "YES", "TRUE", "1"} if normalized(virtual) else None
                 values["virtualOperations"] = virtual
             else:
                 values = {"type": kind, "name": raw.get("name", raw.get("Nombre o Razón social", "")),
                           "country": raw.get("country", raw.get("País ", "")),
                           "taxId": raw.get("taxId", ""), "address": raw.get("address", raw.get("Domicilio", ""))}
-            data = _data({**raw, **values})
+            data = _data({**raw, **values}, validate=False)
+            if not data["name"] and not data["taxId"]:
+                continue
             data["originalRow"] = {h: raw.get(h, "") for h in schemas[kind]}
             data["seedOrder"] = position
             data["seedEvidence"] = raw.get("source", seed_payload.get("source"))
             status = raw.get("originalStatus", raw.get("status", raw.get("Estatus", "Sin modificación")))
-            _new_supplier(session, principal.scope_id, data, principal.id, original_status=status,
-                          reason="Inicialización de listas originales")
+            matches = _automatic_matches([item for item in existing_items if item.id not in used_ids], data, known_tax_ids)
+            exact_rows = [item for item in existing_items if item.id not in used_ids
+                          and item.kind == kind and _supplier_data(item).get("originalRow") == data["originalRow"]]
+            exact_names = [item for item in matches if item.name_key == normalized(data["name"])]
+            matches = exact_rows or exact_names or matches
+            if len(matches) > 1:
+                matches = [min(matches, key=lambda item: (_supplier_data(item).get("seedOrder") != position, item.id))] if exact_rows else []
+            if matches:
+                item = matches[0]
+                used_ids.add(item.id)
+                current = _supplier_data(item)
+                for field, value in data.items():
+                    if not current.get(field) or field in {"originalRow", "seedOrder", "seedEvidence"}:
+                        current[field] = value
+                item.data_json = json_text(current)
+                item.original_status = status
+                item.name, item.name_key = data["name"], normalized(data["name"])
+                item.country, item.tax_id = current["country"], current["taxId"]
+                if item.virtual_confirmation is None and data.get("virtualOperations") is not None:
+                    item.virtual_confirmation = int(data["virtualOperations"])
+                item.version += 1
+                current["seedVersion"] = item.version
+                item.data_json = json_text(current)
+            else:
+                items.append(_new_supplier(session, principal.scope_id, data, principal.id, original_status=status,
+                             reason="Inicialización de listas originales"))
     state.seeded = 1
     session.flush()
     audit(session, principal.scope_id, principal.id, "suppliers.seed_imported", counts={
         k: len(seed_payload.get(k, [])) for k in ("national", "foreign")}, source=seed_payload.get("source"))
-    return summary(session, principal.scope_id)
+    return sync_active_history(session, principal.scope_id, principal.id) if synchronize else summary(session, principal.scope_id)
 
 
 def report_response(report):
@@ -923,7 +1219,8 @@ def _freeze_supplier(item):
 
 def _observation_states(session, scope):
     fields = (SupplierObservation.id, SupplierObservation.active, SupplierObservation.status,
-              SupplierObservation.supplier_id, SupplierObservation.identity_key)
+              SupplierObservation.supplier_id, SupplierObservation.identity_key,
+              SupplierObservation.candidate_json, SupplierObservation.reason, SupplierObservation.source_row_id)
     return {row.id: row for row in session.execute(select(*fields).where(SupplierObservation.scope_id == scope))}
 
 
@@ -976,20 +1273,19 @@ def _draft_state(session, request, observations, items, active_runs):
         if observation is None or not observation.active:
             return None, 0, "source_superseded"
         captured.append((observation, entry))
-    pending = {o.identity_key for o, _ in captured if o.status == "pending"}
-    if pending:
-        return None, len(pending), None
     records = {record["id"]: record for record in draft["suppliers"]}
     virtual_evidence = set()
+    invoice_evidence = set()
     for observation, entry in captured:
         if observation.supplier_id and observation.supplier_id in items:
             records.setdefault(observation.supplier_id, _freeze_supplier(items[observation.supplier_id]))
             if entry["virtualConfirmed"]:
                 virtual_evidence.add(observation.supplier_id)
+            if not observation.source_row_id.startswith("507:"):
+                invoice_evidence.add(observation.supplier_id)
     previous_ids, has_previous = _previous_report_ids(session, request.scope_id)
     snapshot = {"schemas": draft["schemas"], "national": [], "foreign": [],
                 "sourceRuns": draft["sourceRuns"], "monthlyRunId": request.source_run_id}
-    unknown_confirmations = 0
     ordered = sorted(records.values(), key=lambda record: (record["kind"],
         "seedOrder" not in json.loads(record["data_json"]), json.loads(record["data_json"]).get("seedOrder", 0),
         record["name"], record["id"]))
@@ -997,17 +1293,14 @@ def _draft_state(session, request, observations, items, active_runs):
         current = items.get(record["id"])
         if current is None:
             return None, 0, "supplier_unavailable"
-        virtual = (True if current.virtual_confirmation == 1 or current.id in virtual_evidence
-                   else False if current.virtual_confirmation == 0 else None)
-        if record["kind"] == "national" and virtual is None and current.id not in previous_ids:
-            unknown_confirmations += 1
+        if _excluded(current):
             continue
+        virtual = (True if current.virtual_confirmation == 1 or current.id in virtual_evidence
+                   else False if current.virtual_confirmation == 0 or current.id in invoice_evidence else None)
         item = SimpleNamespace(**record)
         is_new = item.id not in previous_ids and item.original_status is None
         status = "Alta" if is_new else (item.original_status if not has_previous and item.original_status is not None else "Sin modificación")
         snapshot[item.kind].append(_report_row(item, virtual, status, is_new))
-    if unknown_confirmations:
-        return None, unknown_confirmations, None
     return snapshot, 0, None
 
 
@@ -1112,19 +1405,20 @@ def _report_row(item, virtual, status, is_new):
     data = _supplier_data(item)
     original = data.get("originalRow", {})
     if item.kind == "national":
-        cells = [item.tax_id, "Si" if virtual else "No", status]
+        cells = [item.tax_id, "Si" if virtual is True else "No" if virtual is False else "", status]
     else:
         address = " ".join(filter(None, [data.get("address"), data.get("externalNumber"),
                                          data.get("internalNumber"), data.get("postalCode"),
                                          data.get("city"), data.get("state")]))
         cells = [item.name, original.get("Apellido Paterno", ""), original.get("Apellido Materno", ""),
                  item.country, address, original.get("Cliente/Proveedor", "Proveedor") or "Proveedor", status]
-    if original and item.version == 1:
-        cells = [original.get(h, "") for h in DEFAULT_SCHEMAS[item.kind]]
+    if original:
+        cells = [original.get(h, "") or cells[index] for index, h in enumerate(DEFAULT_SCHEMAS[item.kind])]
         cells[-1] = status
         if item.kind == "national":
-            cells[1] = "Si" if virtual else "No"
-    return {"supplierId": item.id, "values": cells, "highlight": bool(is_new), "status": status}
+            cells[1] = "Si" if virtual is True else "No" if virtual is False else ""
+    return {"supplierId": item.id, "values": cells, "highlight": bool(is_new), "status": status,
+            "templateRow": (data.get("seedEvidence") or {}).get("row") if original else None}
 
 
 def create_report(session, principal, key, label=None):
@@ -1141,9 +1435,6 @@ def create_report(session, principal, key, label=None):
         if previous.request_hash != request_hash:
             _error("IDEMPOTENCY_CONFLICT", "La clave de idempotencia ya se usó con otra solicitud")
         return report_response(previous)
-    if session.scalar(select(SupplierObservation.id).where(SupplierObservation.scope_id == principal.scope_id,
-                      SupplierObservation.active == 1, SupplierObservation.status == "pending").limit(1)):
-        _error("SUPPLIERS_PENDING_REVIEW", "Resuelve los proveedores pendientes antes de generar ambas listas")
     reports = list(session.scalars(select(SupplierReport).where(SupplierReport.scope_id == principal.scope_id)
                                   .order_by(SupplierReport.created_at.desc(), SupplierReport.id.desc())))
     previous_ids = set()
@@ -1156,10 +1447,10 @@ def create_report(session, principal, key, label=None):
     items.sort(key=lambda i: (i.kind, "seedOrder" not in json.loads(i.data_json),
                               json.loads(i.data_json).get("seedOrder", 0), i.name, i.id))
     for item in items:
+        if _excluded(item):
+            continue
         observations = _observations(session, principal.scope_id, item.id)
         virtual = _virtual(item, observations)
-        if item.kind == "national" and virtual is None:
-            _error("VIRTUAL_CONFIRMATION_REQUIRED", "Confirma Sí o No para los proveedores nacionales sin evidencia")
         is_new = item.id not in previous_ids and item.original_status is None
         # The first snapshot preserves the imported statuses verbatim. An imported
         # Alta is historical and does not become a new, yellow row.
@@ -1181,33 +1472,37 @@ def report_xlsx(session, scope, report_id, kind):
         _error("INVALID_SUPPLIER_TYPE", "Selecciona la lista nacional o extranjera", 400)
     report = _scoped(session, SupplierReport, report_id, scope)
     snapshot = json.loads(report.snapshot_json)
-    import xlsxwriter
-    output = BytesIO()
-    workbook = xlsxwriter.Workbook(output, {"in_memory": True, "strings_to_formulas": False,
-                                            "strings_to_urls": False})
-    # A fixed property makes repeated downloads byte-stable as well as cell-stable.
-    workbook.set_properties({"created": datetime(2026, 1, 1), "title": report.label})
-    worksheet = workbook.add_worksheet("Sheet1")
-    header = workbook.add_format({"bold": True, "bg_color": "#D9E2F3", "border": 1, "text_wrap": True, "valign": "vcenter"})
-    body = workbook.add_format({"text_wrap": True, "valign": "top"})
-    yellow = workbook.add_format({"bg_color": "#FFFF00", "text_wrap": True, "valign": "top"})
-    headers = snapshot["schemas"][kind]
-    widths = [23, 26, 24] if kind == "national" else [44, 24, 24, 40, 90, 24, 24]
-    worksheet.set_row(0, 32)
-    for column, value in enumerate(headers):
-        worksheet.write_string(0, column, value, header)
-        worksheet.set_column(column, column, widths[column])
-    for row_number, row in enumerate(snapshot[kind], 1):
-        style = yellow if row["highlight"] else body
-        lines = max((len(str(value or "")) // max(widths[column] - 3, 1) + 1
-                     for column, value in enumerate(row["values"])), default=1)
-        worksheet.set_row(row_number, min(409, max(20, lines * 15)))
-        for column, value in enumerate(row["values"]):
-            if value is None or value == "":
-                worksheet.write_blank(row_number, column, None, style)
-            else:
-                worksheet.write_string(row_number, column, str(value), style)
-    worksheet.freeze_panes(1, 0)
-    worksheet.autofilter(0, 0, len(snapshot[kind]), len(headers) - 1)
-    workbook.close()
-    return output.getvalue()
+    from .workbooks import render
+    return render(snapshot, kind, report.label)
+
+
+def refresh_lists(session, principal):
+    """Regenerate once for changed data/templates; repeated clicks keep the same pair."""
+    result = sync_active_history(session, principal.scope_id, principal.id, schedule_missing_report=True)
+    state = ensure_initialized(session, principal.scope_id, principal.id)
+    items = list(session.scalars(select(Supplier).where(Supplier.scope_id == principal.scope_id)))
+    fingerprint = _hash({"schemas": json.loads(state.schemas_json),
+        "suppliers": sorted((item.id, item.version, _virtual(item, _observations(session, principal.scope_id, item.id)))
+                            for item in items),
+        "runs": sorted({o.run_id for o in _observations(session, principal.scope_id, active=True)})})
+    latest = session.scalar(select(SupplierReport).where(SupplierReport.scope_id == principal.scope_id)
+                            .order_by(SupplierReport.created_at.desc(), SupplierReport.id.desc()).limit(1))
+    # Monthly publication already prepared the correct pair unless a later list
+    # import or a legacy recognition correction changed its contents/layout.
+    if latest:
+        snapshot = json.loads(latest.snapshot_json)
+        included = {row["supplierId"] for kind in DEFAULT_SCHEMAS for row in snapshot[kind]}
+        expected = {item.id for item in items if not _excluded(item)}
+        rows = {row["supplierId"]: row for kind in DEFAULT_SCHEMAS for row in snapshot[kind]}
+        same_values = all(item.id in rows and _report_row(item,
+            _virtual(item, _observations(session, principal.scope_id, item.id)),
+            rows[item.id]["status"], rows[item.id]["highlight"])["values"] == rows[item.id]["values"]
+            for item in items if not _excluded(item))
+        if (included == expected and same_values and snapshot["schemas"] == json.loads(state.schemas_json)
+                and snapshot.get("sourceRuns") == sorted({o.run_id for o in _observations(session, principal.scope_id, active=True)})):
+            return result
+    active_period = session.scalar(select(Period).where(Period.scope_id == principal.scope_id,
+        Period.active_run_id.is_not(None)).order_by(Period.year.desc(), Period.month.desc()).limit(1))
+    label = "Proveedores · " + (active_period.name if active_period else "Listas acumulativas")
+    create_report(session, principal, "supplier-current:" + fingerprint, label)
+    return summary(session, principal.scope_id)

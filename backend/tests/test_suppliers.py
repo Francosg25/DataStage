@@ -6,7 +6,6 @@ from openpyxl import load_workbook
 import pytest
 from sqlalchemy import select
 
-from app.core.errors import ApplicationError
 from app.modules.identity.auth import Principal
 from app.modules.suppliers import service as suppliers
 from app.persistence import Base, make_engine, session_factory
@@ -57,33 +56,12 @@ def invoice(name="Álamo Tecnología, S.A.", tax="TAX-100", country="USA", **kwa
             "calle_proveedor": "100 Main St.", **kwargs}
 
 
-def test_monthly_history_normalization_similar_review_and_saved_decision(domain):
+def test_monthly_history_normalizes_punctuation_and_minor_name_changes_without_review(domain):
     session, principal = domain
     publish(session, principal, 1, [invoice()])
-    first = suppliers.list_suppliers(session, principal.scope_id)[0]
     publish(session, principal, 2, [invoice(name="alamo tecnologia SA", tax="TAX100", country="United States")])
-    assert len(suppliers.list_suppliers(session, principal.scope_id)) == 1
-    assert suppliers.list_reviews(session, principal.scope_id) == []
     publish(session, principal, 3, [invoice(name="ALAMO TECNOLOGIAS SA", tax="")])
-    reviews = suppliers.list_reviews(session, principal.scope_id)
-    assert len(reviews) == 1
-    assert reviews[0]["reason"] == "similar_name"
-    result = suppliers.resolve_review(session, principal, reviews[0]["id"], "same", first["id"],
-                                      expected_version=reviews[0]["version"], reason="Misma razón social")
-    assert result["id"] == first["id"]
-    assert suppliers.list_reviews(session, principal.scope_id) == []
-    # A replacement upload with the same spelling automatically reuses the decision.
-    publish(session, principal, 3, [invoice(name="Alamo Tecnologias S.A.", tax="")])
     assert len(suppliers.list_suppliers(session, principal.scope_id)) == 1
-    assert suppliers.list_reviews(session, principal.scope_id) == []
-    alias = suppliers.list_equivalences(session, principal.scope_id)[0]
-    suppliers.update_equivalence(session, principal, alias["id"], expected_version=alias["version"],
-                                  active=False, reason="Retirar equivalencia")
-    assert suppliers.list_reviews(session, principal.scope_id)[0]["reason"] == "equivalence_revoked"
-    with pytest.raises(ApplicationError, match="cambió"):
-        suppliers.update_equivalence(session, principal, alias["id"], expected_version=alias["version"], active=True)
-    alias = suppliers.list_equivalences(session, principal.scope_id)[0]
-    suppliers.update_equivalence(session, principal, alias["id"], first["id"], alias["version"], active=True)
     assert suppliers.list_reviews(session, principal.scope_id) == []
 
 
@@ -99,7 +77,7 @@ def test_virtual_or_history_no_reset_and_replaced_evidence_invalidated(domain):
     # Replacing the month removes its virtual support, without deleting the supplier.
     publish(session, principal, 1, [national])
     detail = suppliers.get_supplier(session, principal.scope_id, supplier["id"])
-    assert detail["virtualOperations"] is None
+    assert detail["virtualOperations"] is False
     assert not next(e for e in detail["evidence"] if e["runId"] == first.id)["active"]
     updated = suppliers.update_supplier(session, principal, supplier["id"],
                                          {"virtualConfirmation": True, "reason": "Confirmación de historial"}, detail["version"])
@@ -109,21 +87,12 @@ def test_virtual_or_history_no_reset_and_replaced_evidence_invalidated(domain):
 
 def test_immex_and_contributor_rfc_never_become_supplier_rfc(domain):
     session, principal = domain
-    publish(session, principal, 1, [invoice("Nacional sin evidencia", "ABC010101AA1", "MEX")], [
+    publish(session, principal, 1, [invoice("Nacional sin virtuales", "ABC010101AA1", "MEX")], [
         {"clave_caso": "V1", "identificador_caso": "42832006", "complemento_caso": "IM"}])
-    review = suppliers.list_reviews(session, principal.scope_id)[0]
-    assert review["reason"] == "virtual_confirmation"
-    assert review["candidate"]["taxId"] == "ABC010101AA1"
-    with pytest.raises(ApplicationError, match="Confirma"):
-        suppliers.resolve_review(session, principal, review["id"], "new", expected_version=review["version"])
-    item = suppliers.resolve_review(session, principal, review["id"], "new", virtual_operations=False,
-                                    expected_version=review["version"], reason="Sin operaciones virtuales")
-    assert item["virtualOperations"] is False
+    national = suppliers.list_suppliers(session, principal.scope_id)[0]
+    assert national["taxId"] == "ABC010101AA1" and national["virtualOperations"] is False
+    assert suppliers.list_reviews(session, principal.scope_id) == []
     publish(session, principal, 2, [invoice("Contribuyente como proveedor", "CON010101AA1", "MEX")])
-    review = suppliers.list_reviews(session, principal.scope_id)[0]
-    assert review["reason"] == "missing_identity"
-    assert review["candidate"]["taxId"] == ""
-    assert review["candidate"]["identityConflict"] == "contributor_rfc"
     assert all(s["taxId"] != "CON010101AA1" for s in suppliers.list_suppliers(session, principal.scope_id))
 
 
@@ -140,33 +109,28 @@ def test_new_505_supplier_uses_older_independent_virtual_evidence_and_tracks_its
     detail = suppliers.get_supplier(session, principal.scope_id, supplier["id"])
     assert any(e["runId"] == first.id and e["virtualConfirmed"] for e in detail["evidence"])
     publish(session, principal, 1, [], [])
-    assert suppliers.get_supplier(session, principal.scope_id, supplier["id"])["virtualOperations"] is None
+    assert suppliers.get_supplier(session, principal.scope_id, supplier["id"])["virtualOperations"] is False
 
 
-def test_later_virtual_evidence_completes_pending_national_alta_without_manual_guess(domain):
+def test_national_is_available_before_virtual_evidence_and_updates_from_history(domain):
     session, principal = domain
-    publish(session, principal, 1, [invoice("Nacional identificado", "ABC010101AA1", "MEX")])
-    assert suppliers.list_reviews(session, principal.scope_id)[0]["reason"] == "virtual_confirmation"
+    publish(session, principal, 1, [invoice("Nacional identificado", "ABC010101AA1", "")])
+    supplier = suppliers.list_suppliers(session, principal.scope_id)[0]
+    assert supplier["type"] == "national" and supplier["virtualOperations"] is False
     publish(session, principal, 2, [], [
         {"clave_caso": "V1", "identificador_caso": "ABC010101AA1", "complemento_caso": "CN"}])
     assert suppliers.list_reviews(session, principal.scope_id) == []
-    assert suppliers.list_suppliers(session, principal.scope_id)[0]["virtualOperations"] is True
+    assert suppliers.get_supplier(session, principal.scope_id, supplier["id"])["virtualOperations"] is True
 
 
-def test_conflicting_data_explicit_new_and_correctable_equivalence(domain):
+def test_optional_fiscal_id_and_address_changes_do_not_duplicate_the_same_foreign_name(domain):
     session, principal = domain
     publish(session, principal, 1, [invoice()])
     existing = suppliers.list_suppliers(session, principal.scope_id)[0]
     publish(session, principal, 2, [invoice(tax="TAX200", calle_proveedor="500 Another St")])
-    review = suppliers.list_reviews(session, principal.scope_id)[0]
-    assert review["reason"] == "conflicting_data"
-    created = suppliers.resolve_review(session, principal, review["id"], "new", expected_version=review["version"],
-                                       reason="Sociedad distinta")
-    assert created["id"] != existing["id"]
-    alias = suppliers.list_equivalences(session, principal.scope_id)[0]
-    suppliers.update_equivalence(session, principal, alias["id"], existing["id"], alias["version"],
-                                  reason="Corregir identificación")
-    assert any(e["period"] == "Febrero_2026" for e in suppliers.get_supplier(session, principal.scope_id, existing["id"])["evidence"])
+    assert suppliers.list_reviews(session, principal.scope_id) == []
+    assert [s["id"] for s in suppliers.list_suppliers(session, principal.scope_id)] == [existing["id"]]
+    assert suppliers.get_supplier(session, principal.scope_id, existing["id"])["evidenceCount"] == 2
 
 
 @pytest.mark.parametrize("code,mode", [("V1", "CN"), ("V1", "RFE"), ("V1", "V2"), ("V2", ""), ("V8", ""), ("V5", ""), ("V6", "")])
@@ -198,33 +162,28 @@ def test_report_immutable_pair_yellow_cycle_and_retry(domain):
     assert any(e.action == "suppliers.report_created" for e in session.scalars(select(AuditEvent)))
 
 
-def test_pending_automatic_report_cancelled_when_any_captured_month_is_replaced(domain):
+def test_completed_monthly_reports_remain_frozen_when_an_earlier_month_is_replaced(domain):
     session, principal = domain
     january = publish(session, principal, 1, [invoice()])
     suppliers.request_monthly_report(session, january, principal.id)
-    initial = suppliers.monthly_report_state(session, principal.scope_id, january.id)
-    assert initial["status"] == "ready"
-    before = suppliers.report_xlsx(session, principal.scope_id, initial["report"]["id"], "foreign")
+    first = suppliers.monthly_report_state(session, principal.scope_id, january.id)
+    before = suppliers.report_xlsx(session, principal.scope_id, first["report"]["id"], "foreign")
     february = publish(session, principal, 2, [invoice(name="ALAMO TECNOLOGIAS SA", tax="")])
     suppliers.request_monthly_report(session, february, principal.id)
-    assert suppliers.monthly_report_state(session, principal.scope_id, february.id)["status"] == "pending_review"
+    second = suppliers.monthly_report_state(session, principal.scope_id, february.id)
+    assert second["status"] == "ready"
+    second_before = suppliers.report_xlsx(session, principal.scope_id, second["report"]["id"], "foreign")
     publish(session, principal, 1, [])
-    assert suppliers.monthly_report_state(session, principal.scope_id, february.id)["status"] == "unavailable"
-    request = next(r for r in suppliers.list_report_requests(session, principal.scope_id) if r["runId"] == february.id)
-    assert request["status"] == "cancelled" and request["reason"] == "source_superseded"
-    assert suppliers.report_xlsx(session, principal.scope_id, initial["report"]["id"], "foreign") == before
+    assert suppliers.report_xlsx(session, principal.scope_id, first["report"]["id"], "foreign") == before
+    assert suppliers.report_xlsx(session, principal.scope_id, second["report"]["id"], "foreign") == second_before
 
 
-def test_national_review_completion_automatically_delivers_both_files(domain):
+def test_national_505_identity_automatically_delivers_both_files_without_confirmation(domain):
     session, principal = domain
     run = publish(session, principal, 1, [invoice("Proveedor nacional", "ABC010101AA1", "MEX")])
     suppliers.request_monthly_report(session, run, principal.id)
-    assert suppliers.monthly_report_state(session, principal.scope_id, run.id)["status"] == "pending_review"
-    review = suppliers.list_reviews(session, principal.scope_id)[0]
-    suppliers.resolve_review(session, principal, review["id"], "new", virtual_operations=False,
-                             expected_version=review["version"], reason="Alta nacional confirmada")
     state = suppliers.monthly_report_state(session, principal.scope_id, run.id)
-    assert state["status"] == "ready"
+    assert state["status"] == "ready" and suppliers.list_reviews(session, principal.scope_id) == []
     national = load_workbook(BytesIO(suppliers.report_xlsx(session, principal.scope_id, state["report"]["id"], "national")))
     assert [cell.value for cell in national.active[2]] == ["ABC010101AA1", "No", "Alta"]
     assert all(cell.fill.fgColor.rgb == "FFFFFF00" for cell in national.active[2])

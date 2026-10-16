@@ -1,0 +1,74 @@
+{
+  "branch": "PostSCSTH",
+  "baseCommit": "ae7a05167d3370276a43e12243e6d64fe53c8d9a",
+  "files": [
+    {
+      "path": "backend/app/modules/suppliers/service.py",
+      "sha256": "407ad43a8b76bbc37014cd3f9d60641e9d53c07299146bc9bb2fdea7feaf4b80"
+    },
+    {
+      "path": "backend/app/supplier_api.py",
+      "sha256": "dccd95c3231e8dee343c0f98933c44999972bfbcf8f1c1b0ef09eeccf02d3b7d"
+    },
+    {
+      "path": "backend/pyproject.toml",
+      "sha256": "98bf167e24a202307f16ef606251377b756d3ca6070a4d5dbafdb3b2651b739b"
+    },
+    {
+      "path": "backend/requirements.lock",
+      "sha256": "3a02e8f1e853c0148cf78f4f8ad350ff7b2b8ade8ecd8d52abed2af8d89512f9"
+    },
+    {
+      "path": "backend/tests/test_supplier_monthly_automatic.py",
+      "sha256": "334a79f27d5d26e7ddc202ab274e950bde25873b71902d2bec7af6d012c857d5"
+    },
+    {
+      "path": "contracts/openapi/datastage.v1.json",
+      "sha256": "ec0774d70be86f3d8b7ea915c72eecf75b5745738529420e6e055c2416ef6293"
+    },
+    {
+      "path": "docs/suppliers.md",
+      "sha256": "e4dcc87c8dabc769e8e28e3a382ab107fcba1bb6717db79c1e3ee27a7d9c3c2a"
+    },
+    {
+      "path": "frontend/src/app/core/supplier-translations.ts",
+      "sha256": "69c34d42dbd380108f5ac5a508ff92d06321906946667c45b8aaf6ce7bea179f"
+    },
+    {
+      "path": "frontend/src/app/core/suppliers.spec.ts",
+      "sha256": "e566b2707c118b0883483194524ae743887b8fed6341cc39902160b1115be4bc"
+    },
+    {
+      "path": "frontend/src/app/core/suppliers.ts",
+      "sha256": "ae5d6c2d1a0f8c0204829d11ec3edc174e96f7bc3b40c28280b8114fe41c3397"
+    },
+    {
+      "path": "frontend/src/app/features/suppliers.html",
+      "sha256": "a3f9f5fad56b3f0121da410e9cf73681bc35e779c457dca436df74ac96b1231d"
+    },
+    {
+      "path": "frontend/src/app/features/suppliers.scss",
+      "sha256": "61daf840590c0ed839d97d5709da075d2827e0483c77e64bae5a1e16aa359194"
+    },
+    {
+      "path": "frontend/src/app/features/suppliers.spec.ts",
+      "sha256": "4402a7e9945db57ed4b17a170357244598bbf7698a15af5aa822f5a5b2651c34"
+    },
+    {
+      "path": "frontend/src/app/features/suppliers.ts",
+      "sha256": "bbf4a95dcd972b9b7f214cad45bd2947758e34fc6afc19178a278c2a1d5a847e"
+    },
+    {
+      "path": "backend/app/modules/suppliers/importer.py",
+      "sha256": "a96fc9f6455731eab0ac5047784289d903cd73a8c2a287e4fdd2eb82794cab25"
+    },
+    {
+      "path": "backend/tests/test_supplier_import.py",
+      "sha256": "db38bf912654fdd72ee21760259c7285025a9b41799d7c0ee4383a4c34a3186c"
+    },
+    {
+      "path": "backend/tests/test_supplier_recognition.py",
+      "sha256": "d6ae145a3d1acd1ae5cb35ed86a235198b50b63dba30379d54a263447fbcd11e"
+    }
+  ]
+}

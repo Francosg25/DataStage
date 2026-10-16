@@ -73,7 +73,7 @@ def resolve_same(client, review, supplier_id):
     return response.json()
 
 
-def test_three_months_generate_paired_reports_and_reuse_confirmed_typo_equivalence(system):
+def test_three_months_generate_paired_reports_and_recognize_supported_typo_automatically(system):
     app, client, settings = system
     key = str(uuid4())
     january = publish(system, 1, ["Johnson Electric LLC"], key=key)
@@ -89,7 +89,6 @@ def test_three_months_generate_paired_reports_and_reuse_confirmed_typo_equivalen
     assert foreign["G2"].value == "Alta"
     assert_highlight(foreign[2], True)
     assert client.get("/api/v1/suppliers").json()["total"] == 1
-    supplier_id = client.get("/api/v1/suppliers").json()["items"][0]["id"]
 
     repeated = test_api_worker.upload(client, entries(1, ["Johnson Electric LLC"]), PERIODS[1], key=key)
     assert repeated.status_code == 202, repeated.text
@@ -102,23 +101,18 @@ def test_three_months_generate_paired_reports_and_reuse_confirmed_typo_equivalen
 
     february = publish(system, 2, ["Johnson Eletric LLC"])
     waiting = state(client, february)
-    assert waiting["status"] == "pending_review"
-    assert waiting["report"] is None and waiting["pending"] == 1
+    assert waiting["status"] == "ready" and waiting["pending"] == 0
     reviews = client.get("/api/v1/suppliers/reviews").json()
-    assert reviews["total"] == 1
-    review = reviews["items"][0]
-    assert review["candidate"]["name"] == "Johnson Eletric LLC"
-    assert any(item["id"] == supplier_id for item in review["suggestions"])
-    assert client.get("/api/v1/suppliers/reports").json()["total"] == 1
+    assert reviews["total"] == 0
+    assert client.get("/api/v1/suppliers/reports").json()["total"] == 2
     assert client.get("/api/v1/suppliers").json()["total"] == 1
     with app.state.session_factory() as session:
         pending_request = session.scalar(select(SupplierReportRequest).where(
             SupplierReportRequest.source_run_id == february))
-        assert pending_request is not None and pending_request.report_id is None
+        assert pending_request is not None and pending_request.report_id is not None
         for kind in ("national", "foreign"):
             assert client.get(f"/api/v1/suppliers/reports/{pending_request.id}/{kind}.xlsx").status_code == 404
 
-    assert resolve_same(client, review, supplier_id)["id"] == supplier_id
     second = state(client, february)
     assert second["status"] == "ready" and second["pending"] == 0
     assert second["report"]["id"] != first_id
@@ -128,7 +122,7 @@ def test_three_months_generate_paired_reports_and_reuse_confirmed_typo_equivalen
     assert foreign_second["A2"].value == "Johnson Electric LLC"
     assert foreign_second["G2"].value == "Sin modificación"
     assert_highlight(foreign_second[2], False)
-    assert client.get("/api/v1/suppliers/equivalences").json()["total"] == 1
+    assert client.get("/api/v1/suppliers/equivalences").json()["total"] == 0
 
     march = publish(system, 3, ["Johnson Eletric LLC"])
     third = state(client, march)
@@ -167,56 +161,37 @@ def test_monthly_report_state_and_requests_respect_scope_and_reader_access(syste
         app.dependency_overrides.clear()
 
 
-def test_pending_month_draft_excludes_suppliers_discovered_by_later_months(system):
+def test_each_month_keeps_its_own_pair_and_later_suppliers_do_not_leak_back(system):
     _, client, _ = system
     january = publish(system, 1, ["Johnson Electric LLC"])
-    january_report = state(client, january)["report"]
-    assert january_report is not None
-    supplier_id = client.get("/api/v1/suppliers").json()["items"][0]["id"]
-    february = publish(system, 2, ["Johnson Eletric LLC"])
-    assert state(client, february)["status"] == "pending_review"
+    first_id = state(client, january)["report"]["id"]
+    first_bytes, _ = workbook(client, first_id, "foreign")
+    february = publish(system, 2, ["Johnson Electronic LLC"])
+    second = state(client, february)
+    assert second["status"] == "ready" and second["pending"] == 0
     march = publish(system, 3, ["Zebra Industrial Components Ltd"])
-    review = client.get("/api/v1/suppliers/reviews").json()["items"][0]
-    assert state(client, february)["report"] is None
-    assert client.get("/api/v1/suppliers").json()["total"] == 2
-    resolve_same(client, review, supplier_id)
-    second, third = state(client, february), state(client, march)
-    assert second["status"] == third["status"] == "ready"
-    _, second_foreign = workbook(client, second["report"]["id"], "foreign")
-    _, third_foreign = workbook(client, third["report"]["id"], "foreign")
-    assert [row[0].value for row in list(second_foreign.rows)[1:]] == ["Johnson Electric LLC"]
-    assert {row[0].value for row in list(third_foreign.rows)[1:]} == {
-        "Johnson Electric LLC", "Zebra Industrial Components Ltd"}
-    assert second_foreign["G2"].value == "Sin modificación"
-    for row in list(third_foreign.rows)[1:]:
-        assert row[-1].value == ("Alta" if row[0].value.startswith("Zebra") else "Sin modificación")
+    third = state(client, march)
+    _, feb = workbook(client, second["report"]["id"], "foreign")
+    _, mar = workbook(client, third["report"]["id"], "foreign")
+    assert {row[0].value for row in list(feb.rows)[1:]} == {"Johnson Electric LLC", "Johnson Electronic LLC"}
+    assert {row[0].value for row in list(mar.rows)[1:]} == {"Johnson Electric LLC", "Johnson Electronic LLC", "Zebra Industrial Components Ltd"}
+    for row in list(mar.rows)[1:]:
         assert_highlight(row, row[0].value.startswith("Zebra"))
-    assert client.get("/api/v1/suppliers/reports").json()["total"] == 3
+    assert workbook(client, first_id, "foreign")[0] == first_bytes
+    assert client.get("/api/v1/suppliers/reviews").json()["total"] == 0
 
 
-def test_new_supplier_decision_automatically_completes_both_monthly_lists(system):
+def test_distinct_new_name_is_added_and_highlighted_without_a_review_step(system):
     _, client, _ = system
     publish(system, 1, ["Johnson Electric LLC"])
-    original_id = client.get("/api/v1/suppliers").json()["items"][0]["id"]
-    february = publish(system, 2, ["Johnson Eletric LLC"])
-    assert state(client, february)["status"] == "pending_review"
-    review = client.get("/api/v1/suppliers/reviews").json()["items"][0]
-    response = client.post(f"/api/v1/suppliers/reviews/{review['id']}/resolve", json={
-        "decision": "new", "expectedVersion": review["version"],
-        "reason": "Se confirmó que la razón social similar corresponde a otra entidad",
-    })
-    assert response.status_code == 200, response.text
-    assert response.json()["id"] != original_id
+    february = publish(system, 2, ["Johnson Electronic LLC"])
     completed = state(client, february)
     assert completed["status"] == "ready" and completed["pending"] == 0
     workbook(client, completed["report"]["id"], "national")
     _, foreign = workbook(client, completed["report"]["id"], "foreign")
     rows = {row[0].value: row for row in list(foreign.rows)[1:]}
-    assert set(rows) == {"Johnson Electric LLC", "Johnson Eletric LLC"}
-    assert rows["Johnson Electric LLC"][-1].value == "Sin modificación"
+    assert set(rows) == {"Johnson Electric LLC", "Johnson Electronic LLC"}
+    assert rows["Johnson Electronic LLC"][-1].value == "Alta"
+    assert_highlight(rows["Johnson Electronic LLC"], True)
     assert_highlight(rows["Johnson Electric LLC"], False)
-    assert rows["Johnson Eletric LLC"][-1].value == "Alta"
-    assert_highlight(rows["Johnson Eletric LLC"], True)
-    assert client.get("/api/v1/suppliers").json()["total"] == 2
     assert client.get("/api/v1/suppliers/reviews").json()["total"] == 0
-    assert client.get("/api/v1/suppliers/reports").json()["total"] == 2

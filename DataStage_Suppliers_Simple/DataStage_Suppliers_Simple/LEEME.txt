@@ -1,0 +1,25 @@
+DATASTAGE - SUPPLIERS SIMPLIFICADO
+
+APLICAR
+1. Extrae el ZIP completo. Cierra los procesos locales y ejecuta APLICAR.bat.
+2. Selecciona la carpeta DataStage que tiene activa PostSCSTH. El aplicador comprueba los archivos y crea un respaldo junto al proyecto antes de actualizar.
+3. Reinicia backend, worker y frontend con los tres comandos habituales.
+4. En Suppliers, abre Listas originales, selecciona los dos Excel y pulsa Usar estas listas. Si ya estaban incorporadas y no necesitas actualizar el formato, pulsa Actualizar listas.
+
+El paquete acepta la version ae7a051 de PostSCSTH y la actualizacion anterior DataStage_Suppliers_PostSCSTH. Si encuentra otros cambios en un archivo que necesita actualizar, se detiene antes de modificar el proyecto. Aplicarlo de nuevo no duplica los cambios.
+
+USO
+Suppliers muestra dos tarjetas: Extranjeros y Nacionales. Los meses siguientes preparan ambos Excel automaticamente. Las altas nuevas llevan toda la fila amarilla; en el siguiente reporte pasan a Sin modificacion. Puedes descargar cada lista o ambas y elegir reportes anteriores.
+
+REGLAS
+Los proveedores nuevos proceden de 505. Los nacionales se identifican por IndentFiscalProveedor (columna P del formato con trazabilidad). 507 no crea proveedores; respalda unicamente las operaciones virtuales del historial. Se excluyen los clientes de exportacion y el RFC propio del contribuyente.
+Las diferencias de puntuacion, espacios, abreviaciones y errores menores se reconocen automaticamente. PTM-AEC reutiliza PTM CORPORATION. Los datos opcionales faltantes se dejan vacios y no exigen una revision antes de descargar.
+Se conservan las columnas, las filas iniciales y el formato de los archivos seleccionados, incluidas las hojas auxiliares. Las descargas historicas permanecen fijas y no consumen altas. Las listas privadas se cargan en el ambito del usuario; no vienen incluidas en el paquete.
+
+ENTORNO
+Las dependencias declaradas del backend incluyen openpyxl para XLSX y xlrd para XLS. Usa el entorno virtual habitual. El aplicador solo copia codigo y crea el respaldo; no instala dependencias, abre la base de datos ni ejecuta comandos de publicacion de Git.
+Si tu entorno no tiene xlrd y no permite instalarlo, guarda tus dos listas como .xlsx desde Excel antes de seleccionarlas. Si falta openpyxl, se necesita actualizar esa dependencia del entorno con el mecanismo autorizado de tu empresa.
+
+VALIDACION
+54 pruebas de Suppliers en backend, 101 pruebas de frontend y compilacion de produccion. Con el historico enero-septiembre y las listas originales: 235 extranjeros, 46 nacionales y ninguna revision obligatoria. Las comprobaciones cubren color de altas, formatos, listas acumulativas, reintentos, permisos y reportes historicos. Tambien se verifico el flujo completo en navegador, en espanol, ingles y movil.
+La suite general conserva seis fallos anteriores en exportaciones y catalogo de numeros de parte, reproducidos en ae7a051 sin esta actualizacion. Esos modulos no forman parte del cambio.

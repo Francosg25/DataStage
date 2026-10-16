@@ -72,10 +72,7 @@ import { Icon } from "../shared/ui";
         @if (state(); as value) {
           @if (value.status === "ready" && value.report) {
             <p>
-              {{
-                "Ambas listas están listas y comparten la misma instantánea."
-                  | t
-              }}
+              {{ "Las listas de proveedores están disponibles." | t }}
               {{ value.report.label }}
             </p>
             <div class="supplier-run-actions">
@@ -88,35 +85,23 @@ import { Icon } from "../shared/ui";
                   (downloading() ? "Descargando" : "Descargar ambas listas") | t
                 }}
               </button>
-              <a
-                mat-stroked-button
-                routerLink="/suppliers"
-                [queryParams]="{ tab: 'reports' }"
-                >{{ "Ver reportes de proveedores" | t }}</a
-              >
+              <a mat-stroked-button routerLink="/suppliers">{{
+                "Ver listas de proveedores" | t
+              }}</a>
             </div>
           } @else if (value.status === "pending_review") {
             <p class="supplier-run-pending" role="status">
-              {{
-                "El reporte espera decisiones de identificación u operaciones virtuales. Al resolverlas se generan automáticamente ambas listas."
-                  | t
-              }}
+              {{ "Preparando las listas de proveedores." | t }}
             </p>
-            <p>{{ value.pending }} {{ "proveedores por revisar" | t }}</p>
-            <a
-              mat-flat-button
-              routerLink="/suppliers"
-              [queryParams]="{ tab: 'reviews' }"
-              >{{ "Revisar proveedores" | t }}</a
-            >
+
+            <a mat-flat-button routerLink="/suppliers">{{
+              "Ver listas de proveedores" | t
+            }}</a>
           } @else {
             <p>{{ "No hay un reporte automático para esta ejecución." | t }}</p>
-            <a
-              mat-stroked-button
-              routerLink="/suppliers"
-              [queryParams]="{ tab: 'reports' }"
-              >{{ "Ver reportes de proveedores" | t }}</a
-            >
+            <a mat-stroked-button routerLink="/suppliers">{{
+              "Ver listas de proveedores" | t
+            }}</a>
           }
         }
       </div>

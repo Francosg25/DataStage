@@ -1,4 +1,56 @@
 export const SUPPLIER_ENGLISH: Record<string, string> = {
+  "Al procesar cada mes se actualizan las dos listas acumulativas.":
+    "Both cumulative lists update when each month is processed.",
+  "Actualizar listas": "Update lists",
+  "Actualizando listas de proveedores": "Updating supplier lists",
+  "Listas originales": "Original lists",
+  "Selecciona ambos Excel una sola vez para conservar su formato y sus proveedores.":
+    "Select both Excel files once to preserve their format and suppliers.",
+  "Importando listas": "Importing lists",
+  "Usar estas listas": "Use these lists",
+  "Listas originales incorporadas. Los Excel están actualizados.":
+    "Original lists imported. The Excel files are up to date.",
+  "Listas acumulativas": "Cumulative lists",
+  proveedores: "suppliers",
+  "Descargar Excel": "Download Excel",
+  "Los proveedores nuevos tienen toda la fila amarilla.":
+    "New suppliers have their entire row highlighted in yellow.",
+  "Las dos listas estarán disponibles al procesar un mes o incorporar las listas originales.":
+    "Both lists will be available after processing a month or importing the original lists.",
+  "Cargar reportes anteriores": "Load earlier reports",
+  "Preparando las listas de proveedores.": "Preparing supplier lists.",
+  "Las listas de proveedores están disponibles.":
+    "Supplier lists are available.",
+  "Ver listas de proveedores": "View supplier lists",
+  "Falta actualizar el lector de Excel del backend. Revisa las dependencias xlrd y openpyxl":
+    "The backend Excel reader needs updating. Check the xlrd and openpyxl dependencies",
+  "Importar listas iniciales": "Import initial lists",
+  "Selecciona las dos listas una sola vez. Se conservan los proveedores existentes.":
+    "Select both lists once. Existing suppliers are preserved.",
+  "Lista de extranjeros": "Foreign supplier list",
+  "Lista de nacionales": "Domestic supplier list",
+  "Importar y reconocer proveedores": "Import and match suppliers",
+  "Listas iniciales incorporadas. Las coincidencias se actualizaron automáticamente.":
+    "Initial lists imported. Matches were updated automatically.",
+  "La lista inicial coincide con más de un proveedor del catálogo":
+    "The initial list matches more than one supplier in the catalog",
+  "Cada lista debe contener datos y pesar hasta 5 MB":
+    "Each list must contain data and be no larger than 5 MB",
+  "No se pudo leer la lista. Selecciona un Excel .xls o .xlsx válido de hasta 5000 proveedores":
+    "The list could not be read. Select a valid .xls or .xlsx workbook with up to 5000 suppliers",
+  "La lista no contiene proveedores": "The list does not contain suppliers",
+  "Listas acumulativas del mes": "Monthly cumulative lists",
+  "incidencias que afectan estas listas": "issues affecting these lists",
+  "Las dos listas se preparan al publicar un mes.":
+    "Both lists are prepared when a month is published.",
+  "Revisar incidencias": "Review issues",
+  "Actualizar coincidencias": "Update matches",
+  "Administración de proveedores": "Supplier administration",
+  "Incidencias del historial": "Issues in the history",
+  "Historial de reportes": "Report history",
+  Domicilio: "Address",
+  "Solo se muestran conflictos sin resolver del historial. Cada decisión se aplica a las facturas agrupadas y a cargas posteriores.":
+    "Only unresolved issues in the history are shown. Each decision applies to grouped invoices and later uploads.",
   Buscar: "Search",
   Todos: "All",
   Acciones: "Actions",

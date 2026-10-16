@@ -1,7 +1,7 @@
 """Scoped supplier catalog, review decisions and immutable paired reports."""
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, File, Header, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -123,7 +123,22 @@ def monthly_supplier_report(run_id: str, session: DB, principal: Reader):
 @router.post("/sync")
 def synchronize(session: DB, principal: Identity):
     principal.require("Operator")
-    result = service.sync_active_history(session, principal.scope_id, principal.id)
+    result = service.refresh_lists(session, principal)
+    commit_or_conflict(session)
+    return result
+
+
+@router.post("/import")
+async def import_lists(session: DB, principal: Identity,
+                       national: Annotated[UploadFile, File()], foreign: Annotated[UploadFile, File()]):
+    principal.require("Admin")
+    from app.modules.suppliers.importer import MAX_BYTES, read_workbook
+    payload = {"schemas": {**service.DEFAULT_SCHEMAS, "_templates": {}}}
+    for kind, upload in (("national", national), ("foreign", foreign)):
+        payload[kind], payload["schemas"]["_templates"][kind] = read_workbook(
+            await upload.read(MAX_BYTES + 1), upload.filename or "", kind)
+    service.initialize_seed(session, principal, payload, synchronize=False)
+    result = service.refresh_lists(session, principal)
     commit_or_conflict(session)
     return result
 

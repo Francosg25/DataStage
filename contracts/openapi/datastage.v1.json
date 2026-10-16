@@ -4562,6 +4562,50 @@
         ]
       }
     },
+    "/api/v1/suppliers/import": {
+      "post": {
+        "tags": [
+          "Suppliers"
+        ],
+        "summary": "Import Lists",
+        "operationId": "import_lists_api_v1_suppliers_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_lists_api_v1_suppliers_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EntraBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/suppliers/{supplier_id}": {
       "patch": {
         "tags": [
@@ -5015,6 +5059,26 @@
         "additionalProperties": false,
         "type": "object",
         "title": "AnnualRequest"
+      },
+      "Body_import_lists_api_v1_suppliers_import_post": {
+        "properties": {
+          "national": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "National"
+          },
+          "foreign": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Foreign"
+          }
+        },
+        "type": "object",
+        "required": [
+          "national",
+          "foreign"
+        ],
+        "title": "Body_import_lists_api_v1_suppliers_import_post"
       },
       "Body_monthly_run_api_v1_monthly_runs_post": {
         "properties": {

@@ -4,7 +4,13 @@ import { Page } from "./models";
 import { map } from "rxjs";
 
 export type SupplierKind = "national" | "foreign";
-export type SupplierTab = "reviews" | "catalog" | "reports" | "equivalences";
+export type SupplierTab =
+  | "national"
+  | "foreign"
+  | "reviews"
+  | "catalog"
+  | "reports"
+  | "equivalences";
 export interface SupplierFields {
   kind: SupplierKind;
   name: string;
@@ -109,6 +115,7 @@ export interface SupplierReportRequest {
   pending: number;
 }
 export interface SupplierSummary {
+  initialized?: boolean;
   catalog?: number;
   national: number;
   foreign: number;
@@ -158,6 +165,12 @@ export class SuppliersApi {
 
   summary() {
     return this.http.get<SupplierSummary>(`${this.base}/summary`);
+  }
+  importLists(national: File, foreign: File) {
+    const body = new FormData();
+    body.append("national", national);
+    body.append("foreign", foreign);
+    return this.http.post<SupplierSummary>(`${this.base}/import`, body);
   }
   catalog(query: SupplierQuery) {
     return this.http

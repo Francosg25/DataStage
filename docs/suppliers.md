@@ -1,30 +1,37 @@
 # Proveedores acumulativos
 
-La sección `/suppliers` reúne **Por revisar**, **Catálogo**, **Reportes** y **Equivalencias**. Los usuarios con acceso de lectura pueden consultar el catálogo, la evidencia y descargar reportes. Las altas, ediciones, decisiones, equivalencias y generación de reportes requieren Operator o Admin. Los datos y las decisiones se aíslan por el mismo ámbito que las cargas y se registran en la auditoría existente.
+Suppliers está centrado en dos archivos: Extranjeros y Nacionales. Cada publicación mensual actualiza las listas acumulativas y prepara los dos Excel. No se requiere revisar ni editar cientos de proveedores para descargarlos.
 
-La publicación mensual incorpora automáticamente los registros 505 del historial vigente y solicita las dos listas Excel. El catálogo conserva proveedores aunque dejen de aparecer. La normalización de nombres ignora espacios, puntuación, acentos y mayúsculas. Las similitudes y las contradicciones se presentan para confirmar **Es el mismo proveedor** o **Es un proveedor nuevo**. Por ejemplo, `Johnson Eletric` y `Johnson Electric` se presentan como posible coincidencia; la decisión confirmada se reconoce automáticamente en meses posteriores. Las equivalencias pueden cambiarse o retirarse desde su pestaña. Las ediciones verifican la versión leída para evitar sobrescribir cambios concurrentes.
+## Uso
 
-Los datos de identidad proceden de 505. Los cruces con 501 y 507 conservan las referencias a los registros de origen. El RFC del contribuyente en 501 no se asigna al proveedor. Los complementos de 507 que representan autorizaciones IMMEX no se interpretan como RFC. El país de facturación tampoco basta para resolver una identidad contradictoria. Los identificadores virtuales se interpretan de forma conservadora con base en el [Anexo 22 de las RGCE 2026, apéndice 8](https://www.sat.gob.mx/minisitio/NormatividadRMFyRGCE/documentos2026/rgce/compiladas/CompiladoAnexo22_2daRMRGCE2026.pdf).
+1. En **Listas originales**, un administrador selecciona sus dos archivos `.xls` o `.xlsx` y pulsa **Usar estas listas**. Se conservan sus columnas, proveedores, orden, formato y hojas auxiliares. También funciona si ya había meses procesados. La lista nacional puede contener únicamente los encabezados si no hay proveedores de ese tipo.
+2. Al publicar los meses siguientes, ambos Excel quedan disponibles automáticamente. Las altas nuevas llevan toda la fila amarilla. En el siguiente reporte pasan a **Sin modificación** y dejan de resaltarse.
+3. Se puede descargar cada lista o ambas juntas. El selector permite volver a un reporte anterior. Las descargas utilizan el mismo reporte y no generan otra versión ni consumen las altas.
+4. **Actualizar listas** aplica el reconocimiento al historial que ya existía antes de esta actualización. Si nada cambió, conserva el mismo reporte. Al abrir la pantalla solo se leen las listas; no se recorre todo el historial en cada visita.
 
-**Operaciones virtuales** es Sí cuando existe evidencia confirmada en el historial vigente o una confirmación manual válida. Un mes sin evidencia no elimina el Sí de otro mes. El reproceso o la eliminación de un mes retira su evidencia del historial vigente. Las confirmaciones manuales pueden corregirse o retirarse. Cuando un alta nacional carece de evidencia suficiente, la revisión solicita confirmar Sí o No.
+No se necesita volver a cargar las listas originales cada mes. Pueden seleccionarse de nuevo si es necesario incorporar una base o un formato actualizado. Las filas iniciales se conservan incluso cuando comparten nombres similares; la normalización evita agregar otra vez las variantes detectadas en las facturas.
 
-Cada reporte congela las dos listas en una sola transacción. Sus descargas se reconstruyen exclusivamente desde esa instantánea: editar el catálogo, retirar una equivalencia o publicar otro mes no cambia reportes anteriores. Las filas nuevas tienen estatus Alta y relleno amarillo en todas sus columnas. En el siguiente reporte pasan a Sin modificación. La inicialización conserva los estatus de las listas originales. Los reintentos deben reutilizar `Idempotency-Key`; una misma clave con otro contenido produce conflicto.
+## Fuentes y reconocimiento
 
-Si no hay dudas, el reporte mensual queda listo automáticamente al publicar. Si hay revisiones o confirmaciones nacionales faltantes, la solicitud conserva un borrador del catálogo y las fuentes de esa publicación. Al resolverlas se completan ambas listas automáticamente. Un mes cargado después no agrega datos al borrador anterior. El resultado mensual enlaza el reporte listo o las revisiones pendientes; también se consultan desde Reportes. Descargar un reporte existente no genera uno nuevo ni consume sus altas.
+- **505 Facturas** aporta los nuevos proveedores y sus datos. Los nacionales se identifican por un RFC válido en **IndentFiscalProveedor**, que corresponde a la columna **P** del archivo con columnas de trazabilidad. Se usa el nombre del campo; su posición puede cambiar en otros formatos.
+- El cruce con **501** distingue las importaciones de las exportaciones. Las facturas de exportación corresponden a clientes y no crean proveedores. El RFC del contribuyente no sustituye al RFC del proveedor.
+- **507 no genera altas nacionales**. Solo respalda el indicador de operaciones virtuales de proveedores identificados en 505 o presentes en las listas originales. Una autorización IMMEX no se interpreta como RFC. El indicador conserva **Si** cuando hay evidencia en el historial vigente o en la lista inicial; un mes sin virtuales no lo reinicia.
+- Los espacios, puntuación, acentos, mayúsculas, sufijos y abreviaciones societarias se normalizan para comparar nombres. Las variantes suficientemente próximas se reconocen automáticamente. Las filiales con nombres distintos permanecen separadas. La equivalencia confirmada **PTM-AEC → PTM CORPORATION** reutiliza la fila original.
+- La falta de identificador extranjero, país, calle u otros datos opcionales no bloquea los archivos. Los datos ausentes quedan vacíos. Un país vacío no se sustituye por un país adivinado. La separación operativa nacional se basa en el RFC de 505; la ausencia de país en una fila extranjera sigue significando país desconocido.
+- Un proveedor ya incorporado permanece en la lista acumulativa aunque no tenga facturas en otro mes.
 
-## Inicialización local y evidencia histórica
+## Archivos y consistencia
 
-La extracción de los XLS originales y del anual se documenta en [validación de fuentes](supplier-source-validation.md). El archivo de extracción contiene información privada y permanece bajo `.data`, fuera de Git. Su ámbito debe coincidir con el ámbito configurado; las listas nunca se distribuyen automáticamente a otras empresas.
+Nacionales conserva **RFC**, **Operaciones virtuales** y **Estatus**. Extranjeros conserva **Nombre o Razón social**, **Apellido Paterno**, **Apellido Materno**, **País **, **Domicilio**, **Cliente/Proveedor** y **Estatus**, incluido el espacio original del encabezado País.
 
-Con las migraciones aplicadas, desde `backend`:
+Los XLS se convierten a XLSX conservando el formato de celdas, fuentes, bordes, alineaciones, anchos, alturas y hojas auxiliares. Los XLSX seleccionados se utilizan como plantilla, conservando sus hojas y validaciones. Los dos archivos se generan desde una instantánea común. Los nombres y RFC se exportan como texto literal, sin ejecutarlos como fórmulas. Las filas nuevas heredan el formato del cuerpo y añaden únicamente el relleno amarillo.
 
-```powershell
-..\.venv\Scripts\python.exe -m app.cli.suppliers --seed ..\.data\supplier-seed.json --scope local --initial-report --output ..\.data\supplier-reports
-..\.venv\Scripts\python.exe -m app.cli.suppliers --seed ..\.data\supplier-seed.json --scope local --baseline-only
-```
+Los reportes publicados permanecen inmutables. Una importación o corrección posterior produce listas actualizadas sin modificar descargas históricas. Los reintentos de publicación no duplican reportes. Las decisiones y registros históricos de la versión anterior se conservan; su administración avanzada deja de formar parte de la pantalla principal.
 
-El primer paso conserva las 250 filas iniciales y crea una instantánea repetible. Los 13 estatus Alta que ya estaban en la lista extranjera se conservan como datos históricos; las filas amarillas identifican altas nuevas detectadas por la aplicación. El segundo incorpora una sola vez la evidencia del anual regenerado, sin inventar ejecuciones mensuales. Ambos pasos admiten reintentos sin duplicar datos.
+## Administración
 
-Una publicación mensual sustituye la evidencia inicial del mismo mes. La evidencia sustituida permanece histórica y no vuelve a estar vigente al eliminar la publicación posterior.
+Los ámbitos de acceso y roles existentes se conservan. Reader descarga los archivos de su ámbito. Operator o Admin actualiza listas. Admin incorpora las listas originales. Los Excel privados, sus datos y la base de datos no se incluyen en el código ni se importan automáticamente en otros ámbitos.
 
-Las tablas de persistencia se incorporan mediante una migración aditiva de Alembic. En producción se aplica con la identidad de migración habitual antes de actualizar API y worker. El inicio local también aplica las migraciones.
+Se admiten hasta 5 MB y 5000 filas por lista. `xlrd` permite leer XLS y `openpyxl` permite conservar y generar XLSX; ambas dependencias están declaradas en el backend. No se necesita una migración adicional sobre las migraciones de Suppliers que ya existen.
+
+La alternativa administrativa para importar una base histórica sigue disponible en `app.cli.suppliers` y se explica en [validación de fuentes](supplier-source-validation.md). Este flujo usa una extracción privada guardada bajo `.data`; no requiere publicar los archivos de proveedores en Git.

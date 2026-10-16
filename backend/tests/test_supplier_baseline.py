@@ -137,15 +137,9 @@ def test_national_country_does_not_make_foreign_tax_number_a_valid_supplier_rfc(
     payload["baseline"]["tables"]["505"][0].update(
         PaisFacturacion="MEX", IndentFiscalProveedor="06-0000010", ProveedorMercancia="Another foreign supplier")
     service.ingest_baseline(session, user, payload)
-    reviews = service.list_reviews(session, user.scope_id)
-    assert len(reviews) == 1
-    assert reviews[0]["reason"] == "missing_identity"
-    assert session.scalar(select(func.count()).select_from(Supplier)) == 2
-    foreign = session.scalar(select(Supplier).where(Supplier.kind == "foreign"))
-    service.resolve_review(session, user, reviews[0]["id"], "same", foreign.id,
-                           expected_version=reviews[0]["version"], reason="Country field contradicts established supplier")
     assert service.list_reviews(session, user.scope_id) == []
+    assert service.summary(session, user.scope_id)["national"] == 1
+    assert service.summary(session, user.scope_id)["foreign"] == 2
     payload["baseline"]["source"]["sha256"] = "d" * 64
     service.ingest_baseline(session, user, payload)
-    assert service.list_reviews(session, user.scope_id) == []
-    assert session.scalar(select(func.count()).select_from(Supplier)) == 2
+    assert service.summary(session, user.scope_id)["catalog"] == 3

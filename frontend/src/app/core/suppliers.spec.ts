@@ -34,6 +34,19 @@ describe("supplier API contracts", () => {
     TestBed.resetTestingModule();
   });
 
+  it("uploads both selected lists as files without choosing a scope from the browser", async () => {
+    const national = new File(["national"], "national.xls");
+    const foreign = new File(["foreign"], "foreign.xlsx");
+    const promise = firstValueFrom(api.importLists(national, foreign));
+    await Promise.resolve();
+    const request = http.expectOne("/api/v1/suppliers/import");
+    expect(request.request.body.get("national")).toBe(national);
+    expect(request.request.body.get("foreign")).toBe(foreign);
+    expect(request.request.body.has("scopeId")).toBe(false);
+    request.flush({ initialized: true, national: 1, foreign: 1 });
+    await promise;
+  });
+
   it("preserves identification strings, accepts domain aliases and omits empty type filters", async () => {
     const promise = firstValueFrom(
       api.catalog({ search: "Águila", type: "", offset: 25, limit: 25 }),

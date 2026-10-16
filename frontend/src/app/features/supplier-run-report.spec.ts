@@ -64,7 +64,7 @@ describe("automatic monthly supplier report", () => {
     );
   });
 
-  it("directs unresolved identity decisions to review and does not download an incomplete snapshot", async () => {
+  it("shows preparation while the monthly pair is not ready", async () => {
     const { fixture, component, api } = setup(
       of({ ...ready, status: "pending_review", pending: 2, report: null }),
     );
@@ -74,10 +74,10 @@ describe("automatic monthly supplier report", () => {
     component.download();
     expect(api.download).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain(
-      "automatically generates both lists",
+      "Preparing supplier lists.",
     );
     expect(fixture.nativeElement.querySelector("a").getAttribute("href")).toBe(
-      "/suppliers?tab=reviews",
+      "/suppliers",
     );
   });
 
