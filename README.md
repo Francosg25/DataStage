@@ -1,5 +1,9 @@
 # DataStage
 
+## Proveedores
+
+El catálogo acumulativo de proveedores nacionales y extranjeros está en `/suppliers`. Incluye revisión de identidades, equivalencias corregibles, evidencia y reportes Excel por instantánea. Consulta el [flujo de proveedores](docs/suppliers.md).
+
 ## Análisis de operaciones
 
 El dashboard está en `/analytics`: evolución mensual, comercio, contribuciones, selección aduanera, cobertura y comparación de meses. Incluye filtros, datos detrás de las gráficas, descarga CSV/PNG y cambio español/inglés. Consulta [definiciones y fuentes](docs/analytics.md).

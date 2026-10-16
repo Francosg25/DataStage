@@ -11,6 +11,7 @@ from fastapi.openapi.utils import get_openapi
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from app.api import router
+from app.supplier_api import router as supplier_router
 from app.core.config import Settings
 from app.core.body_limit import BodyLimitMiddleware
 from app.core.errors import ApplicationError
@@ -39,7 +40,7 @@ def create_app(settings=None):
     app.state.analytics_cache = ReportCache()
     app.state.session_factory, app.state.storage = session_factory(engine), storage
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins,
-                       allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
+                       allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
                        expose_headers=["Location", "Content-Disposition", "X-Correlation-ID"])
     app.add_middleware(BodyLimitMiddleware, upload_bytes=settings.max_upload_mb * 1024 * 1024,
                        source_bytes=settings.max_file_mb * 1024 * 1024)
@@ -104,6 +105,7 @@ def create_app(settings=None):
         except Exception:
             return JSONResponse(status_code=503, content={"status": "not_ready"})
     app.include_router(router)
+    app.include_router(supplier_router)
     def openapi_schema():
         if app.openapi_schema is None:
             schema = get_openapi(title=app.title, version=app.version, routes=app.routes,

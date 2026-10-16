@@ -215,7 +215,7 @@ def inputs_for_run(factory, store, settings, run):
                 # The deterministic engine classifies non-text content as a per-file error.
                 content = raw
                 ingestion_issues.append({"fileId": file_id, "fileName": name, "code": "INVALID_ENCODING",
-                                         "message": f"No se pudo interpretar el archivo con UTF-8 ni Windows-1252."})
+                                         "message": "No se pudo interpretar el archivo con UTF-8 ni Windows-1252."})
             inputs.append(InputFile(file_name=name, content=content, period=period, table_code=code, file_id=file_id))
         metadata.append(meta)
     return inputs, documents, metadata, ingestion_issues
@@ -319,6 +319,13 @@ def process_job(factory, store, settings, job):
             "rows": sum(len(table["rows"]) for table in result["tables"]),
             "warnings": len(result["warnings"]), "errors": len(result["errors"]),
         })
+        if run.kind == "monthly" and publication == "published":
+            # Publication and supplier provenance are one transaction. A retried
+            # job cannot expose a month without its cumulative supplier update.
+            from app.modules.suppliers.service import request_monthly_report, sync_active_history
+            session.flush()
+            sync_active_history(session, run.scope_id, "worker")
+            request_monthly_report(session, current, "worker")
         session.add(OutboxMessage(run_id=run.id, event_type="export.requested"))
         if run.kind == "monthly" and publication == "published" and settings.auto_annual:
             session.add(OutboxMessage(run_id=run.id, event_type="monthly.published"))

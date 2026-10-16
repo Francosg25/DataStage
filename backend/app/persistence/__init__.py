@@ -33,6 +33,7 @@ def session_factory(engine: Engine):
 
 
 from . import models  # noqa: E402,F401
+from . import suppliers  # noqa: E402,F401
 from .business import get_business_table, persist_business_rows  # noqa: E402,F401
 
 __all__ = ["Base", "make_engine", "session_factory", "models", "get_business_table", "persist_business_rows"]

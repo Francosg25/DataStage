@@ -1,4 +1,7 @@
+import { SUPPLIER_ENGLISH } from "./supplier-translations";
+
 export const ENGLISH: Record<string, string> = {
+  ...SUPPLIER_ENGLISH,
   "Mapas del proyecto": "Project maps",
   Desde: "From",
   Hasta: "Through",

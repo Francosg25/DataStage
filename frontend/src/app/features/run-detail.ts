@@ -18,6 +18,7 @@ import { Api } from "../core/api";
 import { Auth } from "../core/auth";
 import { Run, DataRow, errorText, isTerminal, runLabel } from "../core/models";
 import { Icon, Status, DataTable } from "../shared/ui";
+import { SupplierRunReport } from "./supplier-run-report";
 @Component({
   selector: "ds-run-detail",
   imports: [
@@ -35,6 +36,7 @@ import { Icon, Status, DataTable } from "../shared/ui";
     Icon,
     Status,
     DataTable,
+    SupplierRunReport,
   ],
   template: `
     <a routerLink="/runs" class="back-link">
@@ -59,11 +61,19 @@ import { Icon, Status, DataTable } from "../shared/ui";
         <div class="heading-actions">
           <ds-status [value]="r.functionalResult || r.status" />
           @if (r.exportDocumentId) {
-            <button mat-flat-button (click)="download()" [disabled]="busy() || r.exportStatus !== 'ready'">
+            <button
+              mat-flat-button
+              (click)="download()"
+              [disabled]="busy() || r.exportStatus !== 'ready'"
+            >
               <ds-icon name="download" /> {{ "Descargar Excel" | t }}
             </button>
             @if (terminal(r) && canExport()) {
-              <button mat-stroked-button (click)="export(true)" [disabled]="busy()">
+              <button
+                mat-stroked-button
+                (click)="export(true)"
+                [disabled]="busy()"
+              >
                 {{ "Regenerar Excel" | t }}
               </button>
             }
@@ -112,6 +122,12 @@ import { Icon, Status, DataTable } from "../shared/ui";
           /></span>
         </div>
       </section>
+      @if (
+        r.kind.toUpperCase() === "MONTHLY" &&
+        r.publicationStatus.toLowerCase() === "published"
+      ) {
+        <ds-supplier-run-report [runId]="r.id" />
+      }
       <div class="stats-grid compact-stats">
         <article class="stat-card">
           <span> {{ "Archivos recibidos" | t }} </span

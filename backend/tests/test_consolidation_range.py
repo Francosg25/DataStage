@@ -12,7 +12,10 @@ from app.modules.engine import InputFile, process_annual
 from app.modules.engine.models import ConsolidationRange
 from app.modules.identity.auth import Principal, current_principal
 from app.persistence.models import AnnualSource, Run
-from test_api_worker import ASC, drain, get_run, system, upload
+import test_api_worker
+from test_api_worker import ASC, drain, get_run, upload
+
+system = test_api_worker.system
 
 
 RANGE = {"startYear": 2025, "startMonth": 4, "endYear": 2026, "endMonth": 3}

@@ -244,6 +244,7 @@ export class App {
     { path: "/runs", label: "Historial de procesos", icon: "history" },
     { path: "/annual", label: "Comparativa mensual", icon: "calendar" },
     { path: "/data", label: "Consulta de datos", icon: "database" },
+    { path: "/suppliers", label: "Proveedores", icon: "suppliers" },
     { path: "/agent", label: "Asistente", icon: "spark" },
     { path: "/project-maps", label: "Mapas del proyecto", icon: "map" },
     { path: "/administration", label: "Administración", icon: "settings" },

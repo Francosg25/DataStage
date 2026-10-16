@@ -1,0 +1,899 @@
+<div class="page-heading">
+  <div>
+    <span class="eyebrow">{{ "IDENTIFICACIÓN Y TRAZABILIDAD" | t }}</span>
+    <h1>{{ "Proveedores" | t }}</h1>
+    <p>
+      {{ "Catálogo acumulativo de proveedores nacionales y extranjeros." | t }}
+    </p>
+  </div>
+  <div class="supplier-actions">
+    <button
+      mat-stroked-button
+      (click)="refresh()"
+      [disabled]="loading() || busy()"
+    >
+      {{ "Actualizar" | t }}
+    </button>
+    @if (canEdit()) {
+      <button mat-flat-button (click)="addSupplier()" [disabled]="busy()">
+        <ds-icon name="file" /> {{ "Agregar proveedor" | t }}
+      </button>
+    }
+  </div>
+</div>
+
+<div class="supplier-metrics" [attr.aria-busy]="summaryLoading()">
+  <div>
+    <strong>{{ summary() ? i18n.number(summary()!.national) : "—" }}</strong
+    ><span>{{ "Nacionales" | t }}</span>
+  </div>
+  <div>
+    <strong>{{ summary() ? i18n.number(summary()!.foreign) : "—" }}</strong
+    ><span>{{ "Extranjeros" | t }}</span>
+  </div>
+  <div>
+    <strong>{{ summary() ? i18n.number(summary()!.pending) : "—" }}</strong
+    ><span>{{ "Por revisar" | t }}</span>
+  </div>
+  <div>
+    <strong>{{ summary() ? i18n.number(summary()!.reports) : "—" }}</strong
+    ><span>{{ "Reportes" | t }}</span>
+  </div>
+</div>
+
+@if (notice()) {
+  <div class="supplier-notice" role="status">
+    <ds-icon name="check" />{{ notice() | t }}
+  </div>
+}
+@if (error()) {
+  <div class="error-message" role="alert">
+    {{ error() | t }}
+    <button mat-button (click)="refresh()" [disabled]="busy()">
+      {{ "Reintentar" | t }}
+    </button>
+  </div>
+}
+@if (summaryError()) {
+  <div class="error-message" role="alert">
+    {{ "No se pudieron cargar los contadores." | t }} {{ summaryError() | t }}
+    <button mat-button (click)="loadSummary()">{{ "Reintentar" | t }}</button>
+  </div>
+}
+@if (!canEdit()) {
+  <p class="supplier-readonly">
+    {{
+      "Acceso de consulta. Las altas, correcciones y confirmaciones requieren
+  permisos de operación." | t
+    }}
+  </p>
+}
+
+<section class="panel">
+  <div
+    class="supplier-tabs"
+    role="tablist"
+    [attr.aria-label]="'Proveedores' | t"
+  >
+    @for (item of tabs; track item.id; let index = $index) {
+      <button
+        type="button"
+        role="tab"
+        [id]="'supplier-tab-' + item.id"
+        [attr.aria-selected]="tab() === item.id"
+        [attr.tabindex]="tab() === item.id ? 0 : -1"
+        [attr.aria-controls]="'supplier-panel-' + item.id"
+        [disabled]="busy()"
+        (click)="switchTab(item.id)"
+        (keydown)="tabKey($event, index)"
+      >
+        {{ item.label | t }} <span>{{ count(item.id) }}</span>
+      </button>
+    }
+  </div>
+  <div
+    role="tabpanel"
+    [id]="'supplier-panel-' + tab()"
+    [attr.aria-labelledby]="'supplier-tab-' + tab()"
+    [attr.aria-busy]="loading()"
+  >
+    <form class="supplier-toolbar" (ngSubmit)="searchList()">
+      <label class="supplier-search"
+        ><span>{{ "Buscar" | t }}</span>
+        <input
+          type="search"
+          name="search"
+          [(ngModel)]="search"
+          [placeholder]="'Nombre, identificación o país' | t"
+        />
+      </label>
+      @if (tab() !== "reports") {
+        <label
+          ><span>{{ "Tipo de proveedor" | t }}</span>
+          <select name="kind" [(ngModel)]="kind">
+            <option value="">{{ "Todos" | t }}</option>
+            <option value="national">{{ "Nacionales" | t }}</option>
+            <option value="foreign">{{ "Extranjeros" | t }}</option>
+          </select>
+        </label>
+      }
+      <button mat-stroked-button type="submit" [disabled]="loading() || busy()">
+        {{ "Buscar" | t }}
+      </button>
+    </form>
+    @if (loading()) {
+      <mat-progress-bar
+        mode="indeterminate"
+        [attr.aria-label]="'Cargando proveedores' | t"
+      />
+      <div class="supplier-empty" role="status">
+        {{ "Cargando proveedores" | t }}…
+      </div>
+    } @else if (listError()) {
+      <div class="supplier-empty">
+        {{ "No se pudo cargar esta lista." | t }}
+      </div>
+    } @else if (tab() === "reviews") {
+      <div class="supplier-explanation">
+        {{
+          "Confirma coincidencias y datos contradictorios. Las decisiones
+      guardadas se aplican a cargas posteriores." | t
+        }}
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ "Proveedor detectado" | t }}</th>
+              <th>{{ "Identificación" | t }}</th>
+              <th>{{ "Motivo" | t }}</th>
+              <th>{{ "Mes" | t }}</th>
+              <th>{{ "Coincidencias" | t }}</th>
+              <th>{{ "Acciones" | t }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of reviews(); track item.id) {
+              <tr>
+                <td>
+                  <strong>{{
+                    item.candidate.name || ("Sin nombre" | t)
+                  }}</strong
+                  ><small>{{ labelKind(item.candidate.kind) }}</small>
+                </td>
+                <td>
+                  {{ item.candidate.taxId || "—"
+                  }}<small>{{ item.candidate.country || "—" }}</small>
+                </td>
+                <td>
+                  <span class="supplier-badge pending">{{
+                    reasonLabel(item.reason)
+                  }}</span>
+                </td>
+                <td>{{ item.period || "—" }}</td>
+                <td>{{ item.suggestions.length }}</td>
+                <td>
+                  <button mat-button type="button" (click)="openReview(item)">
+                    {{ (canEdit() ? "Revisar" : "Ver evidencia") | t }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else if (tab() === "catalog") {
+      <div class="supplier-explanation">
+        {{
+          "Los proveedores anteriores se conservan aunque no tengan movimientos
+      en el mes." | t
+        }}
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ "Proveedor" | t }}</th>
+              <th>{{ "Tipo" | t }}</th>
+              <th>{{ "RFC / identificación fiscal" | t }}</th>
+              <th>{{ "País" | t }}</th>
+              <th>{{ "Operaciones virtuales" | t }}</th>
+              <th>{{ "Evidencia" | t }}</th>
+              <th>{{ "Acciones" | t }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of suppliers(); track item.id) {
+              <tr>
+                <td>
+                  <strong>{{ item.name }}</strong
+                  ><small>{{ item.status | t }}</small>
+                </td>
+                <td>{{ labelKind(item.kind) }}</td>
+                <td class="mono">{{ item.taxId || "—" }}</td>
+                <td>{{ item.country || "—" }}</td>
+                <td>
+                  <span
+                    class="supplier-badge"
+                    [class.confirmed]="item.virtualOperations === true"
+                    [class.pending]="item.virtualOperations == null"
+                    >{{ virtualLabel(item.virtualOperations) }}</span
+                  >
+                </td>
+                <td>{{ item.evidenceCount ?? "—" }}</td>
+                <td>
+                  <button mat-button type="button" (click)="openSupplier(item)">
+                    {{
+                      (canEdit() ? "Consultar / editar" : "Ver evidencia") | t
+                    }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else if (tab() === "reports") {
+      <div class="supplier-explanation">
+        {{
+          "Cada mes publicado genera automáticamente sus dos listas acumulativas. Si hay dudas de identidad, el reporte se completa al resolverlas."
+            | t
+        }}
+      </div>
+      <section
+        class="supplier-monthly-requests"
+        aria-labelledby="supplier-monthly-requests-heading"
+      >
+        <h3 id="supplier-monthly-requests-heading">
+          {{ "Reportes mensuales automáticos" | t }}
+        </h3>
+        @if (requestsLoading()) {
+          <p role="status">{{ "Cargando reportes mensuales" | t }}…</p>
+        }
+        @if (requestsError()) {
+          <div class="error-message" role="alert">
+            {{ requestsError() | t
+            }}<button mat-button (click)="loadRequests()">
+              {{ "Reintentar" | t }}
+            </button>
+          </div>
+        }
+        @for (request of reportRequests(); track request.id) {
+          <article class="supplier-monthly-request">
+            <div>
+              <strong>{{ request.period }}</strong>
+              <p>{{ request.createdAt | dsDate: "medium" }}</p>
+              <span
+                class="supplier-badge"
+                [class.pending]="request.status === 'pending_review'"
+                [class.confirmed]="request.status === 'ready'"
+                >{{
+                  (request.status === "ready"
+                    ? "Listas disponibles"
+                    : request.status === "pending_review"
+                      ? "Pendiente de revisión"
+                      : "Cancelado"
+                  ) | t
+                }}</span
+              >
+              @if (request.status === "pending_review") {
+                <p>{{ request.pending }} {{ "proveedores por revisar" | t }}</p>
+              }
+            </div>
+            <div class="supplier-actions">
+              @if (request.status === "pending_review") {
+                <button mat-flat-button (click)="switchTab('reviews')">
+                  {{ "Revisar proveedores" | t }}
+                </button>
+              }
+              @if (request.status === "ready" && request.reportId) {
+                <button
+                  mat-flat-button
+                  (click)="downloadMonthly(request)"
+                  [disabled]="!!downloading()"
+                >
+                  <ds-icon name="download" />{{ "Descargar ambas listas" | t }}
+                </button>
+              }
+              <a mat-button [routerLink]="['/runs', request.runId]">{{
+                "Ver ejecución" | t
+              }}</a>
+            </div>
+          </article>
+        } @empty {
+          @if (!requestsLoading() && !requestsError()) {
+            <p>
+              {{
+                "Los próximos meses publicados aparecerán aquí automáticamente."
+                  | t
+              }}
+            </p>
+          }
+        }
+        @if (requestsTotal() > pageSize) {
+          <div class="supplier-pagination">
+            <span>{{ "Página" | t }} {{ requestPage() + 1 }}</span>
+            <div class="supplier-actions">
+              <button
+                mat-button
+                (click)="changeRequestPage(-1)"
+                [disabled]="requestsLoading() || requestPage() === 0"
+              >
+                {{ "Anterior" | t }}</button
+              ><button
+                mat-button
+                (click)="changeRequestPage(1)"
+                [disabled]="
+                  requestsLoading() ||
+                  (requestPage() + 1) * pageSize >= requestsTotal()
+                "
+              >
+                {{ "Siguiente" | t }}
+              </button>
+            </div>
+          </div>
+        }
+      </section>
+      <div class="supplier-explanation">
+        {{
+          "Cada reporte fija ambas listas. Las nuevas altas llevan toda la fila
+      amarilla; en el siguiente reporte pasan a Sin modificación." | t
+        }}
+      </div>
+      @if (canEdit()) {
+        <form class="supplier-report-form" (ngSubmit)="createReport()">
+          <label
+            ><span>{{ "Nombre del reporte (opcional)" | t }}</span
+            ><input
+              name="reportLabel"
+              [(ngModel)]="reportLabel"
+              maxlength="200"
+          /></label>
+          <button
+            mat-flat-button
+            type="submit"
+            [disabled]="busy() || loading() || summaryLoading()"
+          >
+            {{ "Crear reporte adicional" | t }}
+          </button>
+        </form>
+      }
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ "Reporte" | t }}</th>
+              <th>{{ "Creado el" | t }}</th>
+              <th>{{ "Nacionales" | t }}</th>
+              <th>{{ "Extranjeros" | t }}</th>
+              <th>{{ "Descargas .xlsx" | t }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of reports(); track item.id) {
+              <tr>
+                <td>
+                  <strong>{{ item.label || item.id }}</strong
+                  ><small class="mono">{{ item.id }}</small>
+                </td>
+                <td>{{ item.createdAt | dsDate: "medium" }}</td>
+                <td>{{ i18n.number(item.nationalCount) }}</td>
+                <td>{{ i18n.number(item.foreignCount) }}</td>
+                <td>
+                  <div class="supplier-actions">
+                    <button
+                      mat-button
+                      (click)="download(item, 'national')"
+                      [disabled]="!!downloading()"
+                    >
+                      {{ "Nacionales" | t }}
+                    </button>
+                    <button
+                      mat-button
+                      (click)="download(item, 'foreign')"
+                      [disabled]="!!downloading()"
+                    >
+                      {{ "Extranjeros" | t }}
+                    </button>
+                    <button
+                      mat-stroked-button
+                      (click)="download(item)"
+                      [disabled]="!!downloading()"
+                    >
+                      <ds-icon name="download" />{{
+                        (downloading() === item.id
+                          ? "Descargando"
+                          : "Descargar ambas listas"
+                        ) | t
+                      }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <div class="supplier-explanation">
+        {{
+          "Las equivalencias confirmadas reconocen variantes en nuevas cargas.
+      Puedes corregir su destino o retirarlas." | t
+        }}
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>{{ "Nombre de origen" | t }}</th>
+              <th>{{ "Identificación de origen" | t }}</th>
+              <th>{{ "Proveedor del catálogo" | t }}</th>
+              <th>{{ "Estado" | t }}</th>
+              <th>{{ "Acciones" | t }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of equivalences(); track item.id) {
+              <tr>
+                <td>
+                  {{ item.identityName
+                  }}<small>{{ item.identityCountry || "—" }}</small>
+                </td>
+                <td>{{ item.identityTaxId || "—" }}</td>
+                <td>{{ item.supplierName || item.supplierId }}</td>
+                <td>
+                  <span
+                    class="supplier-badge"
+                    [class.confirmed]="item.active"
+                    >{{ (item.active ? "Activa" : "Retirada") | t }}</span
+                  >
+                </td>
+                <td>
+                  @if (canEdit()) {
+                    <button mat-button (click)="openEquivalence(item)">
+                      {{ "Corregir / retirar" | t }}
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+    @if (!loading() && !error() && total() === 0) {
+      <div class="supplier-empty">
+        <ds-icon [name]="tab() === 'reviews' ? 'check' : 'search'" />
+        <h3>
+          {{
+            (tab() === "reviews"
+              ? "Sin proveedores por revisar"
+              : "Sin
+        resultados"
+            ) | t
+          }}
+        </h3>
+        <p>
+          {{
+            "Ajusta la búsqueda o publica un mes para incorporar proveedores."
+              | t
+          }}
+        </p>
+      </div>
+    }
+    <div class="supplier-pagination">
+      <span
+        >{{ i18n.number(total()) }} {{ "registros" | t }} · {{ "Página" | t }}
+        {{ page() + 1 }} / {{ pages() }}</span
+      >
+      <div class="supplier-actions">
+        <button
+          mat-button
+          (click)="changePage(-1)"
+          [disabled]="loading() || busy() || page() === 0"
+        >
+          {{ "Anterior" | t }}</button
+        ><button
+          mat-button
+          (click)="changePage(1)"
+          [disabled]="loading() || busy() || page() + 1 >= pages()"
+        >
+          {{ "Siguiente" | t }}
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+@if (canEdit()) {
+  <div class="supplier-sync">
+    <p>
+      {{
+        "Revisa el historial mensual publicado para incorporar proveedores y
+    evidencia vigente." | t
+      }}
+    </p>
+    <button
+      mat-stroked-button
+      (click)="sync()"
+      [disabled]="busy() || loading()"
+    >
+      {{ "Actualizar desde el historial" | t }}
+    </button>
+  </div>
+}
+@if (editorOpen()) {
+  <section
+    class="panel supplier-editor"
+    aria-labelledby="supplier-editor-title"
+    [attr.aria-busy]="busy() || detailLoading()"
+  >
+    <div class="panel-heading">
+      <div>
+        <h2 id="supplier-editor-title" tabindex="-1">
+          {{
+            (equivalence()
+              ? "Corregir equivalencia"
+              : review()
+                ? "Revisar
+        proveedor"
+                : selected()
+                  ? "Datos del proveedor"
+                  : "Agregar proveedor"
+            ) | t
+          }}
+        </h2>
+        @if (selected()) {
+          <p>
+            {{ selected()!.id }} · {{ "Versión" | t }} {{ selected()!.version }}
+          </p>
+        }
+      </div>
+      <button mat-button (click)="closeEditor()" [disabled]="busy()">
+        {{ "Cerrar" | t }}
+      </button>
+    </div>
+    @if (detailLoading() || busy()) {
+      <mat-progress-bar
+        mode="indeterminate"
+        [attr.aria-label]="
+          (detailLoading() ? 'Cargando detalle' : 'Guardando cambios') | t
+        "
+      />
+    }
+    @if (detailError()) {
+      <div class="error-message" role="alert">{{ detailError() | t }}</div>
+    }
+    @if (!detailLoading() && (!existingRequested() || selected())) {
+      <form
+        class="supplier-editor-form"
+        (ngSubmit)="
+          equivalence()
+            ? saveEquivalence()
+            : review()
+              ? resolveReview()
+              : saveSupplier()
+        "
+      >
+        <fieldset [disabled]="busy() || !canEdit()">
+          @if (review(); as item) {
+            <div class="supplier-candidate">
+              <strong>{{ item.candidate.name || ("Sin nombre" | t) }}</strong>
+              <p>
+                {{ item.candidate.taxId || "—" }} ·
+                {{ item.candidate.country || "—" }} ·
+                {{ reasonLabel(item.reason) }}
+              </p>
+            </div>
+            <div class="supplier-decision">
+              <label
+                ><input
+                  type="radio"
+                  name="decision"
+                  value="same"
+                  [(ngModel)]="decision"
+                />
+                {{ "Es el mismo proveedor" | t }}</label
+              >
+              <label
+                ><input
+                  type="radio"
+                  name="decision"
+                  value="new"
+                  [(ngModel)]="decision"
+                />
+                {{ "Es un proveedor nuevo" | t }}</label
+              >
+            </div>
+          }
+          @if (equivalence(); as item) {
+            <div class="supplier-candidate">
+              <strong>{{ item.identityName }}</strong>
+              <p>
+                {{ item.identityTaxId || "—" }} ·
+                {{ item.identityCountry || "—" }}
+              </p>
+            </div>
+            <label class="supplier-checkbox"
+              ><input
+                type="checkbox"
+                name="equivalenceActive"
+                [(ngModel)]="equivalenceActive"
+              />{{ "Equivalencia activa" | t }}</label
+            >
+            <p>
+              {{
+                "Al retirarla, esta variante volverá a evaluarse en las cargas
+        posteriores." | t
+              }}
+            </p>
+          }
+          @if (equivalence() || (review() && decision === "same")) {
+            <div class="supplier-target-search">
+              <label
+                ><span>{{ "Buscar proveedor del catálogo" | t }}</span
+                ><input
+                  name="targetSearch"
+                  [(ngModel)]="targetSearch"
+                  type="search"
+              /></label>
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="findTargets()"
+                [disabled]="targetLoading()"
+              >
+                {{ "Buscar" | t }}
+              </button>
+            </div>
+            @if (targetLoading()) {
+              <p role="status">{{ "Buscando coincidencias" | t }}…</p>
+            }
+            <label
+              ><span>{{ "Proveedor del catálogo" | t }}</span
+              ><select name="targetId" [(ngModel)]="targetId">
+                <option value="">{{ "Selecciona un proveedor" | t }}</option>
+                @if (equivalence(); as current) {
+                  <option [value]="current.supplierId">
+                    {{ current.supplierName || current.supplierId }}
+                  </option>
+                }
+                @for (target of selectableTargets(); track target.id) {
+                  <option [value]="target.id">
+                    {{ target.name }} · {{ target.taxId || "—" }} ·
+                    {{ target.country || "—" }}
+                  </option>
+                }
+              </select></label
+            >
+          }
+          @if (!equivalence() && (!review() || decision === "new")) {
+            <div class="supplier-field-grid">
+              <label
+                ><span>{{ "Tipo de proveedor" | t }}</span
+                ><select name="fieldKind" [(ngModel)]="fields.kind">
+                  <option value="national">{{ "Nacional" | t }}</option>
+                  <option value="foreign">{{ "Extranjero" | t }}</option>
+                </select></label
+              >
+              <label class="wide"
+                ><span>{{ "Nombre o razón social" | t }} *</span
+                ><input
+                  name="name"
+                  [(ngModel)]="fields.name"
+                  maxlength="500"
+                  required
+              /></label>
+              <label
+                ><span>{{ "RFC / identificación fiscal" | t }}</span
+                ><input name="taxId" [(ngModel)]="fields.taxId" maxlength="100"
+              /></label>
+              <label
+                ><span>{{ "País" | t }}</span
+                ><input
+                  name="country"
+                  [(ngModel)]="fields.country"
+                  maxlength="100"
+              /></label>
+              <label class="wide"
+                ><span>{{ "Calle / dirección" | t }}</span
+                ><input
+                  name="address"
+                  [(ngModel)]="fields.address"
+                  maxlength="1000"
+              /></label>
+              <label
+                ><span>{{ "Número exterior" | t }}</span
+                ><input
+                  name="externalNumber"
+                  [(ngModel)]="fields.externalNumber"
+                  maxlength="100"
+              /></label>
+              <label
+                ><span>{{ "Número interior" | t }}</span
+                ><input
+                  name="internalNumber"
+                  [(ngModel)]="fields.internalNumber"
+                  maxlength="100"
+              /></label>
+              <label
+                ><span>{{ "Código postal" | t }}</span
+                ><input
+                  name="postalCode"
+                  [(ngModel)]="fields.postalCode"
+                  maxlength="30"
+              /></label>
+              <label
+                ><span>{{ "Municipio / ciudad" | t }}</span
+                ><input
+                  name="municipality"
+                  [(ngModel)]="fields.municipality"
+                  maxlength="200"
+              /></label>
+              <label
+                ><span>{{ "Estado / entidad" | t }}</span
+                ><input name="state" [(ngModel)]="fields.state" maxlength="200"
+              /></label>
+              @if (!review()) {
+                <label
+                  ><span>{{ "Confirmación de operaciones virtuales" | t }}</span
+                  ><select
+                    name="virtualConfirmation"
+                    [(ngModel)]="fields.virtualConfirmation"
+                  >
+                    <option [ngValue]="null">
+                      {{
+                        (selected()
+                          ? "Sin confirmación / retirar confirmación"
+                          : "Por
+              confirmar"
+                        ) | t
+                      }}
+                    </option>
+                    <option [ngValue]="true">{{ "Sí" | t }}</option>
+                    <option [ngValue]="false">{{ "No" | t }}</option>
+                  </select></label
+                >
+              }
+            </div>
+            <p class="supplier-field-note">
+              {{
+                "La identificación fiscal corresponde al proveedor. Una autorización
+        IMMEX y el RFC del contribuyente no sustituyen este dato." | t
+              }}
+            </p>
+          }
+          @if (review()) {
+            <label
+              ><span>{{ "Confirmación de operaciones virtuales" | t }}</span
+              ><select name="reviewVirtual" [(ngModel)]="reviewVirtual">
+                <option [ngValue]="null">{{ "Por confirmar" | t }}</option>
+                <option [ngValue]="true">{{ "Sí" | t }}</option>
+                <option [ngValue]="false">{{ "No" | t }}</option>
+              </select></label
+            >
+          }
+          @if (selected(); as item) {
+            <div class="supplier-effective">
+              <strong
+                >{{ "Operaciones virtuales" | t }}:
+                {{ virtualLabel(item.virtualOperations) }}</strong
+              >
+              <p>
+                {{
+                  "Una operación virtual vigente o una confirmación válida conserva
+          el Sí. Un mes sin operaciones virtuales no lo elimina." | t
+                }}
+              </p>
+            </div>
+          }
+          @if (canEdit()) {
+            <label class="supplier-reason"
+              ><span>{{ "Motivo para la auditoría" | t }} *</span
+              ><textarea
+                name="reason"
+                [(ngModel)]="reason"
+                minlength="5"
+                maxlength="1000"
+                rows="2"
+                [required]="canEdit()"
+              ></textarea>
+            </label>
+            <button
+              mat-flat-button
+              type="submit"
+              [disabled]="busy() || detailLoading()"
+            >
+              {{
+                (busy()
+                  ? "Guardando cambios"
+                  : equivalence()
+                    ? "Guardar
+        equivalencia"
+                    : review()
+                      ? "Confirmar decisión"
+                      : "Guardar proveedor"
+                ) | t
+              }}
+            </button>
+          }
+        </fieldset>
+      </form>
+      @if (!equivalence()) {
+        <div class="supplier-evidence">
+          <h3>{{ "Registros que respaldan la identificación" | t }}</h3>
+          <p>
+            {{
+              "505 aporta los datos del proveedor; 507 y 501 respaldan la operación y
+      sus cruces." | t
+            }}
+          </p>
+          <p>
+            {{ i18n.number(evidence().length) }} /
+            {{ i18n.number(evidenceTotal()) }}
+            {{ "registros" | t }}
+          </p>
+          @for (item of evidence(); track $index) {
+            <details>
+              <summary>
+                {{ item.tableCode || item.code || ("Registro de origen" | t) }}
+                · {{ item.period || "—" }}
+                @if (item.active === false) {
+                  <span class="supplier-badge">{{ "Histórica" | t }}</span>
+                }
+                @if (item.virtualConfirmed === true) {
+                  <span class="supplier-badge confirmed">{{
+                    "Virtual confirmada" | t
+                  }}</span>
+                }
+              </summary>
+              @if (item.runId && item.sourceKind !== "baseline") {
+                <a [routerLink]="['/runs', item.runId]">{{
+                  "Ver ejecución" | t
+                }}</a>
+              }
+              @for (record of item.records || []; track $index) {
+                <h4>
+                  {{ record.table }} · {{ record.fileName || "—" }} ·
+                  {{ "Fila" | t }} {{ record.rowNumber ?? "—" }} ·
+                  {{ "Pedimento" | t }} {{ record.pedimento || "—" }}
+                </h4>
+                <pre>{{ evidenceJson({ data: record.values || {} }) }}</pre>
+                @if (record.source) {
+                  <p>{{ "Ubicación y huella del archivo de origen" | t }}</p>
+                  <pre>{{ evidenceJson({ data: record.source }) }}</pre>
+                }
+              } @empty {
+                <pre>{{ evidenceJson(item) }}</pre>
+              }
+            </details>
+          } @empty {
+            <p class="supplier-empty-evidence">
+              {{
+                "Sin registros de origen asociados. Los cambios manuales quedan en la
+      auditoría." | t
+              }}
+            </p>
+          }
+          @if (
+            (review() || selected()) && evidence().length < evidenceTotal()
+          ) {
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="moreEvidence()"
+              [disabled]="evidenceLoading()"
+            >
+              {{
+                (evidenceLoading()
+                  ? "Cargando evidencia"
+                  : "Cargar más evidencia"
+                ) | t
+              }}
+            </button>
+          }
+        </div>
+      }
+    }
+  </section>
+}

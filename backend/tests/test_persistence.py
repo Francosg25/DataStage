@@ -51,7 +51,10 @@ def test_all_official_tables_have_explicit_columns_and_typed_dates(database):
     assert set(BUSINESS_TABLES) == {str(n) for n in range(501, 513)} | {"520"} | {str(n) for n in range(551, 559)} | {"701", "702", "sel", "inci", "resumen"}
     assert "fecha_pago_real" in get_business_table("501").c
     assert "tipo_fecha" in get_business_table("506").c
-    assert len(inspect(engine).get_table_names()) == 65
+    names = set(inspect(engine).get_table_names())
+    assert len(names) == 71
+    assert {"supplier_scopes", "suppliers", "supplier_equivalences", "supplier_observations", "supplier_reports",
+            "supplier_report_requests"} <= names
     assert get_business_table("unknown") is None
     assert set(inspect(engine).get_view_names()) == {"processing_errors", "processing_warnings"}
     Base.metadata.create_all(engine)  # Local restart is idempotent, including views.

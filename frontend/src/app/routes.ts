@@ -86,6 +86,12 @@ export const routes: Routes = [
         title: "Consulta de datos · DataStage",
       },
       {
+        path: "suppliers",
+        loadComponent: () =>
+          import("./features/suppliers").then((m) => m.Suppliers),
+        title: "Proveedores · DataStage",
+      },
+      {
         path: "agent",
         loadComponent: () => import("./features/agent").then((m) => m.Agent),
         title: "Asistente · DataStage",

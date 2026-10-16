@@ -198,6 +198,10 @@ def delete_period(
     session.flush()
 
     if ids:
+        from app.modules.suppliers.service import retire_runs
+        retire_runs(session, principal.scope_id, ids, principal.id)
+
+    if ids:
         for code, table in BUSINESS_TABLES.items():
             extension = EXTENSION_TABLES[code]
             session.execute(

@@ -74,6 +74,8 @@ export class Icon {
           chevron: "m9 5 7 7-7 7",
           alert: "M12 3 2 21h20z M12 9v5 M12 18h.01",
           search: "M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14 m5 12 6 6",
+          suppliers:
+            "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.9 M16 3.1a4 4 0 0 1 0 7.8",
         }) as Record<string, string>
       )[this.name()] || "",
   );
