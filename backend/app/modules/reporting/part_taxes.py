@@ -2,13 +2,14 @@
 from collections import defaultdict
 from decimal import Decimal
 import json
+import os
 from pathlib import Path
 import re
 
 from .trade_values import identity, item_identity, normalized, number, strict_sum, text_value
 
 KNOWN_PARTS = frozenset(text_value(part).upper() for part in json.loads(
-    Path(__file__).with_name("part_numbers.json").read_text(encoding="utf-8")
+    Path(os.environ.get("DATASTAGE_PART_CATALOG_FILE", Path(__file__).with_name("part_numbers.json"))).read_text(encoding="utf-8")
 ) if text_value(part))
 
 # Etiquetas explícitas; los modelos, series y lotes no son NP por sí solos.

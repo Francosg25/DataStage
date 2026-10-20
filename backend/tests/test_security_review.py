@@ -16,7 +16,7 @@ from app.core.errors import ApplicationError
 from app.main import create_app
 from app.modules.identity import auth
 from app.modules.identity.auth import Principal, current_principal
-from app.modules.ingestion.zip_reader import read_zip, scan_document
+from app.modules.ingestion.zip_reader import read_zip
 from app.persistence.models import Conversation, Period, Run, StoredDocument
 
 
@@ -240,14 +240,6 @@ def test_archive_keeps_raw_content_and_relative_name(tmp_path):
     raw = b"\xef\xbb\xbfPatente|Pedimento|FechaPagoReal|\r\n0036|0000009|bad-date|"
     path = zip_at(tmp_path, "folder/request_501.asc", raw)
     assert list(read_zip(path, Settings(_env_file=None))) == [("folder/request_501.asc", raw)]
-
-
-def test_antivirus_nonzero_status_is_fail_closed(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.modules.ingestion.zip_reader.subprocess.run", lambda *a, **k: SimpleNamespace(returncode=1))
-    settings = Settings(_env_file=None, antivirus_command=["approved-scanner"])
-    with pytest.raises(ApplicationError) as error:
-        scan_document(tmp_path / "file.asc", settings)
-    assert error.value.code == "SCAN_REJECTED"
 
 
 def test_production_rejects_unsecured_local_defaults():

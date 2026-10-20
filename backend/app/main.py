@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import perf_counter
@@ -99,7 +100,10 @@ def create_app(settings=None):
         try:
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1 FROM processing_runs WHERE 1=0"))
-            if not storage.root.is_dir():
+                if settings.environment == "production":
+                    from app.cli.preflight import check_schema
+                    check_schema(connection)
+            if not storage.root.is_dir() or not os.access(storage.root, os.W_OK | os.X_OK):
                 return JSONResponse(status_code=503, content={"status": "not_ready"})
             return {"status": "ready"}
         except Exception:

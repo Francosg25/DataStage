@@ -1,0 +1,22 @@
+[Unit]
+Description=DataStage schema migration for release %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=datastage-migrate
+Group=datastage-migrate
+WorkingDirectory=/opt/datastage/releases/%i/backend
+EnvironmentFile=/etc/datastage/runtime.env
+EnvironmentFile=/etc/datastage/migration.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/datastage/releases/%i/.venv/bin/python -m app.cli.migrate
+TimeoutStartSec=900
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StandardOutput=journal
+StandardError=journal

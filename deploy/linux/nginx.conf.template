@@ -1,0 +1,38 @@
+# Install after replacing REPLACE_*; include inside the nginx http context.
+# TLS certificates/key are provisioned and renewed by IT.
+server {
+    listen 80;
+    server_name REPLACE_PUBLIC_FQDN;
+    return 301 https://REPLACE_PUBLIC_FQDN$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name REPLACE_PUBLIC_FQDN;
+    ssl_certificate REPLACE_CERTIFICATE_ABSOLUTE_PATH;
+    ssl_certificate_key REPLACE_PRIVATE_KEY_ABSOLUTE_PATH;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    server_tokens off;
+    root /opt/datastage/current/frontend;
+    index index.html;
+    client_max_body_size 102m;
+    client_body_timeout 120s;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy same-origin always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Cache-Control "no-cache" always;
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 180s;
+        proxy_request_buffering off;
+    }
+    # Internal health only; do not turn this into a public unauthenticated API.
+    location /health/ { deny all; }
+    location ~ /\. { deny all; }
+    location / { try_files $uri $uri/ /index.html; }
+}

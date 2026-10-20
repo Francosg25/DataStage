@@ -1,10 +1,10 @@
 # DataStage Web
 
-Frontend Angular 22.1, Angular Material, TypeScript 6 y Chart.js. Las rutas cargan sus componentes bajo demanda. Todos los datos operativos se solicitan a la API; no se incluyen datos simulados.
+Frontend Angular 21.2, Angular Material, TypeScript 5.9 y Chart.js. Las rutas cargan sus componentes bajo demanda. Todos los datos operativos se solicitan a la API; no se incluyen datos simulados.
 
 ## Desarrollo
 
-Requiere Node **22.22.3+ en la rama 22, 24.15+ en la rama 24, o 26+** y npm. La versión 22.14 de Node no es compatible con Angular 22.
+El lock actual se comprobó con Node **24.13.1**. Angular 21 admite Node ^20.19.0, ^22.12.0 o ^24.0.0; `scripts/check_node.cjs` verifica también los requisitos y binarios de dependencias instaladas. En Windows usa `npm.cmd` para evitar el script PowerShell.
 
 ```sh
 npm ci
@@ -18,7 +18,7 @@ npm run build
 npm test
 ```
 
-La compilación de producción se genera en `dist/datastage-web/browser`. `Dockerfile` compila con Node 24 y sirve mediante Nginx sin usuario root en el puerto 8080. El servicio API debe resolverse como `api:8000` o ajustarse en `nginx.conf`. El límite Nginx de carga debe corresponder al configurado en la API (actualmente el proxy permite 256 MB).
+La compilación de producción se genera en `dist/datastage-web/browser`. El paquete versionado copia este frontend ya compilado; Nginx lo sirve por HTTPS y reenvía `/api/` a `127.0.0.1:8000`. No se necesita Node en el servidor. La plantilla `deploy/linux/nginx.conf.template` permite 102 MiB, coordinados con los límites específicos de la API. Consulta [Linux directo](../docs/linux-direct.md).
 
 ## Autenticación
 

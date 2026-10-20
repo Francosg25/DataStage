@@ -23,3 +23,7 @@ frontend/playwright-report/
 deploy/compose.env
 deploy/rendered.yaml
 deploy/migration-rendered.yaml
+
+# Native release output and validation tools
+dist/
+.venv313/

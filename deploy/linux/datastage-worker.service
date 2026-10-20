@@ -1,0 +1,30 @@
+[Unit]
+Description=DataStage durable processing worker
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=datastage
+Group=datastage
+WorkingDirectory=/opt/datastage/current/backend
+EnvironmentFile=/etc/datastage/runtime.env
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ExecStart=/opt/datastage/current/.venv/bin/python -m app.worker
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=180
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/datastage/documents
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=datastage-worker
+
+[Install]
+WantedBy=multi-user.target

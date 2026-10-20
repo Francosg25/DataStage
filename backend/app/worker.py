@@ -17,7 +17,7 @@ from app.modules.engine import InputFile, detect_table_code, export_xlsx, parse_
 from app.modules.engine.catalog import folio_from_name
 from app.modules.engine.models import consolidation_range
 from app.modules.identity.auth import Principal
-from app.modules.ingestion.zip_reader import read_zip, scan_document
+from app.modules.ingestion.zip_reader import read_zip
 from app.modules.ingestion.encoding import decode_asc
 from app.modules.processing.service import (
     audit, create_annual, engine_options, get_or_create_period, json_text,
@@ -160,7 +160,6 @@ def inputs_for_run(factory, store, settings, run):
         document = item["document"]
         if item["kind"] == "zip":
             _read_source_document(store, document, settings.max_upload_mb * 1024 * 1024, collect=False)
-            scan_document(store.resolve(document.storage_key), settings)
             source = item["source"]
             overrides, known_entries = source.get("tableCodes", {}), set()
             for name, data in read_zip(store.resolve(document.storage_key), settings):
@@ -174,7 +173,6 @@ def inputs_for_run(factory, store, settings, run):
         else:
             data = _read_source_document(store, document, min(maximum_file, maximum_total - total_bytes))
             total_bytes += len(data)
-            scan_document(store.resolve(document.storage_key), settings)
             entries.append((item["name"], data, item["period"], item["code"], document))
     for ordinal, (name, raw, period, code, existing_doc) in enumerate(entries):
         file_id = str(uuid5(NAMESPACE_URL, f"{run.id}:{ordinal}:{name}"))

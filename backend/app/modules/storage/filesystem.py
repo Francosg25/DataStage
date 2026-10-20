@@ -21,11 +21,14 @@ class FileSystemStorage:
         key = f"{uuid4().hex}{suffix}"
         path = self.resolve(key)
         temporary = path.with_suffix(path.suffix + ".tmp")
-        with temporary.open("xb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        try:
+            with temporary.open("xb") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
         return {"storage_key": key, "sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)}
 
     async def put_upload(self, upload, maximum: int) -> dict:

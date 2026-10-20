@@ -50,5 +50,5 @@ El comando compara hojas y su orden, encabezados, valores y tipos de celdas, fec
 1. Emparejar cada ZIP/ASC de referencia con su script, periodo y Excel esperado.
 2. Ejecutar ambos motores con la misma entrada y comparar código/orden de tablas, encabezados, filas, valores, fechas, pedimentos, trazabilidad, controles y contadores.
 3. Registrar cada diferencia con archivo, fila, columna, valor esperado, valor obtenido y decisión del dueño funcional.
-4. Validar SQL Server real, reintentos, concurrencia, recuperación, volumen, Entra y antivirus en TEST.
+4. Validar SQL Server real, reintentos, concurrencia, recuperación, volumen, Entra y validación de archivos en TEST.
 5. Autorizar el corte únicamente tras coincidencia o aprobación explícita de cada diferencia.

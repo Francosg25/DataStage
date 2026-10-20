@@ -1,8 +1,10 @@
 # Operación y promoción
 
+Procedimiento principal y comandos ejecutables: [Linux directo](linux-direct.md).
+
 ## Dependencias y CI
 
-El lock Python se obtuvo de la `.venv` validada en Python 3.13 sobre Windows. Contiene ejecución y pruebas, con versiones exactas, sin rutas personales, paquetes editables ni credenciales. No incluye las herramientas de instalación (`pip`, `setuptools`, `wheel`). El mismo archivo alimenta desarrollo, CI e imagen Linux; las ruedas y bibliotecas nativas Linux deben verificarse durante el build corporativo. `pip check` impide continuar con dependencias incompletas.
+El lock Python se obtuvo de la `.venv` validada en Python 3.13 sobre Windows. Contiene ejecución y pruebas, con versiones exactas, sin rutas personales, paquetes editables ni credenciales. No incluye las herramientas de instalación (`pip`, `setuptools`, `wheel`). El mismo archivo alimenta desarrollo, CI y cada venv Linux; las ruedas y bibliotecas nativas Linux deben verificarse durante la preparación corporativa de dependencias. `pip check` impide continuar con dependencias incompletas.
 
 Desde la raíz, con un entorno Python activado:
 
@@ -14,17 +16,17 @@ python scripts/check_dependency_lock.py
 
 Las actualizaciones se realizan en un entorno de prueba aislado: cambiar el rango del proyecto cuando corresponda, resolver las versiones deseadas, ejecutar las pruebas y guardar nuevamente el conjunto congelado. Revisar el diff del lock antes de promoverlo; no regenerarlo automáticamente al iniciar la aplicación. El frontend utiliza `npm ci` y su `package-lock.json`.
 
-`bash scripts/ci.sh` requiere Python 3.12/3.13, Node compatible con `frontend/package.json`, npm y acceso a los registros de paquetes. Ejecuta validación de dependencias, Ruff, pytest, pruebas Angular y compilación de producción. `DATASTAGE_BUILD_IMAGES=true` añade únicamente builds Docker locales. No hace `push`, `kubectl apply` ni publicación externa. JE Git debe configurar el disparador del pipeline en su plataforma corporativa.
+`bash scripts/ci.sh` requiere Python 3.12/3.13, Node compatible con `frontend/package.json`, npm y acceso a los registros de paquetes. Ejecuta validación de dependencias, Ruff, pytest, pruebas Angular y compilación de producción. Genera un paquete Linux versionado, sin desplegar infraestructura. JE Git debe configurar el disparador del pipeline en su plataforma corporativa.
 
 ## Migración y verificación del release
 
 1. Respaldar SQL y el almacén documental según la política aprobada.
-2. Promover las mismas imágenes verificadas mediante sus digests, sin reconstruir entre TEST y PROD.
+2. Promover el mismo paquete verificado mediante SHA-256, sin reconstruir entre TEST y PROD. Ver [Linux directo](linux-direct.md).
 3. Ejecutar `python -m alembic upgrade head` con la identidad de migración; comprobar `python -m alembic current`.
 4. Arrancar API y worker con identidades de ejecución, configuración y volumen documental compartido.
 5. Comprobar `/health/ready`, SSO, roles, carga de una fuente sintética y descarga del Excel. Verificar la auditoría y la actualización anual.
 
-Un rollback de imagen no implica hacer automáticamente `alembic downgrade` ni borrar documentos. Revisar primero la compatibilidad de esquema y preservar las versiones ya publicadas. La migración inicial tiene downgrade para bases de pruebas; no es una estrategia de restauración de producción.
+Un rollback de código no implica hacer automáticamente `alembic downgrade` ni borrar documentos. Revisar primero la compatibilidad de esquema y preservar las versiones ya publicadas. La migración inicial tiene downgrade para bases de pruebas; no es una estrategia de restauración de producción.
 
 Alembic utiliza la misma configuración de base que API y worker: `DATASTAGE_DATABASE_URL`, después `backend/.env` y por último `.data/datastage.db` en la raíz. Un URL o conexión pasados explícitamente mediante la API de Alembic tienen precedencia, para pruebas y generación SQL offline. Ejecutar desde la raíz con `python -m alembic -c backend/alembic.ini ...` también carga el `.env` junto al archivo INI.
 
@@ -38,7 +40,7 @@ Después de un fallo, el worker elimina únicamente los documentos creados por s
 
 Las consultas por identificador de consolidado anual leen el resultado JSON inmutable de esa ejecución, conservando sus encabezados y su política de fechas. Un anual basado en meses fija sus fuentes mediante `AnnualSource` y no inserta otra copia de esas filas mensuales en las tablas de negocio. El contrato API generado está en `contracts/openapi/datastage.v1.json`.
 
-Supervisar cola pendiente, trabajos fallidos, reservas vencidas, espacio disponible, tiempos de procesamiento y exportación. Los errores API devuelven un identificador de correlación; los logs estructurados evitan incluir datos ASC y cuerpos de excepciones. La conectividad real, permisos de almacenamiento, actualización de firmas antivirus, recuperación de backups y pruebas de carga son requisitos del ambiente corporativo.
+Supervisar cola pendiente, trabajos fallidos, reservas vencidas, espacio disponible, tiempos de procesamiento y exportación. Los errores API devuelven un identificador de correlación; los logs estructurados evitan incluir datos ASC y cuerpos de excepciones. La conectividad real, permisos de almacenamiento, recuperación de backups y pruebas de carga son requisitos del ambiente corporativo.
 
 ## Foundry
 

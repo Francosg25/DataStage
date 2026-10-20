@@ -1,21 +1,9 @@
 import stat
-import subprocess
 import zipfile
+import zlib
 from pathlib import Path, PurePosixPath
 
 from app.core.errors import ApplicationError
-
-
-def scan_document(path: Path, settings):
-    if not settings.antivirus_command:
-        return
-    try:
-        completed = subprocess.run([*settings.antivirus_command, str(path)], shell=False,
-                                   capture_output=True, timeout=settings.antivirus_timeout_seconds)
-    except (OSError, subprocess.TimeoutExpired):
-        raise ApplicationError(503, "SCAN_UNAVAILABLE", "No fue posible completar el análisis de seguridad") from None
-    if completed.returncode != 0:
-        raise ApplicationError(422, "SCAN_REJECTED", "El análisis de seguridad no aprobó el archivo")
 
 
 def read_zip(path: Path, settings):
@@ -32,7 +20,7 @@ def read_zip(path: Path, settings):
             for entry in entries:
                 name = entry.filename.replace("\\", "/")
                 parts = PurePosixPath(name).parts
-                if not parts or name.startswith("/") or any(p in ("..", ".") for p in parts) or ":" in name or "\x00" in name:
+                if not parts or name.startswith("/") or any(p in ("..", ".") for p in name.split("/")) or ":" in name or "\x00" in name:
                     raise ApplicationError(422, "UNSAFE_ZIP_PATH", "El ZIP contiene una ruta no permitida")
                 unix_type = stat.S_IFMT(entry.external_attr >> 16)
                 if unix_type not in (0, stat.S_IFREG, stat.S_IFDIR):
@@ -63,5 +51,5 @@ def read_zip(path: Path, settings):
                 yield name, bytes(data)
             if not files:
                 raise ApplicationError(422, "ZIP_NO_ASC", "El ZIP no contiene archivos ASC")
-    except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, RuntimeError):
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, RuntimeError, zlib.error):
         raise ApplicationError(422, "INVALID_ZIP", "El archivo ZIP está dañado o no es compatible") from None

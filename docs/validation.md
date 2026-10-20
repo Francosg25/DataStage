@@ -1,3 +1,7 @@
+# Validación histórica
+
+Para esta rama, consultar primero [validación Linux directo](native-validation.md). El contenido siguiente registra verificaciones anteriores; no acredita la instalación actual.
+
 # Validación de la implementación
 
 Ejecutada el 22 de septiembre de 2026 (hora de México). Estado: aplicación funcional local; sustitución operativa de Office Scripts pendiente de certificar.

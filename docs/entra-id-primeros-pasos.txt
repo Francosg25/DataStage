@@ -97,7 +97,7 @@ la API y el worker para que lean la configuracion. scripts/start-dev.ps1 fija
 autenticacion de desarrollo: NO usar ese arranque para validar Entra sin adaptar
 el despliegue de pruebas con TI. Seguir docs/entra-id.md.
 No cambiar ENVIRONMENT a production solo para probar el login: produccion
-exige ademas SQL Server, antivirus, HTTPS y la revision de seguridad completa.
+exige ademas SQL Server, HTTPS y la revision de seguridad completa.
 
 6. PRUEBA PILOTO Y CRITERIOS DE ACEPTACION
 - Un usuario asignado inicia sesion, cumple MFA y consulta /api/v1/me.

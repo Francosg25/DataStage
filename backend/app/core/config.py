@@ -1,14 +1,16 @@
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DATASTAGE_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="DATASTAGE_", env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     environment: Literal["development", "test", "production"] = "development"
     database_url: str = f"sqlite:///{(ROOT / '.data/datastage.db').as_posix()}"
@@ -43,8 +45,7 @@ class Settings(BaseSettings):
     foundry_max_tool_rounds: int = Field(default=5, ge=1, le=10)
     foundry_timeout_seconds: int = Field(default=45, ge=5, le=120)
     allow_agent_commands: bool = False
-    antivirus_command: list[str] = []
-    antivirus_timeout_seconds: int = Field(default=120, ge=1, le=600)
+    project_maps_root: Path | None = None
 
     @model_validator(mode="after")
     def production_requirements(self):
@@ -53,12 +54,38 @@ class Settings(BaseSettings):
                 raise ValueError("Producción requiere autenticación Entra ID")
             if not self.database_url.startswith("mssql+pyodbc://"):
                 raise ValueError("Producción requiere SQL Server mediante mssql+pyodbc")
-            if not self.antivirus_command:
-                raise ValueError("Producción requiere configurar el escáner antivirus")
-            if "*" in self.cors_origins:
-                raise ValueError("Producción requiere orígenes CORS explícitos")
+            validate_sqlserver_url(self.database_url)
+            if not self.document_root.is_absolute() or self.document_root.resolve().is_relative_to(ROOT.resolve()):
+                raise ValueError("Producción requiere documentos persistentes fuera del directorio de la aplicación")
+            if not self.cors_origins or any(
+                urlsplit(origin).scheme != "https" or not urlsplit(origin).hostname
+                or urlsplit(origin).path not in ("", "/") or urlsplit(origin).query
+                or urlsplit(origin).fragment or urlsplit(origin).username or "*" in origin
+                for origin in self.cors_origins
+            ):
+                raise ValueError("Producción requiere orígenes CORS HTTPS explícitos")
         if self.auth_mode == "entra" and not all((self.entra_tenant_id, self.entra_client_id, self.entra_audience, self.entra_api_scope)):
             raise ValueError("Entra requiere tenant, cliente SPA, audiencia API y scope")
         if self.foundry_enabled and not self.foundry_project_endpoint.startswith("https://"):
             raise ValueError("Foundry requiere endpoint HTTPS de proyecto")
         return self
+
+
+def validate_sqlserver_url(value: str):
+    """Require explicit transport encryption; disallow hidden DSN/ODBC overrides."""
+    try:
+        url = make_url(value)
+        options = {k.lower(): v for k, v in url.query.items()}
+        valid = (
+            url.drivername == "mssql+pyodbc" and url.host and url.database and url.username
+            and len(options) == len(url.query)
+            and set(options) <= {"driver", "encrypt", "trustservercertificate"}
+            and options.get("driver") == "ODBC Driver 18 for SQL Server"
+            and options.get("encrypt", "").lower() in {"yes", "true", "mandatory", "strict"}
+            and options.get("trustservercertificate", "").lower() in {"no", "false"}
+        )
+    except (ValueError, TypeError, AttributeError):
+        valid = False
+    if not valid:
+        raise ValueError("SQL Server requiere URL explícito, ODBC Driver 18, Encrypt=yes y TrustServerCertificate=no")
+    return url
