@@ -243,3 +243,26 @@ def test_private_historical_import_obeys_the_same_cutoff(system):
         service.ingest_baseline(session, Principal("admin", "Admin", frozenset({"Admin"}), "local"),
             {"baseline": {"source": source, "tables": tables}})
     assert names(client) == {"BASE VENDOR", "NEW HISTORICAL VENDOR"}
+
+
+def test_header_only_originals_preserve_cutoff_and_rebuild_retry(system):
+    _, client, _ = system
+    imported = client.post("/api/v1/suppliers/import", files={
+        "national": ("national.xlsx", original(NATIONAL, [])),
+        "foreign": ("foreign.xlsx", original(FOREIGN, []))})
+    assert imported.status_code == 200, imported.text
+    version = client.get("/api/v1/suppliers/summary").json()["catalogVersion"]
+    key = str(uuid4())
+    response = rebuild(client, key=key, version=version)
+    assert response.status_code == 200, response.text
+    assert response.json()["startPeriod"] == {"year": 2026, "month": 9}
+    # Read through a fresh request/session, without relying on supplier inserts
+    # or pending in-memory state to save the configuration.
+    current = client.get("/api/v1/suppliers/summary").json()
+    assert current["initialized"] is True
+    assert current["catalog"] == current["national"] == current["foreign"] == 0
+    assert current["startPeriod"] == {"year": 2026, "month": 9}
+    assert current["backupDocumentId"] == response.json()["backupDocumentId"]
+    retry = rebuild(client, key=key, version=version)
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["backupDocumentId"] == response.json()["backupDocumentId"]

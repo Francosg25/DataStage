@@ -927,6 +927,10 @@ def rebuild_lists(session, principal, storage, start_year, start_month, expected
     state.schemas_json = json_text({**DEFAULT_SCHEMAS,
         "_startPeriod": {"year": start_year, "month": start_month}, "_generation": generation,
         "_lastRebuild": {"key": key, "requestHash": request_hash, "backupDocumentId": document.id}})
+    # Sessions disable autoflush. initialize_seed() reacquires the scope lock
+    # and refreshes this row, which would discard these pending settings.
+    # Flush inside the existing transaction; the endpoint still commits once.
+    session.flush()
     initialize_seed(session, principal, payload, synchronize=False)
     # Preserve explicit equivalences whose canonical supplier remains in the originals.
     originals = list(session.scalars(select(Supplier).where(Supplier.scope_id == principal.scope_id)))
