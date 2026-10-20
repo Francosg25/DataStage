@@ -4,24 +4,26 @@ Suppliers está centrado en dos archivos: Extranjeros y Nacionales. Cada publica
 
 ## Uso
 
-1. En **Listas originales**, un administrador selecciona sus dos archivos `.xls` o `.xlsx` y pulsa **Usar estas listas**. Se conservan sus columnas, proveedores, orden, formato y hojas auxiliares. También funciona si ya había meses procesados. La lista nacional puede contener únicamente los encabezados si no hay proveedores de ese tipo.
+1. En **Administración → Proveedores → Listas originales**, un administrador selecciona sus dos archivos `.xls` o `.xlsx` y pulsa **Usar estas listas**. Se conservan sus columnas, proveedores, orden, formato y hojas auxiliares. También funciona si ya había meses procesados. La lista nacional puede contener únicamente los encabezados si no hay proveedores de ese tipo.
 2. Al publicar los meses siguientes, ambos Excel quedan disponibles automáticamente. Las altas nuevas llevan toda la fila amarilla. En el siguiente reporte pasan a **Sin modificación** y dejan de resaltarse.
 3. Se puede descargar cada lista o ambas juntas. El selector permite volver a un reporte anterior. Las descargas utilizan el mismo reporte y no generan otra versión ni consumen las altas.
 4. **Actualizar listas** aplica el reconocimiento al historial incluido. Después de establecer el corte descrito abajo, solo usa septiembre de 2026 y meses posteriores. Si nada cambió, conserva el mismo reporte. Al abrir la pantalla solo se leen las listas; no se recorre todo el historial en cada visita.
+
+La pantalla **Proveedores** muestra el selector de reporte y las dos listas descargables. La carga inicial, el corte de operaciones y las herramientas de reinicio y respaldo están en **Administración → Proveedores**. El icono de configuración de la pantalla principal abre directamente esa pestaña para usuarios autorizados.
 
 No se necesita volver a cargar las listas originales cada mes. Pueden seleccionarse de nuevo si es necesario incorporar una base o un formato actualizado. Las filas iniciales se conservan incluso cuando comparten nombres similares; la normalización evita agregar otra vez las variantes detectadas en las facturas.
 
 ## Empezar desde septiembre de 2026 y retirar las incorporaciones anteriores
 
-Si una importación agregó proveedores de enero a agosto que no debían entrar, un **Admin** puede abrir **Recalcular listas → Recalcular desde septiembre de 2026** y después **Guardar respaldo y recalcular**. Primero deben estar guardadas las dos listas originales correctas.
+Si una importación agregó proveedores de enero a agosto que no debían entrar, un **Admin** puede abrir **Administración → Proveedores → Mantenimiento de listas → Recalcular desde septiembre de 2026** y después **Guardar respaldo y recalcular**. Primero deben estar guardadas las dos listas originales correctas.
 
 La acción guarda un respaldo privado y reconstruye el catálogo desde esas mismas dos plantillas. Se conservan todas sus filas originales, aunque el proveedor no tenga facturas en septiembre. Las altas adicionales se detectan únicamente en cargas mensuales **publicadas** desde septiembre de 2026, incluido ese mes. Octubre y los meses siguientes se acumulan normalmente; no es necesario volver a cargar los Excel cada mes.
 
 Se reemplazan únicamente el catálogo generado, evidencias, equivalencias y reportes de proveedores de ese ámbito. Se reponen las equivalencias explícitas cuyo proveedor principal sigue en las listas originales. Las demás decisiones quedan en el respaldo. Los pedimentos, documentos de entrada y salida, cargas mensuales, períodos, datos de gráficas y auditoría general permanecen intactos. Los Excel de proveedores anteriores al reinicio dejan de estar disponibles en el selector; su contenido está dentro del respaldo.
 
-Después aparece **Operaciones incluidas desde: 9/2026**. Actualizar las listas, reiniciar el backend o volver a importar las plantillas no elimina este corte. Reprocesar agosto tampoco incorpora sus proveedores a las listas. Un proveedor anterior que ya esté en la lista original sigue apareciendo, porque esa lista es la base autorizada.
+Después aparece **Operaciones incluidas desde: 9/2026** dentro de la configuración de proveedores. Actualizar las listas, reiniciar el backend o volver a importar las plantillas no elimina este corte. Reprocesar agosto tampoco incorpora sus proveedores a las listas. Un proveedor anterior que ya esté en la lista original sigue apareciendo, porque esa lista es la base autorizada.
 
-**Descargar respaldo de proveedores** entrega un JSON administrativo con el catálogo, evidencias, equivalencias, reportes y plantillas anteriores. El enlace sigue disponible al volver a entrar. Solo un Admin del mismo ámbito puede descargarlo. Se guarda en el almacenamiento persistente de documentos; debe incluirse en los respaldos habituales. Su restauración requiere intervención administrativa sobre una copia de la base: no hay un botón de restauración automática. No borres tablas ni carpetas manualmente.
+En **Administración → Proveedores → Mantenimiento de listas**, **Descargar respaldo de proveedores** entrega un JSON administrativo con el catálogo, evidencias, equivalencias, reportes y plantillas anteriores. El enlace sigue disponible al volver a entrar. Solo un Admin del mismo ámbito puede descargarlo. Se guarda en el almacenamiento persistente de documentos; debe incluirse en los respaldos habituales. Su restauración requiere intervención administrativa sobre una copia de la base: no hay un botón de restauración automática. No borres tablas ni carpetas manualmente.
 
 La limpieza se ejecuta al confirmar dentro de tu aplicación; actualizar el código no borra datos por sí solo. Si falla la creación del respaldo, no se limpia el catálogo. Las solicitudes con una versión desactualizada se rechazan para evitar eliminar cambios concurrentes.
 
@@ -56,7 +58,7 @@ La alternativa administrativa para importar una base histórica sigue disponible
 
 Se añadieron pruebas de regresión para el corte inclusivo, reemplazos de meses anteriores, publicaciones posteriores, filas amarillas, conservación del formato original, respaldos, permisos, aislamiento de ámbitos, reintentos y fallo de almacenamiento. También se añadieron pruebas del flujo y contrato HTTP del frontend.
 
-Estas pruebas **no se ejecutaron en el entorno de preparación de este cambio**, porque no había un entorno de ejecución disponible. Antes de instalar en producción deben ejecutarse desde una copia de desarrollo con las dependencias ya instaladas:
+El corte y la reconstrucción ya se verificaron con **23 pruebas del backend en Windows/Python 3.13.5**. Para esta simplificación de la interfaz pasaron **115 pruebas del frontend** y la compilación de producción (`npm run build`). Se comprobaron la navegación directa, la carga diferida de la configuración, ambos idiomas y los controles de permisos, confirmación y versión del catálogo. La revisión visual en el equipo de destino queda pendiente; estas comprobaciones no validan SQL Server, Entra ni un servidor de producción real. Los comandos de comprobación, con las dependencias ya instaladas, son:
 
 ```text
 cd backend

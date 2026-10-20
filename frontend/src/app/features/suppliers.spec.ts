@@ -1,4 +1,5 @@
 import { TestBed } from "@angular/core/testing";
+import { provideRouter } from "@angular/router";
 import { HttpHeaders, HttpResponse } from "@angular/common/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { of, Subject, throwError } from "rxjs";
@@ -39,7 +40,11 @@ function setup(operator = true) {
     reports: vi.fn<SuppliersApi["reports"]>(() => of(page([report]))),
     sync: vi.fn<SuppliersApi["sync"]>(() => of(summary)),
     rebuildFromSeptember: vi.fn<SuppliersApi["rebuildFromSeptember"]>(() =>
-      of({ ...summary, backupDocumentId: "backup-1", startPeriod: { year: 2026, month: 9 } }),
+      of({
+        ...summary,
+        backupDocumentId: "backup-1",
+        startPeriod: { year: 2026, month: 9 },
+      }),
     ),
     downloadBackup: vi.fn<SuppliersApi["downloadBackup"]>(() =>
       of(new HttpResponse<Blob>({ body: null, headers: new HttpHeaders() })),
@@ -51,6 +56,7 @@ function setup(operator = true) {
   };
   TestBed.configureTestingModule({
     providers: [
+      provideRouter([]),
       { provide: SuppliersApi, useValue: api },
       { provide: Auth, useValue: { hasRole: () => operator } },
     ],
@@ -99,27 +105,6 @@ describe("supplier Excel lists", () => {
     expect(component.selectedId()).toBe("pair-2");
     expect(component.count("foreign")).toBe(236);
   });
-  it("imports both chosen files and refreshes the available pair", () => {
-    const { component, api } = setup();
-    const national = new File(["national"], "national.xls");
-    const foreign = new File(["foreign"], "foreign.xlsx");
-    component.nationalFile = national;
-    component.foreignFile = foreign;
-    api.reports.mockReturnValue(of(page([{ ...report, id: "after-import" }])));
-    component.importLists();
-    expect(api.importLists).toHaveBeenCalledExactlyOnceWith(national, foreign);
-    expect(component.selectedId()).toBe("after-import");
-    expect(component.notice()).toContain("Excel están actualizados");
-  });
-  it("does not import a partial pair and keeps the original-list input open before initialization", () => {
-    const { fixture, component, api } = setup();
-    component.summary.set({ ...summary, initialized: false });
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector("details").open).toBe(true);
-    component.nationalFile = new File(["n"], "national.xlsx");
-    component.importLists();
-    expect(api.importLists).not.toHaveBeenCalled();
-  });
   it("lets readers download without offering import or update mutations", () => {
     const { fixture, component, api } = setup(false);
     expect(
@@ -128,10 +113,8 @@ describe("supplier Excel lists", () => {
     expect(fixture.nativeElement.textContent).not.toContain(
       "Actualizar listas",
     );
-    component.importLists();
     component.refresh();
     component.download("national");
-    expect(api.importLists).not.toHaveBeenCalled();
     expect(api.sync).not.toHaveBeenCalled();
     expect(api.download).toHaveBeenCalledExactlyOnceWith("pair-1", "national");
   });
@@ -162,7 +145,11 @@ describe("supplier Excel lists", () => {
     TestBed.inject(I18n).set("en");
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain("Download Excel");
-    expect(fixture.nativeElement.textContent).toContain("Original lists");
+    expect(
+      fixture.nativeElement
+        .querySelector(".supplier-configuration-link")
+        .getAttribute("aria-label"),
+    ).toBe("Supplier list settings");
     api.sync.mockReturnValue(
       throwError(() => ({
         status: 500,
@@ -176,61 +163,42 @@ describe("supplier Excel lists", () => {
     component.refresh();
     expect(component.error()).toBe("");
   });
-  it("requires explicit confirmation and prevents simultaneous rebuilds", () => {
-    const { component, api } = setup();
-    component.rebuildFromSeptember();
-    expect(api.rebuildFromSeptember).not.toHaveBeenCalled();
-    component.confirmRebuild.set(true);
-    const pending = new Subject<typeof summary & { backupDocumentId: string }>();
-    api.rebuildFromSeptember.mockReturnValue(pending);
-    component.rebuildFromSeptember();
-    expect(api.rebuildFromSeptember).toHaveBeenCalledOnce();
-    expect(api.rebuildFromSeptember.mock.calls[0][0]).toBe(3);
-    expect(api.rebuildFromSeptember.mock.calls[0][1]).toEqual(expect.any(String));
-    expect(component.busy()).toBe(true);
-    component.rebuildFromSeptember();
-    expect(api.rebuildFromSeptember).toHaveBeenCalledOnce();
-    pending.error({ status: 409, error: { detail: "Las listas cambiaron" } });
-    expect(component.busy()).toBe(false);
-    expect(component.confirmRebuild()).toBe(true);
-    expect(component.selectedId()).toBe(report.id);
-    expect(component.error()).toContain("Las listas cambiaron");
-  });
-
-  it("reloads the rebuilt pair, displays the cutoff and retains the backup after a refresh", () => {
-    const { component, fixture, api } = setup();
-    const updated = { ...summary, catalogVersion: 9, backupDocumentId: "backup-1",
-      startPeriod: { year: 2026, month: 9 } };
-    api.summary.mockReturnValue(of(updated));
-    api.reports.mockReturnValue(of(page([{ ...report, id: "september-cutoff" }])));
-    component.confirmRebuild.set(true);
-    component.rebuildFromSeptember();
+  it("keeps setup, cutoff and reset controls out of the normal page even for Admin", () => {
+    const { fixture, component, api } = setup();
+    component.summary.set({
+      ...summary,
+      startPeriod: { year: 2026, month: 9 },
+      backupDocumentId: "backup-1",
+    });
     fixture.detectChanges();
-    expect(component.selectedId()).toBe("september-cutoff");
-    expect(component.confirmRebuild()).toBe(false);
-    expect(component.notice()).toContain("Respaldo guardado");
-    expect(fixture.nativeElement.textContent).toContain("9/2026");
-    expect(component.backupDocumentId()).toBe("backup-1");
-    component.backupDocumentId.set("");
-    component.refresh();
-    expect(component.backupDocumentId()).toBe("backup-1");
-    component.downloadBackup();
-    expect(api.downloadBackup).toHaveBeenCalledExactlyOnceWith("backup-1");
-  });
-
-  it("does not expose or execute the cleanup for readers", () => {
-    const { fixture, component, api } = setup(false);
-    component.confirmRebuild.set(true);
-    component.rebuildFromSeptember();
+    expect(
+      fixture.nativeElement.querySelectorAll("input[type=file], details"),
+    ).toHaveLength(0);
+    expect(fixture.nativeElement.textContent).not.toContain(
+      "Recalcular listas",
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      "Operaciones incluidas desde:",
+    );
+    const link = fixture.nativeElement.querySelector(
+      ".supplier-configuration-link",
+    );
+    expect(link.getAttribute("href")).toBe("/administration?section=suppliers");
+    expect(api.importLists).not.toHaveBeenCalled();
     expect(api.rebuildFromSeptember).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.querySelector(".supplier-reset")).toBeNull();
   });
 
-  it("translates the rebuild controls to English", () => {
-    const { fixture } = setup();
-    TestBed.inject(I18n).set("en");
+  it("offers initial setup through Administration when no reports exist", () => {
+    const { fixture, component } = setup();
+    component.summary.set({ ...summary, initialized: false });
+    component.reports.set([]);
+    component.selectedId.set("");
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain("Rebuild from September 2026");
+    const link = fixture.nativeElement.querySelector(".supplier-empty a");
+    expect(link.textContent).toContain("Configurar listas");
+    expect(link.getAttribute("href")).toBe("/administration?section=suppliers");
+    expect(
+      fixture.nativeElement.querySelectorAll("input[type=file]"),
+    ).toHaveLength(0);
   });
-
 });

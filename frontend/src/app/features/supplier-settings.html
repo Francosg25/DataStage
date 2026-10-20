@@ -1,0 +1,178 @@
+@if (canManage()) {
+<section class="supplier-settings" aria-labelledby="supplier-settings-title">
+  <div class="supplier-settings-heading">
+    <div>
+      <h2 id="supplier-settings-title">
+        {{ "Configuración de proveedores" | t }}
+      </h2>
+      <p>
+        {{ "Las listas se actualizan automáticamente al publicar un mes." | t }}
+      </p>
+    </div>
+    <a mat-stroked-button routerLink="/suppliers">
+      {{ "Ver listas" | t }}<ds-icon name="arrow" />
+    </a>
+  </div>
+
+  @if (busy()) {
+  <mat-progress-bar
+    mode="indeterminate"
+    [attr.aria-label]="'Actualizando listas de proveedores' | t"
+  />
+  } @if (error()) {
+  <div class="error-message" role="alert">
+    {{ error() | t }}
+    <button mat-button (click)="reload()" [disabled]="busy()">
+      {{ "Reintentar" | t }}
+    </button>
+  </div>
+  } @if (notice()) {
+  <p class="supplier-settings-notice" role="status">
+    <ds-icon name="check" />{{ notice() | t }}
+  </p>
+  } @if (summary(); as current) {
+  <div class="supplier-settings-status">
+    <div>
+      <ds-icon [name]="current.initialized ? 'check' : 'file'" />
+      <strong
+        >{{ (current.initialized ? "Listas originales guardadas" :
+        "Configuración inicial") | t }}</strong
+      >
+    </div>
+    @if (current.startPeriod; as start) {
+    <span
+      >{{ "Operaciones incluidas desde:" | t }} {{ start.month }}/{{ start.year
+      }}</span
+    >
+    }
+  </div>
+
+  <details
+    class="supplier-originals"
+    [open]="originalsOpen()"
+    (toggle)="toggleOriginals($event)"
+  >
+    <summary>
+      <div>
+        <h3>{{ "Listas originales" | t }}</h3>
+        <span>{{ "Configuración de una sola vez" | t }}</span>
+      </div>
+      <ds-icon name="chevron" />
+    </summary>
+    <form #originalFilesForm (ngSubmit)="importLists(originalFilesForm)">
+      <p>
+        {{ "Selecciona ambos Excel una sola vez para conservar su formato y sus
+        proveedores." | t }}
+      </p>
+      <div class="supplier-input-grid">
+        <label
+          class="supplier-file-input"
+          [class.has-file]="foreignFile"
+          [class.disabled]="busy()"
+        >
+          <input
+            type="file"
+            accept=".xls,.xlsx"
+            (change)="selectImport($event, 'foreign')"
+            [attr.aria-label]="'Lista de extranjeros' | t"
+            [disabled]="busy()"
+          />
+          <ds-icon name="file" />
+          <span class="supplier-file-kind">{{ "Extranjeros" | t }}</span>
+          <strong
+            >{{ foreignFile ? foreignFile.name : ("Seleccionar Excel" | t)
+            }}</strong
+          >
+          <span class="supplier-file-format">.xls / .xlsx</span>
+        </label>
+        <label
+          class="supplier-file-input"
+          [class.has-file]="nationalFile"
+          [class.disabled]="busy()"
+        >
+          <input
+            type="file"
+            accept=".xls,.xlsx"
+            (change)="selectImport($event, 'national')"
+            [attr.aria-label]="'Lista de nacionales' | t"
+            [disabled]="busy()"
+          />
+          <ds-icon name="file" />
+          <span class="supplier-file-kind">{{ "Nacionales" | t }}</span>
+          <strong
+            >{{ nationalFile ? nationalFile.name : ("Seleccionar Excel" | t)
+            }}</strong
+          >
+          <span class="supplier-file-format">.xls / .xlsx</span>
+        </label>
+      </div>
+      <button
+        mat-flat-button
+        type="submit"
+        [disabled]="busy() || !nationalFile || !foreignFile"
+      >
+        <ds-icon name="upload" />{{ (importing() ? "Importando listas" : "Usar
+        estas listas") | t }}
+      </button>
+    </form>
+  </details>
+
+  @if (current.initialized) {
+  <details class="supplier-maintenance">
+    <summary>
+      <div>
+        <h3>{{ "Mantenimiento de listas" | t }}</h3>
+        <span>{{ "Reinicio y respaldo" | t }}</span>
+      </div>
+      <ds-icon name="chevron" />
+    </summary>
+    <div class="supplier-maintenance-content">
+      @if (current.catalogVersion == null) {
+      <p class="supplier-settings-warning" role="alert">
+        {{ "La API no proporcionó la versión de las listas. Reinicia el backend
+        y actualiza esta página." | t }}
+      </p>
+      } @if (!confirmRebuild()) {
+      <button
+        mat-stroked-button
+        (click)="confirmRebuild.set(true)"
+        [disabled]="busy()"
+      >
+        {{ "Recalcular desde septiembre de 2026" | t }}
+      </button>
+      } @else {
+      <div class="supplier-reset-confirmation">
+        <p>
+          {{ "Se conservarán tus dos listas originales. Se reemplazarán el
+          catálogo y los reportes de proveedores generados, usando solo
+          operaciones desde septiembre de 2026. Antes se guardará un respaldo.
+          Los pedimentos, cargas y gráficas no se eliminarán." | t }}
+        </p>
+        <div class="supplier-settings-actions">
+          <button
+            mat-flat-button
+            (click)="rebuildFromSeptember()"
+            [disabled]="busy() || current.catalogVersion == null"
+          >
+            {{ (rebuilding() ? "Recalculando listas" : "Guardar respaldo y
+            recalcular") | t }}
+          </button>
+          <button
+            mat-button
+            (click)="confirmRebuild.set(false)"
+            [disabled]="busy()"
+          >
+            {{ "Cancelar" | t }}
+          </button>
+        </div>
+      </div>
+      } @if (backupDocumentId()) {
+      <button mat-button (click)="downloadBackup()" [disabled]="busy()">
+        <ds-icon name="download" />{{ "Descargar respaldo de proveedores" | t }}
+      </button>
+      }
+    </div>
+  </details>
+  } }
+</section>
+}

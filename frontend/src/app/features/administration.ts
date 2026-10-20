@@ -1,5 +1,6 @@
 import { TranslatePipe } from "../core/i18n";
 import { Component, DestroyRef, inject, signal } from "@angular/core";
+import { ActivatedRoute } from "@angular/router";
 import { MatTabsModule } from "@angular/material/tabs";
 import { MatButtonModule } from "@angular/material/button";
 import { MatPaginatorModule, PageEvent } from "@angular/material/paginator";
@@ -10,10 +11,12 @@ import { Auth } from "../core/auth";
 import { CatalogTable, DataRow, errorText } from "../core/models";
 import { DataTable, Icon } from "../shared/ui";
 import { EntraSetup } from "./entra-setup";
+import { SupplierSettings } from "./supplier-settings";
 @Component({
   selector: "ds-administration",
   imports: [
     EntraSetup,
+    SupplierSettings,
     TranslatePipe,
     MatTabsModule,
     MatButtonModule,
@@ -33,13 +36,16 @@ import { EntraSetup } from "./entra-setup";
           }}
         </p>
       </div>
-      <span class="subtle-tag">
-        {{ "Configuración de solo lectura" | t }}
-      </span>
+      @if (selectedTab() !== 3) {
+        <span class="subtle-tag">
+          {{ "Configuración de solo lectura" | t }}
+        </span>
+      }
     </div>
     <section class="panel">
       <mat-tab-group
         animationDuration="0ms"
+        [selectedIndex]="selectedTab()"
         (selectedIndexChange)="tabChanged($event)"
         ><mat-tab [label]="'Entorno' | t"
           ><div class="settings-grid">
@@ -149,8 +155,14 @@ import { EntraSetup } from "./entra-setup";
             [hidePageSize]="true"
             [disabled]="loading()"
             (page)="changePage($event)"
-            [attr.aria-label]="'Paginación de auditoría' | t" /></mat-tab
-      ></mat-tab-group>
+            [attr.aria-label]="'Paginación de auditoría' | t"
+        /></mat-tab>
+        @if (auth.hasRole("Admin")) {
+          <mat-tab [label]="'Proveedores' | t">
+            <ng-template matTabContent><ds-supplier-settings /></ng-template>
+          </mat-tab>
+        }
+      </mat-tab-group>
     </section>
     @if (error()) {
       <div class="error-message" role="alert">{{ error() | t }}</div>
@@ -160,6 +172,8 @@ export class Administration {
   api = inject(Api);
   auth = inject(Auth);
   destroy = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute);
+  selectedTab = signal(0);
   catalog = signal<CatalogTable[]>([]);
   audit = signal<DataRow[]>([]);
   error = signal("");
@@ -167,6 +181,15 @@ export class Administration {
   total = signal(0);
   page = signal(0);
   constructor() {
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe((params) =>
+        this.selectedTab.set(
+          params.get("section") === "suppliers" && this.auth.hasRole("Admin")
+            ? 3
+            : 0,
+        ),
+      );
     this.api
       .catalog()
       .pipe(takeUntilDestroyed(this.destroy))
@@ -176,6 +199,7 @@ export class Administration {
       });
   }
   tabChanged(index: number) {
+    this.selectedTab.set(index);
     this.error.set("");
     if (index === 2) this.loadAudit();
   }

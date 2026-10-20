@@ -6,14 +6,26 @@
       }}
     </p>
   </div>
-  @if (canUpdate()) {
-  <button mat-stroked-button (click)="refresh()" [disabled]="busy()">
-    {{ "Actualizar listas" | t }}
-  </button>
-  }
+  <div class="supplier-page-actions">
+    @if (canUpdate()) {
+    <button mat-stroked-button (click)="refresh()" [disabled]="busy()">
+      {{ "Actualizar listas" | t }}
+    </button>
+    } @if (canImport()) {
+    <a
+      mat-icon-button
+      class="supplier-configuration-link"
+      routerLink="/administration"
+      [queryParams]="{ section: 'suppliers' }"
+      [attr.aria-label]="'Configuración de listas' | t"
+      [title]="'Configuración de listas' | t"
+      ><ds-icon name="settings"
+    /></a>
+    }
+  </div>
 </div>
 
-@if (loading() || importing() || rebuilding()) {
+@if (loading()) {
 <mat-progress-bar
   mode="indeterminate"
   [attr.aria-label]="'Actualizando listas de proveedores' | t"
@@ -25,79 +37,17 @@
     {{ "Reintentar" | t }}
   </button>
 </div>
-} @if (notice()) {
-<p class="supplier-notice" role="status">{{ notice() | t }}</p>
-} @if (canImport() && summary()) {
-<details class="panel supplier-originals" [open]="!summary()!.initialized">
-  <summary>{{ "Listas originales" | t }}</summary>
-  <p>
-    {{ "Selecciona ambos Excel una sola vez para conservar su formato y sus
-    proveedores." | t }}
-  </p>
-  <form (ngSubmit)="importLists()">
-    <label
-      >{{ "Lista de extranjeros" | t }}
-      <input
-        type="file"
-        accept=".xls,.xlsx"
-        (change)="selectImport($event, 'foreign')"
-        [disabled]="busy()"
-      />
-    </label>
-    <label
-      >{{ "Lista de nacionales" | t }}
-      <input
-        type="file"
-        accept=".xls,.xlsx"
-        (change)="selectImport($event, 'national')"
-        [disabled]="busy()"
-      />
-    </label>
-    <button
-      mat-flat-button
-      type="submit"
-      [disabled]="busy() || !nationalFile || !foreignFile"
-    >
-      {{ (importing() ? "Importando listas" : "Usar estas listas") | t }}
-    </button>
-  </form>
-</details>
 }
-
-
-@if (summary()?.startPeriod; as start) {
-<p class="supplier-notice">{{ "Operaciones incluidas desde:" | t }} {{ start.month }}/{{ start.year }}</p>
-}
-@if (canImport() && summary()?.initialized) {
-<section class="panel supplier-reset" aria-labelledby="supplier-reset-title">
-  <h2 id="supplier-reset-title">{{ "Recalcular listas" | t }}</h2>
-  @if (!confirmRebuild()) {
-  <button mat-stroked-button (click)="confirmRebuild.set(true)" [disabled]="busy()">
-    {{ "Recalcular desde septiembre de 2026" | t }}
-  </button>
-  } @else {
-  <p>{{ "Se conservarán tus dos listas originales. Se reemplazarán el catálogo y los reportes de proveedores generados, usando solo operaciones desde septiembre de 2026. Antes se guardará un respaldo. Los pedimentos, cargas y gráficas no se eliminarán." | t }}</p>
-  <button mat-flat-button (click)="rebuildFromSeptember()" [disabled]="busy() || summary()?.catalogVersion == null">
-    {{ (rebuilding() ? "Recalculando listas" : "Guardar respaldo y recalcular") | t }}
-  </button>
-  <button mat-button (click)="confirmRebuild.set(false)" [disabled]="busy()">{{ "Cancelar" | t }}</button>
-  }
-  @if (backupDocumentId()) {
-  <button mat-stroked-button (click)="downloadBackup()" [disabled]="busy()">{{ "Descargar respaldo de proveedores" | t }}</button>
-  }
-</section>
-}
-
 <section
   class="panel supplier-files"
-  [attr.aria-busy]="loading() || importing() || rebuilding()"
+  [attr.aria-busy]="loading()"
   aria-labelledby="supplier-files-title"
 >
   <div class="supplier-report-choice">
     <h2 id="supplier-files-title">{{ "Listas acumulativas" | t }}</h2>
     @if (reports().length) {
-    <label
-      >{{ "Reporte" | t }}
+    <label>
+      {{ "Reporte" | t }}
       <select
         [ngModel]="selectedId()"
         (ngModelChange)="selectedId.set($event)"
@@ -125,27 +75,42 @@
         (click)="download(kind.id)"
         [disabled]="busy()"
       >
-        <ds-icon name="download" /> {{ (downloading() === kind.id ?
-        "Descargando" : "Descargar Excel") | t }}
+        <ds-icon name="download" />
+        {{ (downloading() === kind.id ? "Descargando" : "Descargar Excel") | t
+        }}
       </button>
     </article>
     }
   </div>
   <div class="supplier-download-actions">
     <p>
-      <span class="supplier-yellow" aria-hidden="true"></span>{{ "Los
+      <span class="supplier-yellow" aria-hidden="true"></span> {{ "Los
       proveedores nuevos tienen toda la fila amarilla." | t }}
     </p>
     <button mat-flat-button (click)="download('both')" [disabled]="busy()">
-      <ds-icon name="download" />{{ (downloading() === 'both' ? "Descargando" :
-      "Descargar ambas listas") | t }}
+      <ds-icon name="download" />
+      {{ (downloading() === 'both' ? "Descargando" : "Descargar ambas listas") |
+      t }}
     </button>
   </div>
-  } @else if (!loading() && !importing()) {
-  <p class="supplier-empty">
-    {{ "Las dos listas estarán disponibles al procesar un mes o incorporar las
-    listas originales." | t }}
-  </p>
+  } @else if (!loading()) {
+  <div class="supplier-empty">
+    <ds-icon name="file" />
+    <h3>{{ "Tus listas aparecerán aquí" | t }}</h3>
+    <p>
+      {{ "Las dos listas estarán disponibles al procesar un mes o incorporar las
+      listas originales." | t }}
+    </p>
+    @if (canImport() && summary()?.initialized === false) {
+    <a
+      mat-stroked-button
+      routerLink="/administration"
+      [queryParams]="{ section: 'suppliers' }"
+    >
+      {{ "Configurar listas" | t }}
+    </a>
+    }
+  </div>
   } @if (reports().length < reportsTotal()) {
   <button mat-button (click)="loadMore()" [disabled]="busy()">
     {{ "Cargar reportes anteriores" | t }}
