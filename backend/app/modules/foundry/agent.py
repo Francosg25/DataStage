@@ -17,10 +17,11 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
+from azure.identity import AuthenticationRequiredError, CredentialUnavailableError
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
 from app.core.errors import ApplicationError
+from .auth import credential
 from .tools import tool_definitions, validate_tool_arguments
 
 INSTRUCTIONS = """Eres el asistente corporativo DataStage. Responde con precisión en el idioma indicado por la aplicación.
@@ -81,8 +82,8 @@ _circuits_lock = threading.Lock()
 
 @contextmanager
 def _provider_client(settings):
-    with DefaultAzureCredential(exclude_interactive_browser_credential=True) as credential:
-        with AIProjectClient(endpoint=settings.foundry_project_endpoint, credential=credential) as project:
+    with credential(settings) as identity:
+        with AIProjectClient(endpoint=settings.foundry_project_endpoint, credential=identity) as project:
             # SDK retries are disabled: the adapter owns one bounded retry budget.
             with project.get_openai_client(timeout=settings.foundry_timeout_seconds, max_retries=0) as client:
                 yield client
@@ -125,6 +126,8 @@ class FoundryAgent:
                 self._circuit.success()
                 return response
             except Exception as error:
+                if isinstance(error, (AuthenticationRequiredError, CredentialUnavailableError)):
+                    raise ApplicationError(503, "foundry_login_required", "Renueva la sesión de Azure del backend; en desarrollo usa setup --login.") from error
                 if not _transient(error) or attempt == 2:
                     self._circuit.failure(self._clock())
                     raise ApplicationError(503, "foundry_unavailable", "No fue posible obtener una respuesta de Microsoft Foundry.") from error
@@ -209,6 +212,8 @@ class FoundryAgent:
                     request = {**request, "input": tool_outputs, "previous_response_id": response_id, "tool_choice": "auto"}
         except ApplicationError:
             raise
+        except (AuthenticationRequiredError, CredentialUnavailableError) as error:
+            raise ApplicationError(503, "foundry_login_required", "Renueva la sesión de Azure del backend; en desarrollo usa setup --login.") from error
         except Exception as error:
             raise ApplicationError(503, "foundry_unavailable", "No fue posible conectar con Microsoft Foundry.") from error
         raise ApplicationError(502, "foundry_tool_limit", "Se alcanzó el límite de herramientas.")

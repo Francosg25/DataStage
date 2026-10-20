@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     foundry_agent_name: str = "datastage-assistant"
     foundry_agent_version: str = "1"
     foundry_model: str = ""
+    foundry_auth_mode: Literal["default", "browser"] = "default"
+    foundry_tenant_id: str = ""
+    foundry_client_id: str = ""
+    foundry_redirect_uri: str = ""
     foundry_max_tool_rounds: int = Field(default=5, ge=1, le=10)
     foundry_timeout_seconds: int = Field(default=45, ge=5, le=120)
     allow_agent_commands: bool = False
@@ -48,6 +52,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_requirements(self):
+        if self.environment == "production" and self.foundry_auth_mode == "browser":
+            raise ValueError("Producción requiere identidad de servicio; el login por navegador es solo para desarrollo")
         if self.environment == "production":
             if self.auth_mode != "entra":
                 raise ValueError("Producción requiere autenticación Entra ID")

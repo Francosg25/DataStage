@@ -42,7 +42,7 @@ import { Icon } from "../shared/ui";
             )
       }}</span
       ><span>{{
-        t("Revisado: 3 de octubre de 2026", "Reviewed: October 3, 2026")
+        t("Revisado: 19 de octubre de 2026", "Reviewed: October 19, 2026")
       }}</span>
     </div>
     <div class="guide-layout">
@@ -115,8 +115,8 @@ import { Icon } from "../shared/ui";
           <p>
             {{
               t(
-                "Puedes revisar el proyecto y probar un agente básico en el portal. Para añadir las funciones de DataStage, el script Python debe ejecutarse en un entorno corporativo aprobado, por ejemplo una VM de Azure con identidad administrada o un proceso de integración con identidad federada. El portal no permite editar definiciones de funciones personalizadas.",
-                "You can inspect the project and test a basic agent in the portal. To add DataStage functions, run the Python script in an approved corporate environment, such as an Azure VM with a managed identity or a build job with federated identity. The portal cannot edit custom function definitions."
+                "En desarrollo puedes preparar backend/.env con setup --configure-local e iniciar sesión con setup --login desde tu Python habitual. El navegador se abre sólo al ejecutar ese comando y el backend reutiliza una caché cifrada. La guía completa incluye los comandos. Para el servicio desplegado usa una identidad administrada o federada.",
+                "In development, prepare backend/.env with setup --configure-local and sign in using setup --login from your usual Python environment. Only that command opens the browser; the backend reuses an encrypted cache. The full guide includes the commands. Use a managed or federated identity for the deployed service."
               )
             }}
           </p>

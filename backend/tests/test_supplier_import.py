@@ -8,6 +8,7 @@ from app.modules.suppliers.service import DEFAULT_SCHEMAS
 from test_api_worker import system as system
 
 
+
 def workbook(kind, rows):
     content = BytesIO()
     with xlsxwriter.Workbook(content, {"in_memory": True, "strings_to_formulas": False}) as book:
