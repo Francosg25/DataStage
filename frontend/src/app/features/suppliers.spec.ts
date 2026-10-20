@@ -22,6 +22,9 @@ const page = <T>(items: T[], total = items.length) => ({
   limit: 50,
 });
 const summary = {
+  catalogVersion: 3,
+  backupDocumentId: null as string | null,
+  startPeriod: null as { year: number; month: number } | null,
   initialized: true,
   national: 46,
   foreign: 235,
@@ -35,6 +38,12 @@ function setup(operator = true) {
     summary: vi.fn<SuppliersApi["summary"]>(() => of(summary)),
     reports: vi.fn<SuppliersApi["reports"]>(() => of(page([report]))),
     sync: vi.fn<SuppliersApi["sync"]>(() => of(summary)),
+    rebuildFromSeptember: vi.fn<SuppliersApi["rebuildFromSeptember"]>(() =>
+      of({ ...summary, backupDocumentId: "backup-1", startPeriod: { year: 2026, month: 9 } }),
+    ),
+    downloadBackup: vi.fn<SuppliersApi["downloadBackup"]>(() =>
+      of(new HttpResponse<Blob>({ body: null, headers: new HttpHeaders() })),
+    ),
     importLists: vi.fn<SuppliersApi["importLists"]>(() => of(summary)),
     download: vi.fn<SuppliersApi["download"]>(() =>
       of(new HttpResponse<Blob>({ body: null, headers: new HttpHeaders() })),
@@ -167,4 +176,61 @@ describe("supplier Excel lists", () => {
     component.refresh();
     expect(component.error()).toBe("");
   });
+  it("requires explicit confirmation and prevents simultaneous rebuilds", () => {
+    const { component, api } = setup();
+    component.rebuildFromSeptember();
+    expect(api.rebuildFromSeptember).not.toHaveBeenCalled();
+    component.confirmRebuild.set(true);
+    const pending = new Subject<typeof summary & { backupDocumentId: string }>();
+    api.rebuildFromSeptember.mockReturnValue(pending);
+    component.rebuildFromSeptember();
+    expect(api.rebuildFromSeptember).toHaveBeenCalledOnce();
+    expect(api.rebuildFromSeptember.mock.calls[0][0]).toBe(3);
+    expect(api.rebuildFromSeptember.mock.calls[0][1]).toEqual(expect.any(String));
+    expect(component.busy()).toBe(true);
+    component.rebuildFromSeptember();
+    expect(api.rebuildFromSeptember).toHaveBeenCalledOnce();
+    pending.error({ status: 409, error: { detail: "Las listas cambiaron" } });
+    expect(component.busy()).toBe(false);
+    expect(component.confirmRebuild()).toBe(true);
+    expect(component.selectedId()).toBe(report.id);
+    expect(component.error()).toContain("Las listas cambiaron");
+  });
+
+  it("reloads the rebuilt pair, displays the cutoff and retains the backup after a refresh", () => {
+    const { component, fixture, api } = setup();
+    const updated = { ...summary, catalogVersion: 9, backupDocumentId: "backup-1",
+      startPeriod: { year: 2026, month: 9 } };
+    api.summary.mockReturnValue(of(updated));
+    api.reports.mockReturnValue(of(page([{ ...report, id: "september-cutoff" }])));
+    component.confirmRebuild.set(true);
+    component.rebuildFromSeptember();
+    fixture.detectChanges();
+    expect(component.selectedId()).toBe("september-cutoff");
+    expect(component.confirmRebuild()).toBe(false);
+    expect(component.notice()).toContain("Respaldo guardado");
+    expect(fixture.nativeElement.textContent).toContain("9/2026");
+    expect(component.backupDocumentId()).toBe("backup-1");
+    component.backupDocumentId.set("");
+    component.refresh();
+    expect(component.backupDocumentId()).toBe("backup-1");
+    component.downloadBackup();
+    expect(api.downloadBackup).toHaveBeenCalledExactlyOnceWith("backup-1");
+  });
+
+  it("does not expose or execute the cleanup for readers", () => {
+    const { fixture, component, api } = setup(false);
+    component.confirmRebuild.set(true);
+    component.rebuildFromSeptember();
+    expect(api.rebuildFromSeptember).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector(".supplier-reset")).toBeNull();
+  });
+
+  it("translates the rebuild controls to English", () => {
+    const { fixture } = setup();
+    TestBed.inject(I18n).set("en");
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain("Rebuild from September 2026");
+  });
+
 });

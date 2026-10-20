@@ -13,7 +13,7 @@
   }
 </div>
 
-@if (loading() || importing()) {
+@if (loading() || importing() || rebuilding()) {
 <mat-progress-bar
   mode="indeterminate"
   [attr.aria-label]="'Actualizando listas de proveedores' | t"
@@ -64,9 +64,33 @@
 </details>
 }
 
+
+@if (summary()?.startPeriod; as start) {
+<p class="supplier-notice">{{ "Operaciones incluidas desde:" | t }} {{ start.month }}/{{ start.year }}</p>
+}
+@if (canImport() && summary()?.initialized) {
+<section class="panel supplier-reset" aria-labelledby="supplier-reset-title">
+  <h2 id="supplier-reset-title">{{ "Recalcular listas" | t }}</h2>
+  @if (!confirmRebuild()) {
+  <button mat-stroked-button (click)="confirmRebuild.set(true)" [disabled]="busy()">
+    {{ "Recalcular desde septiembre de 2026" | t }}
+  </button>
+  } @else {
+  <p>{{ "Se conservarán tus dos listas originales. Se reemplazarán el catálogo y los reportes de proveedores generados, usando solo operaciones desde septiembre de 2026. Antes se guardará un respaldo. Los pedimentos, cargas y gráficas no se eliminarán." | t }}</p>
+  <button mat-flat-button (click)="rebuildFromSeptember()" [disabled]="busy() || summary()?.catalogVersion == null">
+    {{ (rebuilding() ? "Recalculando listas" : "Guardar respaldo y recalcular") | t }}
+  </button>
+  <button mat-button (click)="confirmRebuild.set(false)" [disabled]="busy()">{{ "Cancelar" | t }}</button>
+  }
+  @if (backupDocumentId()) {
+  <button mat-stroked-button (click)="downloadBackup()" [disabled]="busy()">{{ "Descargar respaldo de proveedores" | t }}</button>
+  }
+</section>
+}
+
 <section
   class="panel supplier-files"
-  [attr.aria-busy]="loading() || importing()"
+  [attr.aria-busy]="loading() || importing() || rebuilding()"
   aria-labelledby="supplier-files-title"
 >
   <div class="supplier-report-choice">

@@ -46,9 +46,12 @@ export class Suppliers {
   );
   readonly loading = signal(false);
   readonly importing = signal(false);
+  readonly rebuilding = signal(false);
+  readonly confirmRebuild = signal(false);
+  readonly backupDocumentId = signal("");
   readonly downloading = signal<SupplierKind | "both" | null>(null);
   readonly busy = computed(
-    () => this.loading() || this.importing() || !!this.downloading(),
+    () => this.loading() || this.importing() || this.rebuilding() || !!this.downloading(),
   );
   readonly error = signal("");
   readonly notice = signal("");
@@ -83,6 +86,7 @@ export class Suppliers {
     reports: { items: SupplierReport[]; total: number };
   }) {
     this.summary.set(value.summary);
+    this.backupDocumentId.set(value.summary.backupDocumentId || "");
     this.reports.set(value.reports.items);
     this.reportsTotal.set(value.reports.total);
     this.selectedId.set(value.reports.items[0]?.id || "");
@@ -135,6 +139,45 @@ export class Suppliers {
             "Listas originales incorporadas. Los Excel están actualizados.",
           );
         },
+        error: (error) => this.error.set(errorText(error)),
+      });
+  }
+  rebuildFromSeptember() {
+    const version = this.summary()?.catalogVersion;
+    if (!this.canImport() || this.busy() || !this.confirmRebuild() || version == null) return;
+    this.rebuilding.set(true);
+    this.error.set("");
+    this.notice.set("");
+    this.api.rebuildFromSeptember(version, crypto.randomUUID())
+      .pipe(
+        switchMap((result) => {
+          this.backupDocumentId.set(result.backupDocumentId);
+          return this.readLists();
+        }),
+        takeUntilDestroyed(this.destroy),
+        finalize(() => this.rebuilding.set(false)),
+      )
+      .subscribe({
+        next: (value) => {
+          this.acceptLists(value);
+          this.confirmRebuild.set(false);
+          this.notice.set("Listas recalculadas desde septiembre de 2026. Respaldo guardado.");
+        },
+        error: (error) => this.error.set(errorText(error)),
+      });
+  }
+  downloadBackup() {
+    const id = this.backupDocumentId();
+    if (!id || this.busy()) return;
+    this.loading.set(true);
+    this.error.set("");
+    this.api.downloadBackup(id)
+      .pipe(
+        takeUntilDestroyed(this.destroy),
+        finalize(() => this.loading.set(false)),
+      )
+      .subscribe({
+        next: (response) => saveSupplierDownload(this.document, response, "proveedores-respaldo.json"),
         error: (error) => this.error.set(errorText(error)),
       });
   }

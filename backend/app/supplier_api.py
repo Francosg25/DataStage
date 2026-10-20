@@ -1,13 +1,14 @@
 """Scoped supplier catalog, review decisions and immutable paired reports."""
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Header, Query, UploadFile
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, File, Header, Query, Request, UploadFile
+from fastapi.responses import FileResponse, Response
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.api import db_session
+from app.core.errors import ApplicationError
 from app.modules.identity.auth import Principal, current_principal, require_reader
-from app.modules.processing.service import audit, commit_or_conflict, validate_key
+from app.modules.processing.service import audit, commit_or_conflict, get_document, validate_key
 from app.modules.suppliers import service
 
 router = APIRouter(prefix="/api/v1/suppliers", tags=["Suppliers"])
@@ -57,6 +58,13 @@ class EquivalenceEdit(StrictModel):
     active: bool = Field(default=True, strict=True)
     expectedVersion: int = Field(ge=0, strict=True)
     reason: str = Field(default="Corrección de equivalencia", min_length=3, max_length=1000)
+
+
+class SupplierRebuildRequest(StrictModel):
+    startYear: int = Field(default=2026, ge=1900, le=2100, strict=True)
+    startMonth: int = Field(default=9, ge=1, le=12, strict=True)
+    expectedVersion: int = Field(ge=0, strict=True)
+    confirmation: Literal["REINICIAR LISTAS"]
 
 
 class ReportRequest(StrictModel):
@@ -126,6 +134,30 @@ def synchronize(session: DB, principal: Identity):
     result = service.refresh_lists(session, principal)
     commit_or_conflict(session)
     return result
+
+
+@router.post("/rebuild")
+def rebuild_lists(body: SupplierRebuildRequest, request: Request, session: DB, principal: Identity,
+                  key: Annotated[str, Header(alias="Idempotency-Key")]):
+    principal.require("Admin")
+    result = service.rebuild_lists(session, principal, request.app.state.storage,
+        body.startYear, body.startMonth, body.expectedVersion, key)
+    commit_or_conflict(session)
+    return result
+
+
+@router.get("/backups/{document_id}")
+def download_backup(document_id: str, request: Request, session: DB, principal: Identity):
+    principal.require("Admin")
+    document = get_document(session, document_id, principal.scope_id)
+    if document.kind != "supplier_backup" or document.status != "available":
+        raise ApplicationError(404, "SUPPLIER_BACKUP_NOT_FOUND", "No se encontró el respaldo de proveedores")
+    path = request.app.state.storage.resolve(document.storage_key)
+    if not path.is_file():
+        raise ApplicationError(503, "DOCUMENT_UNAVAILABLE", "El respaldo no está disponible temporalmente")
+    audit(session, principal.scope_id, principal.id, "suppliers.backup_downloaded", documentId=document_id)
+    commit_or_conflict(session)
+    return FileResponse(path, filename=document.original_name, media_type="application/json")
 
 
 @router.post("/import")

@@ -51,6 +51,23 @@ input[type="file"] {
   width: 100%;
   font: inherit;
 }
+.supplier-reset {
+  padding: 22px 24px;
+  margin: 24px 0;
+}
+.supplier-reset h2 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+.supplier-reset p {
+  color: #435d67;
+  line-height: 1.6;
+  max-width: 900px;
+}
+.supplier-reset button {
+  margin-inline-end: 10px;
+  margin-bottom: 8px;
+}
 .supplier-files {
   padding: 24px;
   margin-top: 24px;
@@ -152,6 +169,7 @@ button ds-icon {
     grid-template-columns: 1fr;
   }
   .supplier-files,
+  .supplier-reset,
   .supplier-originals {
     padding: 20px;
   }

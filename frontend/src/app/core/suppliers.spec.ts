@@ -152,4 +152,32 @@ describe("supplier API contracts", () => {
     request.flush({ items: [], total: 25 });
     expect((await promise).total).toBe(25);
   });
+  it("requests a version-checked September cutoff without allowing a browser-supplied scope", async () => {
+    const promise = firstValueFrom(api.rebuildFromSeptember(12, "reset-key"));
+    await Promise.resolve();
+    const request = http.expectOne("/api/v1/suppliers/rebuild");
+    expect(request.request.method).toBe("POST");
+    expect(request.request.body).toEqual({
+      startYear: 2026,
+      startMonth: 9,
+      expectedVersion: 12,
+      confirmation: "REINICIAR LISTAS",
+    });
+    expect(request.request.headers.get("Idempotency-Key")).toBe("reset-key");
+    expect(request.request.headers.get("Authorization")).toBe("Bearer corporate-token");
+    request.flush({ catalogVersion: 16, startPeriod: { year: 2026, month: 9 }, backupDocumentId: "backup-1" });
+    expect((await promise).backupDocumentId).toBe("backup-1");
+  });
+
+  it("downloads the retained backup through the protected supplier route", async () => {
+    const promise = firstValueFrom(api.downloadBackup("backup/1"));
+    await Promise.resolve();
+    const request = http.expectOne("/api/v1/suppliers/backups/backup%2F1");
+    expect(request.request.method).toBe("GET");
+    expect(request.request.responseType).toBe("blob");
+    expect(request.request.headers.get("Authorization")).toBe("Bearer corporate-token");
+    request.flush(new Blob(["{}"], { type: "application/json" }));
+    expect((await promise).body).toBeInstanceOf(Blob);
+  });
+
 });

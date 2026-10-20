@@ -115,6 +115,9 @@ export interface SupplierReportRequest {
   pending: number;
 }
 export interface SupplierSummary {
+  catalogVersion?: number;
+  startPeriod?: { year: number; month: number } | null;
+  backupDocumentId?: string | null;
   initialized?: boolean;
   catalog?: number;
   national: number;
@@ -276,6 +279,19 @@ export class SuppliersApi {
   download(id: string, kind: SupplierKind) {
     return this.http.get(
       `${this.base}/reports/${encodeURIComponent(id)}/${kind}.xlsx`,
+      { responseType: "blob", observe: "response" },
+    );
+  }
+  rebuildFromSeptember(expectedVersion: number, key: string) {
+    return this.http.post<SupplierSummary & { backupDocumentId: string }>(
+      `${this.base}/rebuild`,
+      { startYear: 2026, startMonth: 9, expectedVersion, confirmation: "REINICIAR LISTAS" },
+      { headers: { "Idempotency-Key": key } },
+    );
+  }
+  downloadBackup(id: string) {
+    return this.http.get(
+      `${this.base}/backups/${encodeURIComponent(id)}`,
       { responseType: "blob", observe: "response" },
     );
   }

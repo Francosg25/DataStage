@@ -4562,6 +4562,106 @@
         ]
       }
     },
+    "/api/v1/suppliers/rebuild": {
+      "post": {
+        "tags": [
+          "Suppliers"
+        ],
+        "summary": "Rebuild Lists",
+        "operationId": "rebuild_lists_api_v1_suppliers_rebuild_post",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplierRebuildRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EntraBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/suppliers/backups/{document_id}": {
+      "get": {
+        "tags": [
+          "Suppliers"
+        ],
+        "summary": "Download Backup",
+        "operationId": "download_backup_api_v1_suppliers_backups__document_id__get",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EntraBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/suppliers/import": {
       "post": {
         "tags": [
@@ -5656,6 +5756,41 @@
           "instance"
         ],
         "title": "Problem"
+      },
+      "SupplierRebuildRequest": {
+        "properties": {
+          "startYear": {
+            "type": "integer",
+            "maximum": 2100.0,
+            "minimum": 1900.0,
+            "title": "Startyear",
+            "default": 2026
+          },
+          "startMonth": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Startmonth",
+            "default": 9
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expectedversion"
+          },
+          "confirmation": {
+            "type": "string",
+            "const": "REINICIAR LISTAS",
+            "title": "Confirmation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expectedVersion",
+          "confirmation"
+        ],
+        "title": "SupplierRebuildRequest"
       },
       "ReportRequest": {
         "properties": {

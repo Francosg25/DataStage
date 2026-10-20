@@ -18,14 +18,14 @@ import unicodedata
 from types import SimpleNamespace
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import ApplicationError
 from app.modules.engine import parse_period
 from app.modules.processing.service import audit, json_text, validate_key
 from app.persistence.business import BUSINESS_TABLES, column_name
-from app.persistence.models import Period, Run
+from app.persistence.models import Period, Run, StoredDocument, utcnow
 from app.persistence.suppliers import (
     Supplier, SupplierEquivalence, SupplierObservation, SupplierReport, SupplierReportRequest, SupplierScope,
 )
@@ -840,6 +840,120 @@ def _period_key(name):
         return normalized(name)
 
 
+
+def _supplier_start_period(session, scope):
+    state = session.get(SupplierScope, scope)
+    value = json.loads(state.schemas_json).get("_startPeriod") if state else None
+    if value is None:
+        return None
+    try:
+        year, month = int(value["year"]), int(value["month"])
+        if not 1900 <= year <= 2100 or not 1 <= month <= 12:
+            raise ValueError()
+    except (KeyError, ValueError, TypeError):
+        _error("INVALID_SUPPLIER_START_PERIOD", "El inicio de las listas no es válido")
+    return year, month
+
+
+def _period_is_included(name, start):
+    if start is None:
+        return True
+    try:
+        year, month, _ = parse_period(name)
+    except ValueError:
+        return False
+    return (year, month) >= start
+
+
+def rebuild_lists(session, principal, storage, start_year, start_month, expected_version, key):
+    """Rebuild only supplier data from saved originals, retaining a private backup.
+
+    The caller commits once. Business tables, runs, periods, source documents
+    and audit history are never deleted. All mutable supplier writers take the
+    same scope lock, so a worker publication cannot interleave with the reset.
+    """
+    principal.require("Admin")
+    validate_key(key)
+    if not 1900 <= start_year <= 2100 or not 1 <= start_month <= 12:
+        _error("INVALID_SUPPLIER_START_PERIOD", "Selecciona un año y mes válidos", 400)
+    state = _lock(session, principal.scope_id, principal.id)
+    previous = json.loads(state.schemas_json)
+    request_hash = _hash({"year": start_year, "month": start_month, "version": expected_version})
+    last = previous.get("_lastRebuild", {})
+    if last.get("key") == key:
+        if last.get("requestHash") != request_hash:
+            _error("IDEMPOTENCY_CONFLICT", "La clave de idempotencia ya se usó con otra solicitud")
+        return {**summary(session, principal.scope_id), "backupDocumentId": last["backupDocumentId"]}
+    if expected_version != state.version - 1:
+        _error("VERSION_CONFLICT", "Las listas cambiaron; actualiza antes de reiniciarlas")
+    templates = previous.get("_templates", {})
+    if not state.seeded or not all(templates.get(kind) for kind in DEFAULT_SCHEMAS):
+        _error("SUPPLIER_ORIGINALS_REQUIRED", "Importa ambas listas originales antes de reiniciar")
+    # Validate/recover the actual original workbooks before changing a single row.
+    from base64 import b64decode
+    from .importer import read_workbook
+    payload = {"schemas": {**DEFAULT_SCHEMAS, "_templates": {}}}
+    try:
+        for kind in DEFAULT_SCHEMAS:
+            payload[kind], payload["schemas"]["_templates"][kind] = read_workbook(
+                b64decode(templates[kind], validate=True), kind + ".xlsx", kind)
+    except Exception:
+        _error("SUPPLIER_ORIGINALS_INVALID", "No se pudieron recuperar las listas originales guardadas", 409)
+
+    models = (SupplierReportRequest, SupplierReport, SupplierObservation, SupplierEquivalence, Supplier)
+    backup = {"formatVersion": 1, "scopeId": principal.scope_id,
+              "createdAt": utcnow().isoformat() + "Z",
+              "supplierScope": {"version": state.version - 1, "seeded": state.seeded,
+                                "schemas_json": state.schemas_json},
+              "tables": {}}
+    for model in models:
+        backup["tables"][model.__tablename__] = [
+            {column.name: (getattr(item, column.name).isoformat()
+                           if isinstance(getattr(item, column.name), datetime)
+                           else getattr(item, column.name))
+             for column in model.__table__.columns}
+            for item in session.scalars(select(model).where(model.scope_id == principal.scope_id))]
+    saved = storage.put_bytes(json_text(backup).encode("utf-8"), ".json")
+    document = StoredDocument(id=str(uuid4()), scope_id=principal.scope_id, kind="supplier_backup",
+                              original_name="proveedores-antes-de-reiniciar.json", **saved)
+    session.add(document)
+    session.flush()
+    generation = uuid4().hex
+    for model in models:
+        session.execute(delete(model).where(model.scope_id == principal.scope_id),
+                        execution_options={"synchronize_session": False})
+    session.flush()
+    state.seeded = 0
+    state.schemas_json = json_text({**DEFAULT_SCHEMAS,
+        "_startPeriod": {"year": start_year, "month": start_month}, "_generation": generation,
+        "_lastRebuild": {"key": key, "requestHash": request_hash, "backupDocumentId": document.id}})
+    initialize_seed(session, principal, payload, synchronize=False)
+    # Preserve explicit equivalences whose canonical supplier remains in the originals.
+    originals = list(session.scalars(select(Supplier).where(Supplier.scope_id == principal.scope_id)))
+    old_items = {row["id"]: row for row in backup["tables"]["suppliers"]}
+    for alias in backup["tables"]["supplier_equivalences"]:
+        old = old_items.get(alias["supplier_id"])
+        if old is None:
+            continue
+        matches = _automatic_matches(originals, _supplier_data(SimpleNamespace(**old)), {})
+        if len(matches) == 1:
+            session.add(SupplierEquivalence(id=str(uuid4()), scope_id=principal.scope_id,
+                identity_key=alias["identity_key"], identity_json=alias["identity_json"],
+                supplier_id=matches[0].id, active=alias["active"], decision=alias["decision"],
+                reason=alias["reason"], version=alias["version"] + 1))
+    session.flush()
+    # Freeze the imported baseline first: imported rows are never new yellow altas.
+    create_report(session, principal, "supplier-base:" + generation, "Listas originales")
+    # Use the same durable monthly-report pipeline as future publications, so
+    # refreshing the page cannot create another report and consume the yellow altas.
+    refresh_lists(session, principal)
+    audit(session, principal.scope_id, principal.id, "suppliers.rebuilt",
+          startYear=start_year, startMonth=start_month, backupDocumentId=document.id,
+          removed={name: len(rows) for name, rows in backup["tables"].items()})
+    session.flush()
+    return {**summary(session, principal.scope_id), "backupDocumentId": document.id}
+
+
 def ingest_baseline(session, principal, payload):
     """Explicitly import the user's historical workbook as supplier evidence.
 
@@ -849,6 +963,7 @@ def ingest_baseline(session, principal, payload):
     """
     principal.require("Admin")
     _lock(session, principal.scope_id, principal.id)
+    start = _supplier_start_period(session, principal.scope_id)
     baseline = payload.get("baseline", payload)
     raw_tables = baseline.get("tables", {})
     source_info = baseline.get("source", {})
@@ -863,6 +978,8 @@ def ingest_baseline(session, principal, payload):
                        archivo_origen=row.get("archivo_origen", source.get("file", "")),
                        source_row_number=source.get("row", index + 2))
             period_name = str(row.get("periodo") or "Histórico inicial")
+            if not _period_is_included(period_name, start):
+                continue
             groups.setdefault(period_name, {"501": [], "505": [], "507": []})[code].append(row)
     existing = _observations(session, principal.scope_id)
     by_source = {(o.run_id, o.source_row_id): o for o in existing}
@@ -904,14 +1021,19 @@ import_baseline = ingest_baseline
 def sync_active_history(session, scope, actor="system", *, schedule_missing_report=False):
     """Detect unseen 505 rows and retire evidence from replaced/deleted months."""
     _lock(session, scope, actor)
+    start = _supplier_start_period(session, scope)
     active = list(session.execute(select(Run, Period).join(Period, Period.active_run_id == Run.id)
                   .where(Run.scope_id == scope, Period.scope_id == scope, Run.kind == "monthly",
                          Run.publication_status == "published").order_by(Period.year, Period.month)).all())
+    active = [(run, period) for run, period in active
+              if start is None or (period.year, period.month) >= start]
     active_ids = {run.id for run, _ in active}
     active_months = {_period_key(period.name) for _, period in active}
     existing = _observations(session, scope)
     for observation in existing:
-        if observation.source_kind == "baseline":
+        if not _period_is_included(observation.period_name, start):
+            observation.active = 0
+        elif observation.source_kind == "baseline":
             if _period_key(observation.period_name) in active_months:
                 observation.source_kind, observation.active = "baseline_retired", 0
         elif observation.source_kind == "baseline_retired":
@@ -1125,7 +1247,12 @@ def summary(session, scope):
         if not any(json.loads(raw).get(key) for key in ("customerOnly", "aliasOf", "sourceOnly")):
             counts[kind] += 1
     state = session.get(SupplierScope, scope)
-    return {"catalog": sum(counts.values()), "initialized": bool(state and state.seeded), "national": counts.get("national", 0),
+    start = _supplier_start_period(session, scope)
+    schemas = json.loads(state.schemas_json) if state else {}
+    return {"catalogVersion": state.version if state else 0,
+            "startPeriod": {"year": start[0], "month": start[1]} if start else None,
+            "backupDocumentId": schemas.get("_lastRebuild", {}).get("backupDocumentId"),
+            "catalog": sum(counts.values()), "initialized": bool(state and state.seeded), "national": counts.get("national", 0),
             "foreign": counts.get("foreign", 0),
             "pending": _pending_count(session, scope),
             "equivalences": session.scalar(select(func.count(SupplierEquivalence.id)).where(
@@ -1145,6 +1272,9 @@ def initialize_seed(session, principal, seed_payload, *, synchronize=True):
         _error("INVALID_SUPPLIER_SCHEMA", "Las columnas de las listas no coinciden con las listas originales", 400)
     fingerprint = _hash({kind: seed_payload.get(kind, []) for kind in DEFAULT_SCHEMAS})
     previous_schemas = json.loads(state.schemas_json)
+    for name in ("_startPeriod", "_generation", "_lastRebuild"):
+        if name in previous_schemas:
+            schemas[name] = previous_schemas[name]
     if state.seeded and previous_schemas.get("_seedFingerprint") == fingerprint:
         return summary(session, principal.scope_id)
     # Templates are imported once and copied into each immutable report.
@@ -1242,17 +1372,20 @@ def request_monthly_report(session, run, actor="worker"):
         SupplierReportRequest.scope_id == run.scope_id, SupplierReportRequest.source_run_id == run.id))
     if request is None:
         period = session.get(Period, run.period_id)
-        if not period or period.active_run_id != run.id:
+        if (not period or period.active_run_id != run.id
+                or not _period_is_included(period.name, _supplier_start_period(session, run.scope_id))):
             return None
         state = ensure_initialized(session, run.scope_id, actor)
+        start = _supplier_start_period(session, run.scope_id)
         observations = _observations(session, run.scope_id, active=True)
         draft = {"schemas": json.loads(state.schemas_json),
                  "suppliers": [_freeze_supplier(item) for item in session.scalars(select(Supplier)
                                 .where(Supplier.scope_id == run.scope_id))],
                  "observations": [{"id": o.id, "virtualConfirmed": bool(o.virtual_confirmed)} for o in observations],
                  "sourceRuns": sorted({o.run_id for o in observations}),
-                 "monthlyRuns": list(session.scalars(select(Period.active_run_id).where(
-                     Period.scope_id == run.scope_id, Period.active_run_id.is_not(None))))}
+                 "monthlyRuns": [p.active_run_id for p in session.scalars(select(Period).where(
+                     Period.scope_id == run.scope_id, Period.active_run_id.is_not(None)))
+                     if start is None or (p.year, p.month) >= start]}
         request = SupplierReportRequest(id=str(uuid4()), scope_id=run.scope_id, source_run_id=run.id,
             period_name=period.name, state="pending_review", draft_json=json_text(draft), created_by=run.created_by)
         session.add(request)
@@ -1501,8 +1634,11 @@ def refresh_lists(session, principal):
         if (included == expected and same_values and snapshot["schemas"] == json.loads(state.schemas_json)
                 and snapshot.get("sourceRuns") == sorted({o.run_id for o in _observations(session, principal.scope_id, active=True)})):
             return result
-    active_period = session.scalar(select(Period).where(Period.scope_id == principal.scope_id,
-        Period.active_run_id.is_not(None)).order_by(Period.year.desc(), Period.month.desc()).limit(1))
+    start = _supplier_start_period(session, principal.scope_id)
+    active_period = next((p for p in session.scalars(select(Period).where(
+        Period.scope_id == principal.scope_id, Period.active_run_id.is_not(None))
+        .order_by(Period.year.desc(), Period.month.desc()))
+        if start is None or (p.year, p.month) >= start), None)
     label = "Proveedores · " + (active_period.name if active_period else "Listas acumulativas")
     create_report(session, principal, "supplier-current:" + fingerprint, label)
     return summary(session, principal.scope_id)
