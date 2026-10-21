@@ -109,6 +109,8 @@ Las funciones se registran desde el SDK y se ejecutan dentro del backend DataSta
 
 Cada consulta utiliza `agent_reference` con nombre y versión exactos. Las instrucciones y las definiciones de herramientas se obtienen de esa versión: no se vuelven a enviar como parámetros `instructions` ni `tools` de `responses.create`, porque Foundry rechaza esa combinación con `invalid_payload`. El idioma seleccionado en la interfaz se transmite mediante un mensaje de contexto `developer` generado por el backend; el historial recibido sólo admite mensajes de usuario y asistente. La continuación con resultados de herramientas mantiene la misma referencia y `previous_response_id`. El backend sigue validando los argumentos, permisos y ámbito antes de ejecutar cada función. Si se cambian las instrucciones o los contratos registrados, prepara y comprueba una nueva versión antes de habilitarla.
 
+Todos los mensajes enviados en `input` incluyen explícitamente `type: "message"`, tanto el contexto de idioma como los mensajes de usuario y asistente del historial. Aunque el SDK permite omitir ese discriminador, el endpoint del proyecto puede rechazarlo como `invalid_value` en `input[n]`. Los resultados de funciones conservan su tipo distinto `function_call_output` y su `call_id`.
+
 ## 6. Activar y probar la conexión
 
 Usa la versión exacta devuelta, sin asumir que sea `1`. Configura estas variables **en el entorno que ejecuta la API** y reinicia ese proceso:
@@ -175,6 +177,7 @@ Las acciones siguen requiriendo el rol del usuario. El agente no decide su ident
 | El almacenamiento cifrado no está disponible | Revisar con TI la protección de datos del usuario y el soporte del SDK. No se permite guardar tokens sin cifrar. |
 | La versión no coincide al ejecutar `--check` | Revisar el modelo, la versión exacta, las instrucciones y las herramientas. La comprobación no crea otra versión ni cambia el agente. |
 | Foundry devuelve `invalid_payload`: `Not allowed when agent is specified`, con `instructions` o `tools` | Descarga la corrección de `feature/foundry-agent-setup`, ejecuta `--check` y reinicia la API. La invocación reutiliza la definición registrada mediante `agent_reference`. Esta corrección del cliente no requiere crear otra versión del agente. |
+| Foundry devuelve `invalid_value` en `input[n]` con `Invalid value: ''` | Descarga la corrección de `feature/foundry-agent-setup` y reinicia la API. El cliente debe incluir `type: "message"` en todos los mensajes del contexto y del historial. |
 | 401 o 403 desde Azure | Comprueba directorio, identidad, ámbito y roles de Foundry. |
 | No encuentra modelo o agente | Comprueba el endpoint del proyecto, nombre de despliegue y versión registrada. |
 | 429 | Revisa cuota y capacidad del despliegue. El adaptador ya usa reintentos limitados. |
@@ -194,7 +197,7 @@ Un endpoint privado controla el acceso de red. La ubicación del procesamiento s
 
 Las pruebas de autenticación local verifican aislamiento de caché, cifrado obligatorio, sesión expirada, ausencia de ventanas de login desde la API, conservación del `.env`, respaldo, contratos de herramientas y rechazo del modo personal fuera del desarrollo local. La ejecución real del cifrado de Windows, el acceso privado desde cada equipo y la identidad Linux deben validarse en esos entornos.
 
-Validación del 21 de octubre de 2026: **110 pruebas** de Foundry, autenticación local y revisión de seguridad, correctas en Linux/Python 3.12.14 con las versiones del lock (`azure-identity 1.25.3`, `azure-ai-projects 2.7.0`). Incluyen la reconfiguración de modos anteriores inválidos, la reproducción de `invalid_payload` con el SDK real y transporte simulado, la continuación de herramientas en ambos idiomas y la comprobación de las instrucciones registradas. En la entrega inicial también pasaron **26 pruebas** de herramientas nativas, `pip check` y la comprobación del lock; Ruff volvió a pasar en los archivos Python modificados. Las llamadas a Azure de estas pruebas están simuladas; no acreditan la sesión cifrada real en Windows/Python 3.13 ni la identidad de producción.
+Validación del 21 de octubre de 2026: **112 pruebas** de Foundry, autenticación local y revisión de seguridad, correctas en Linux/Python 3.12.14 con las versiones del lock (`azure-identity 1.25.3`, `azure-ai-projects 2.7.0`). Incluyen la reconfiguración de modos anteriores inválidos, la reproducción de `invalid_payload` e `invalid_value` con el SDK real y transporte simulado, los tipos explícitos en mensajes de usuario, asistente e idioma, la continuación de herramientas en ambos idiomas y la comprobación de las instrucciones registradas. En la entrega inicial también pasaron **26 pruebas** de herramientas nativas, `pip check` y la comprobación del lock; Ruff volvió a pasar en los archivos Python modificados. Las llamadas a Azure de estas pruebas están simuladas; no acreditan la sesión cifrada real en Windows/Python 3.13 ni la identidad de producción.
 
 ## Alternativa: Azure CLI aprobado por TI
 

@@ -141,7 +141,7 @@ class FoundryAgent:
             if not isinstance(item, dict) or item.get("role") not in {"user", "assistant"} or not isinstance(item.get("content"), str):
                 raise ApplicationError(400, "agent_history_invalid", "Sólo se permiten mensajes de usuario y asistente.")
             characters += len(item["content"])
-            input_messages.append({"role": item["role"], "content": item["content"]})
+            input_messages.append({"type": "message", "role": item["role"], "content": item["content"]})
         if characters > 100_000:
             raise ApplicationError(400, "agent_history_invalid", "La conversación excede el límite de contenido.")
         evidence = []
@@ -156,9 +156,14 @@ class FoundryAgent:
         # The pinned agent owns its instructions and tool definitions. Foundry
         # rejects those top-level overrides when agent_reference is supplied.
         # This application-controlled message supplies only the current UI locale.
+        # Explicit discriminators are required by the Foundry project endpoint,
+        # even though the SDK's EasyInputMessageParam makes them optional.
         request = {
-            "input": [{"role": "developer", "content": "Respond in English." if language == 'en' else "Responde en español."},
-                      *input_messages],
+            "input": [
+                {"type": "message", "role": "developer",
+                 "content": "Respond in English." if language == 'en' else "Responde en español."},
+                *input_messages,
+            ],
             "tool_choice": "required",
             "parallel_tool_calls": False,
             "store": True,

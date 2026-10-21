@@ -15,6 +15,11 @@ from app.modules.foundry.setup import register_agent
 
 RUN_ID = "8a59ab0b-cc83-49dd-9a38-cb696e5fb1da"
 HISTORY = [{"role": "user", "content": "Consulta la última ejecución."}]
+MULTITURN_HISTORY = [
+    {"role": "user", "content": "Consulta septiembre de 2026."},
+    {"role": "assistant", "content": "La ejecución previa está completada.\nReferencia: run anterior."},
+    {"role": "user", "content": "Ahora resume las cinco más recientes."},
+]
 
 
 @pytest.fixture(autouse=True)
@@ -60,7 +65,10 @@ def test_sdk_responses_continuation_and_evidence_are_real_contracts():
     assert first["extra_body"]["agent_reference"] == {"type": "agent_reference", "name": "datastage-assistant", "version": "1"}
     assert first["store"] is True
     assert first["tool_choice"] == "required"
-    assert first["input"] == [{"role": "developer", "content": "Responde en español."}, *HISTORY]
+    assert first["input"] == [
+        {"type": "message", "role": "developer", "content": "Responde en español."},
+        {"type": "message", "role": "user", "content": HISTORY[0]["content"]},
+    ]
     for request in (first, second):
         assert "instructions" not in request
         assert "tools" not in request
@@ -252,7 +260,8 @@ def test_setup_without_model_fails_before_sdk_creation(monkeypatch):
 
 
 @pytest.mark.parametrize("language,locale", [("es", "Responde en español."), ("en", "Respond in English.")])
-def test_real_openai_sdk_serializes_foundry_extension_and_parses_function_output(language, locale):
+@pytest.mark.parametrize("history", [HISTORY, MULTITURN_HISTORY], ids=["first-turn", "prior-assistant-turn"])
+def test_real_openai_sdk_serializes_foundry_extension_and_parses_function_output(language, locale, history):
     requests = []
 
     def handle(request):
@@ -266,6 +275,19 @@ def test_real_openai_sdk_serializes_foundry_extension_and_parses_function_output
                 "details": [{"param": key, "message": "Not allowed when agent is specified."}
                             for key in ("instructions", "tools") if key in body],
             }})
+        for index, item in enumerate(body["input"]):
+            if not item.get("type"):
+                return httpx.Response(400, json={"error": {
+                    "code": "invalid_value", "type": "invalid_request_error", "param": f"input[{index}]",
+                    "message": "Invalid value: ''. Supported values include 'message' and 'function_call_output'.",
+                }})
+            assert item["type"] in {"message", "function_call_output"}
+            if item["type"] == "message":
+                assert item["role"] in {"user", "assistant", "developer"}
+                assert isinstance(item["content"], str)
+            else:
+                assert item["call_id"] == "call_1"
+                assert isinstance(json.loads(item["output"]), dict)
         if len(requests) == 1:
             output = [{"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "get_run", "arguments": json.dumps({"runId": RUN_ID})}]
         else:
@@ -280,7 +302,7 @@ def test_real_openai_sdk_serializes_foundry_extension_and_parses_function_output
 
     provider = FoundryAgent(settings(), client_factory=factory)
     callback = MagicMock(return_value={"status": "completed", "sources": [{"runId": RUN_ID}]})
-    result = provider.respond(HISTORY, callback, language=language)
+    result = provider.respond(history, callback, language=language)
     assert result["message"] == "La ejecución está completa."
     assert result["evidence"] == [{"runId": RUN_ID}]
     callback.assert_called_once_with("get_run", {"runId": RUN_ID}, "call_1")
@@ -288,7 +310,13 @@ def test_real_openai_sdk_serializes_foundry_extension_and_parses_function_output
     for request in requests:
         assert "instructions" not in request and "tools" not in request and "model" not in request
         assert request["agent_reference"] == {"type": "agent_reference", "name": "datastage-assistant", "version": "1"}
-    assert requests[0]["input"] == [{"role": "developer", "content": locale}, *HISTORY]
+    initial = requests[0]["input"]
+    assert initial[0] == {"type": "message", "role": "developer", "content": locale}
+    assert [(item["role"], item["content"]) for item in initial[1:]] == [
+        (item["role"], item["content"]) for item in history
+    ]
+    assert all(item["type"] == "message" for item in initial)
+    assert all("type" not in item for item in history)
     assert requests[0]["agent_reference"]["version"] == "1"
     assert requests[1]["previous_response_id"] == "resp_1"
     assert requests[1]["input"][0]["type"] == "function_call_output"
