@@ -142,11 +142,8 @@ export function validateZip(file: File, maxMb: number): string {
               {{ "Guardando el archivo y creando la ejecución…" | t }}
             </p>
           }
-          <div class="form-actions">
-            <span
-              ><ds-icon name="shield" />
-              {{ "Tu archivo conserva su trazabilidad." | t }} </span
-            ><button
+          <div class="form-actions monthly-form-actions">
+            <button
               mat-flat-button
               type="submit"
               [disabled]="busy() || !file() || form.invalid"

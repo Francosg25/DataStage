@@ -447,7 +447,7 @@ select {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 10px;
 }
@@ -1062,10 +1062,6 @@ select {
   .filterbar label,
   .filterbar label.wide-filter {
     min-width: 0;
-  }
-  .filterbar .reset-button {
-    grid-column: 1/-1;
-    text-align: right;
   }
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

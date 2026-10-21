@@ -306,7 +306,6 @@ p {
 @media print {
   .sidebar,
   .topbar,
-  .development-banner,
   .app-footer,
   .nav-scrim {
     display: none !important;
@@ -339,58 +338,10 @@ p {
   font-size: 11px;
   line-height: 1.4;
   font-weight: 600;
-}
-.user-name small {
-  display: block;
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 400;
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.environment-pill {
-  font-size: 10px;
-  border: 1px solid #dbe6e2;
-  border-radius: 20px;
-  padding: 4px 9px;
-  color: #5d7873;
-  margin-right: 8px;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.environment-pill i {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #139789;
-  vertical-align: middle;
-  margin-right: 6px;
-}
-.development-banner {
-  min-height: 35px;
-  background: #fff6de;
-  border-bottom: 1px solid #efdfb1;
-  padding: 8px 40px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 10px;
-  color: #87692a;
-}
-.development-banner ds-icon {
-  width: 14px;
-  height: 14px;
-}
-.development-banner strong {
-  white-space: nowrap;
-  font-size: 10px;
-}
-.development-banner span {
-  font-size: 10px;
 }
 main#main-content {
   padding: 34px 40px 20px;
@@ -898,6 +849,9 @@ mat-form-field {
   border-top: 1px solid var(--line);
   margin-top: 26px;
   padding-top: 23px;
+}
+.monthly-form-actions {
+  justify-content: flex-end;
 }
 .form-actions > span {
   display: flex;
@@ -1415,9 +1369,6 @@ mat-form-field {
   .topbar {
     padding: 0 28px;
   }
-  .development-banner {
-    padding: 8px 28px;
-  }
   .stats-grid {
     gap: 12px;
   }
@@ -1520,9 +1471,6 @@ mat-form-field {
   .settings-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  .development-banner span {
-    font-size: 9px;
-  }
 }
 @media (max-width: 620px) {
   main#main-content {
@@ -1538,22 +1486,7 @@ mat-form-field {
   .breadcrumb span {
     margin: 0 6px;
   }
-  .user-name,
-  .environment-pill {
-    display: none;
-  }
-  .development-banner {
-    padding: 9px 18px;
-    gap: 8px;
-    align-items: flex-start;
-  }
-  .development-banner > span {
-    line-height: 1.45;
-  }
-  .development-banner strong {
-    font-size: 9px;
-  }
-  .development-banner ds-icon {
+  .user-name {
     display: none;
   }
   .page-heading {
@@ -1659,9 +1592,6 @@ mat-form-field {
     padding: 12px 18px 22px;
     font-size: 8px;
     gap: 10px;
-  }
-  .app-footer span:last-child {
-    display: none;
   }
   .form-panel {
     padding: 22px 18px;
@@ -1926,10 +1856,6 @@ ds-uploads mat-tab-nav-panel > router-outlet + * {
 .breadcrumb,
 .user-name {
   font-size: 12px;
-}
-.user-name small,
-.environment-pill {
-  font-size: 10px;
 }
 .stat-top > span:first-child,
 .stat-card > span {

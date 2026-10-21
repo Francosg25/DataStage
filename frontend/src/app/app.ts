@@ -125,16 +125,13 @@ import { I18n } from "./core/i18n";
                 <option value="es">{{ "Español" | t }}</option>
                 <option value="en">{{ "English" | t }}</option>
               </select>
-              <span class="environment-pill"
-                ><i></i>{{ auth.config()?.environment | t }}</span
-              ><span class="avatar">{{
-                auth.user()!.name.slice(0, 2).toUpperCase() | t
-              }}</span
-              ><span class="user-name"
-                >{{ auth.user()?.name | t
-                }}<small>{{ auth.user()?.roles?.join(" · ") | t }}</small></span
-              >
               @if (auth.config()?.authMode === "entra") {
+                <span class="avatar" aria-hidden="true">{{
+                  auth.user()!.name.slice(0, 2).toUpperCase()
+                }}</span>
+                <span class="user-name" [title]="auth.user()!.name">{{
+                  auth.user()?.name
+                }}</span>
                 <button
                   mat-icon-button
                   [attr.aria-label]="'Cerrar sesión' | t"
@@ -145,22 +142,9 @@ import { I18n } from "./core/i18n";
               }
             </div>
           </header>
-          @if (auth.config()?.authMode === "development") {
-            <div class="development-banner">
-              <ds-icon name="shield" /><strong>
-                {{ "Desarrollo local" | t }} </strong
-              ><span>
-                {{
-                  "Identidad de prueba habilitada. Configura Microsoft Entra ID antes de desplegar a producción."
-                    | t
-                }}
-              </span>
-            </div>
-          }
           <main id="main-content" tabindex="-1"><router-outlet /></main>
           <footer class="app-footer">
-            <span> {{ "DataStage · Plataforma de procesamiento" | t }} </span
-            ><span> {{ "Trazabilidad en cada registro" | t }} </span>
+            <span> {{ "DataStage · Plataforma de procesamiento" | t }} </span>
           </footer>
         </div>
       </div>
