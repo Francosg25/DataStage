@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
-from uuid import UUID
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -43,10 +42,6 @@ class Settings(BaseSettings):
     foundry_agent_name: str = "datastage-assistant"
     foundry_agent_version: str = "1"
     foundry_model: str = ""
-    foundry_auth_mode: Literal["default", "interactive"] = "default"
-    foundry_tenant_id: str = ""
-    foundry_client_id: str = ""
-    foundry_redirect_uri: str = ""
     foundry_max_tool_rounds: int = Field(default=5, ge=1, le=10)
     foundry_timeout_seconds: int = Field(default=45, ge=5, le=120)
     allow_agent_commands: bool = False
@@ -54,22 +49,6 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_requirements(self):
-        if self.foundry_auth_mode == "interactive":
-            if self.environment != "development" or self.auth_mode != "development":
-                raise ValueError("La sesión personal de Foundry solo se permite en desarrollo local")
-            try:
-                UUID(self.foundry_tenant_id)
-                if self.foundry_client_id:
-                    UUID(self.foundry_client_id)
-            except (ValueError, TypeError) as error:
-                raise ValueError("Configura un tenant ID y, si corresponde, client ID válidos para Foundry") from error
-            if bool(self.foundry_client_id) != bool(self.foundry_redirect_uri):
-                raise ValueError("Un cliente interactivo propio requiere su client ID y redirect URI local")
-            if self.foundry_redirect_uri:
-                redirect = urlsplit(self.foundry_redirect_uri)
-                if (redirect.scheme != "http" or redirect.hostname not in {"localhost", "127.0.0.1"}
-                        or not redirect.port or redirect.username or redirect.password or redirect.query or redirect.fragment):
-                    raise ValueError("El redirect URI de Foundry debe ser HTTP loopback con puerto explícito")
         if self.environment == "production":
             if self.auth_mode != "entra":
                 raise ValueError("Producción requiere autenticación Entra ID")

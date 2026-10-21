@@ -11,8 +11,6 @@
 
 No se requieren Docker, Docker Hub, WSL2 ni Kubernetes. El servidor no necesita Node ni npm: recibe HTML, CSS y JavaScript ya compilados. Nginx sirve estos archivos por HTTPS y pasa `/api/` a FastAPI, accesible únicamente en `127.0.0.1:8000`. API y worker usan la misma base y el mismo directorio documental. El worker consulta su cola SQL de forma independiente. Foundry está desactivado por defecto.
 
-Si TI habilita Foundry, usar `DATASTAGE_FOUNDRY_AUTH_MODE=default` y una identidad de servicio autorizada. La sesión personal cifrada del piloto Windows solo funciona en desarrollo local y se rechaza en producción. Un Linux interno necesita la identidad que TI configure (por ejemplo, aplicación con certificado); no dispone de identidad administrada automáticamente. Ver [la guía Foundry](azure-foundry.md) y `deploy/linux/runtime.env.example`.
-
 ## 1. Requisitos que proporciona TI
 
 - Linux con systemd y Nginx; Python **3.12 o 3.13**, con soporte `venv` y pip, aprobado para la distribución/arquitectura concretas. Python 3.13 es el objetivo local.
