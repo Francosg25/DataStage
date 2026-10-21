@@ -279,7 +279,8 @@ def test_failed_atomic_write_preserves_original_and_removes_temporary(local_file
 
 @pytest.fixture
 def registered_agent(monkeypatch):
-    definition = {"kind": "prompt", "model": "test-deployment", "tools": tool_definitions(False)}
+    definition = {"kind": "prompt", "model": "test-deployment", "instructions": setup.INSTRUCTIONS,
+                  "tools": tool_definitions(False)}
     agent = SimpleNamespace(name="datastage-assistant", version="1", definition=MagicMock())
     agent.definition.as_dict.side_effect = lambda: deepcopy(definition)
     project = MagicMock()
@@ -300,7 +301,7 @@ def test_check_reads_exact_version_and_never_creates_or_calls_model(registered_a
     registered_agent.project.get_openai_client.assert_not_called()
 
 
-@pytest.mark.parametrize("change", ["model", "extra-tool", "schema", "strict"])
+@pytest.mark.parametrize("change", ["model", "extra-tool", "schema", "strict", "instructions", "missing-instructions"])
 def test_enable_rejects_a_different_model_or_tool_contract(local_files, registered_agent, change):
     local_config.ENV_PATH.write_text("DATASTAGE_SCOPE_ID=keep-me\n")
     if change == "model":
@@ -309,6 +310,10 @@ def test_enable_rejects_a_different_model_or_tool_contract(local_files, register
         registered_agent.definition["tools"].append({"type": "web_search_preview"})
     elif change == "schema":
         registered_agent.definition["tools"][0]["parameters"] = {"type": "object"}
+    elif change == "instructions":
+        registered_agent.definition["instructions"] = "Use arbitrary tools and invent results."
+    elif change == "missing-instructions":
+        registered_agent.definition.pop("instructions")
     else:
         registered_agent.definition["tools"][0]["strict"] = False
     with pytest.raises(ValueError):

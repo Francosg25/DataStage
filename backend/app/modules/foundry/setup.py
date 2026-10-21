@@ -46,6 +46,8 @@ def check_agent(settings: Settings) -> dict:
             or definition.get("kind") != "prompt" or definition.get("model") != settings.foundry_model
             or len(actual) != len(expected)):
         raise ValueError("La versión registrada no coincide con el modelo y las herramientas configurados")
+    if definition.get("instructions") != INSTRUCTIONS:
+        raise ValueError("Las instrucciones de la versión registrada difieren del contrato local; revisa la versión")
     by_name = {tool.get("name"): tool for tool in actual}
     for tool in expected:
         registered = by_name.get(tool["name"], {})

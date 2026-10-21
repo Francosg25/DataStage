@@ -31,7 +31,7 @@ La configuración valida los valores nuevos antes de guardar; puede sustituir un
 
 El cliente de desarrollo del SDK sirve para el piloto local si está permitido por la empresa. Si TI proporciona una aplicación pública de escritorio propia, añade `--client-id "<CLIENT_ID>" --redirect-uri "http://localhost:<PUERTO_APROBADO>"` a `--configure-local`. Ambos valores deben corresponder al registro aprobado por TI; este cliente es distinto de las identidades del servicio y de los registros SPA/API utilizados para entrar a DataStage.
 
-`--check` consulta la versión exacta mediante GET y compara el modelo y los contratos de las herramientas con el backend. No crea versiones, no llama al modelo y no modifica datos. Cuando indique `status: verified`, puedes activar la configuración local:
+`--check` consulta la versión exacta mediante GET y compara el modelo, las instrucciones y los contratos de las herramientas con el backend. No crea versiones, no llama al modelo y no modifica datos. Cuando indique `status: verified`, puedes activar la configuración local:
 
 ```bat
 ..\.venv\Scripts\python.exe -m app.modules.foundry.setup --enable-local
@@ -107,6 +107,8 @@ En otro sistema operativo, ajusta únicamente la ruta al Python del entorno virt
 
 Las funciones se registran desde el SDK y se ejecutan dentro del backend DataStage. Configurar un agente sólo en el portal no conecta automáticamente las herramientas con tus datos. [Funcionamiento de las llamadas a funciones](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/function-calling).
 
+Cada consulta utiliza `agent_reference` con nombre y versión exactos. Las instrucciones y las definiciones de herramientas se obtienen de esa versión: no se vuelven a enviar como parámetros `instructions` ni `tools` de `responses.create`, porque Foundry rechaza esa combinación con `invalid_payload`. El idioma seleccionado en la interfaz se transmite mediante un mensaje de contexto `developer` generado por el backend; el historial recibido sólo admite mensajes de usuario y asistente. La continuación con resultados de herramientas mantiene la misma referencia y `previous_response_id`. El backend sigue validando los argumentos, permisos y ámbito antes de ejecutar cada función. Si se cambian las instrucciones o los contratos registrados, prepara y comprueba una nueva versión antes de habilitarla.
+
 ## 6. Activar y probar la conexión
 
 Usa la versión exacta devuelta, sin asumir que sea `1`. Configura estas variables **en el entorno que ejecuta la API** y reinicia ese proceso:
@@ -171,7 +173,8 @@ Las acciones siguen requiriendo el rol del usuario. El agente no decide su ident
 | `foundry_auth_mode`: `Input should be 'default' or 'interactive'` | Actualiza esta rama y repite `--configure-local`. Si CMD hereda un valor anterior, ejecuta antes `set "DATASTAGE_FOUNDRY_AUTH_MODE="`. No modifica la configuración permanente de Windows. |
 | `foundry_login_required` en desarrollo | Ejecuta `python -m app.modules.foundry.setup --login` con el intérprete y la cuenta que utilizan la API; la solicitud HTTP nunca abre el navegador. |
 | El almacenamiento cifrado no está disponible | Revisar con TI la protección de datos del usuario y el soporte del SDK. No se permite guardar tokens sin cifrar. |
-| La versión no coincide al ejecutar `--check` | Revisar el modelo, la versión exacta y las herramientas. La comprobación no crea otra versión ni cambia el agente. |
+| La versión no coincide al ejecutar `--check` | Revisar el modelo, la versión exacta, las instrucciones y las herramientas. La comprobación no crea otra versión ni cambia el agente. |
+| Foundry devuelve `invalid_payload`: `Not allowed when agent is specified`, con `instructions` o `tools` | Descarga la corrección de `feature/foundry-agent-setup`, ejecuta `--check` y reinicia la API. La invocación reutiliza la definición registrada mediante `agent_reference`. Esta corrección del cliente no requiere crear otra versión del agente. |
 | 401 o 403 desde Azure | Comprueba directorio, identidad, ámbito y roles de Foundry. |
 | No encuentra modelo o agente | Comprueba el endpoint del proyecto, nombre de despliegue y versión registrada. |
 | 429 | Revisa cuota y capacidad del despliegue. El adaptador ya usa reintentos limitados. |
@@ -191,7 +194,7 @@ Un endpoint privado controla el acceso de red. La ubicación del procesamiento s
 
 Las pruebas de autenticación local verifican aislamiento de caché, cifrado obligatorio, sesión expirada, ausencia de ventanas de login desde la API, conservación del `.env`, respaldo, contratos de herramientas y rechazo del modo personal fuera del desarrollo local. La ejecución real del cifrado de Windows, el acceso privado desde cada equipo y la identidad Linux deben validarse en esos entornos.
 
-Validación del 21 de octubre de 2026: **106 pruebas** de Foundry, autenticación local y revisión de seguridad, correctas en Linux/Python 3.12.14 con las versiones del lock (`azure-identity 1.25.3`, `azure-ai-projects 2.7.0`). Incluyen la reconfiguración de modos anteriores inválidos sin omitir la validación de los demás ajustes. En la entrega inicial también pasaron **26 pruebas** de herramientas nativas, `pip check` y la comprobación del lock; Ruff volvió a pasar en los archivos Python modificados. Las llamadas a Azure de estas pruebas están simuladas; no acreditan la sesión cifrada real en Windows/Python 3.13 ni la identidad de producción.
+Validación del 21 de octubre de 2026: **110 pruebas** de Foundry, autenticación local y revisión de seguridad, correctas en Linux/Python 3.12.14 con las versiones del lock (`azure-identity 1.25.3`, `azure-ai-projects 2.7.0`). Incluyen la reconfiguración de modos anteriores inválidos, la reproducción de `invalid_payload` con el SDK real y transporte simulado, la continuación de herramientas en ambos idiomas y la comprobación de las instrucciones registradas. En la entrega inicial también pasaron **26 pruebas** de herramientas nativas, `pip check` y la comprobación del lock; Ruff volvió a pasar en los archivos Python modificados. Las llamadas a Azure de estas pruebas están simuladas; no acreditan la sesión cifrada real en Windows/Python 3.13 ni la identidad de producción.
 
 ## Alternativa: Azure CLI aprobado por TI
 

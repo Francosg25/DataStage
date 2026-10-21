@@ -21,7 +21,7 @@ from openai import APIConnectionError, APIStatusError, APITimeoutError
 
 from app.core.errors import ApplicationError
 from .credentials import foundry_credential
-from .tools import tool_definitions, validate_tool_arguments
+from .tools import validate_tool_arguments
 
 INSTRUCTIONS = """Eres el asistente corporativo DataStage. Responde con precisión en el idioma indicado por la aplicación.
 Obtén evidencia mediante las herramientas antes de afirmar datos operativos o documentación.
@@ -153,10 +153,12 @@ class FoundryAgent:
             "type": "agent_reference", "name": self.settings.foundry_agent_name,
             "version": self.settings.foundry_agent_version,
         }
+        # The pinned agent owns its instructions and tool definitions. Foundry
+        # rejects those top-level overrides when agent_reference is supplied.
+        # This application-controlled message supplies only the current UI locale.
         request = {
-            "input": input_messages,
-            "instructions": INSTRUCTIONS + ('\nRespond in English.' if language == 'en' else '\nResponde en español.'),
-            "tools": tool_definitions(self.settings.allow_agent_commands),
+            "input": [{"role": "developer", "content": "Respond in English." if language == 'en' else "Responde en español."},
+                      *input_messages],
             "tool_choice": "required",
             "parallel_tool_calls": False,
             "store": True,
