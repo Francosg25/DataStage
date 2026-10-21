@@ -13,6 +13,7 @@ frontend/.angular/
 frontend/test-results/
 frontend/playwright-report/
 .env
+.env.*
 *.log
 *.pid
 .tools/
