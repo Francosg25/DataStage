@@ -132,7 +132,7 @@ interface Message {
         @if (error()) {
           <div class="error-message" role="alert">{{ error() | t }}</div>
         }
-        <form class="chat-input" (ngSubmit)="send()">
+        <form class="chat-input" (submit)="$event.preventDefault(); send()">
           <mat-form-field appearance="outline"
             ><mat-label> {{ "Escribe tu consulta" | t }} </mat-label
             ><textarea

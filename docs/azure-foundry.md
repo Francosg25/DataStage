@@ -165,6 +165,7 @@ Las acciones siguen requiriendo el rol del usuario. El agente no decide su ident
 | Síntoma | Comprobación |
 | --- | --- |
 | El chat sigue deshabilitado | Comprueba que el proceso API heredó `DATASTAGE_FOUNDRY_ENABLED=true` y reinícialo. |
+| Al enviar una consulta se recarga la página y desaparece el mensaje | Actualiza `feature/foundry-agent-setup` y reinicia el frontend con `npm.cmd start`. La corrección del formulario evita el envío HTML que recargaba la página; conserva la consulta durante la espera y muestra los errores de la API para poder reintentar. |
 | `DefaultAzureCredential` no encuentra identidad | Comprueba que el proceso corre en el entorno con identidad administrada o federada configurada. Si se usa una herramienta de desarrollo autorizada, confirma que su sesión pertenece a esa misma cuenta del sistema. |
 | El portal funciona, pero el script no | El inicio de sesión web no autentica automáticamente al SDK. Confirma la identidad del ejecutor, sus roles y su acceso a red. |
 | `foundry_auth_mode`: `Input should be 'default' or 'interactive'` | Actualiza esta rama y repite `--configure-local`. Si CMD hereda un valor anterior, ejecuta antes `set "DATASTAGE_FOUNDRY_AUTH_MODE="`. No modifica la configuración permanente de Windows. |
