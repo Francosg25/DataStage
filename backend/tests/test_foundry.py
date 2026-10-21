@@ -66,7 +66,8 @@ def test_sdk_responses_continuation_and_evidence_are_real_contracts():
     assert first["store"] is True
     assert first["tool_choice"] == "required"
     assert first["input"] == [
-        {"type": "message", "role": "developer", "content": "Responde en español."},
+        {"type": "message", "role": "developer",
+         "content": "Responde en español.\n" + adapter.PERIOD_COVERAGE_CONTEXT},
         {"type": "message", "role": "user", "content": HISTORY[0]["content"]},
     ]
     for request in (first, second):
@@ -311,7 +312,8 @@ def test_real_openai_sdk_serializes_foundry_extension_and_parses_function_output
         assert "instructions" not in request and "tools" not in request and "model" not in request
         assert request["agent_reference"] == {"type": "agent_reference", "name": "datastage-assistant", "version": "1"}
     initial = requests[0]["input"]
-    assert initial[0] == {"type": "message", "role": "developer", "content": locale}
+    assert initial[0] == {"type": "message", "role": "developer",
+                          "content": locale + "\n" + adapter.PERIOD_COVERAGE_CONTEXT}
     assert [(item["role"], item["content"]) for item in initial[1:]] == [
         (item["role"], item["content"]) for item in history
     ]

@@ -45,6 +45,13 @@ MAX_CALLS_PER_ROUND = 8
 MAX_CALLS_PER_TURN = 24
 MAX_TOOL_OUTPUT_BYTES = 200_000
 MAX_TOOL_ARGUMENT_BYTES = 8_192
+PERIOD_COVERAGE_CONTEXT = (
+    "Para preguntas sobre meses cargados/publicados, consulta list_runs y utiliza "
+    "data.publishedPeriodCoverage.years como inventario completo de meses disponibles. "
+    "El límite de list_runs sólo aplica a items. Los rangos de consolidación anual "
+    "(periodRange/rangeName) son intervalos solicitados y no acreditan cobertura mensual. "
+    "Enumera sólo los meses del inventario; conserva los huecos y no completes intervalos."
+)
 
 
 @dataclass
@@ -155,13 +162,14 @@ class FoundryAgent:
         }
         # The pinned agent owns its instructions and tool definitions. Foundry
         # rejects those top-level overrides when agent_reference is supplied.
-        # This application-controlled message supplies only the current UI locale.
+        # Trusted runtime context supplies the UI locale and coverage semantics.
         # Explicit discriminators are required by the Foundry project endpoint,
         # even though the SDK's EasyInputMessageParam makes them optional.
         request = {
             "input": [
                 {"type": "message", "role": "developer",
-                 "content": "Respond in English." if language == 'en' else "Responde en español."},
+                 "content": ("Respond in English." if language == 'en' else "Responde en español.")
+                            + "\n" + PERIOD_COVERAGE_CONTEXT},
                 *input_messages,
             ],
             "tool_choice": "required",

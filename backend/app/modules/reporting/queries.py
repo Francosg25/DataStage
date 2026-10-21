@@ -9,6 +9,21 @@ from app.persistence.business import EXTENSION_TABLES, HEADER_COLUMNS
 from app.persistence.catalog import BUSINESS_HEADERS
 from app.persistence.models import Period, ProcessingTable, Run
 
+
+def published_period_coverage(session, scope):
+    """Complete monthly publication inventory, independent of recent/annual runs."""
+    rows = session.execute(select(Period.year, Period.month)
+        .join(Run, Period.active_run_id == Run.id).where(
+            Period.scope_id == scope, Run.scope_id == scope, Run.kind == "monthly",
+            Run.publication_status == "published").order_by(Period.year.desc(), Period.month))
+    years = {}
+    for year, month in rows:
+        years.setdefault(year, []).append(month)
+    return {"source": "published", "complete": True, "basis": "active_published_monthly_runs",
+            "annualRangesRepresentCoverage": False,
+            "years": [{"year": year, "months": months} for year, months in years.items()]}
+
+
 def overview(session, scope):
     periods = list(session.scalars(select(Period).where(Period.scope_id == scope).order_by(Period.year, Period.month)))
     monthly = []

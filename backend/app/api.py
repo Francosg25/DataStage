@@ -27,7 +27,7 @@ from app.modules.processing.service import (
     audit, commit_or_conflict, create_annual, create_monthly, fingerprint, get_document,
     get_run, remember, replay, reprocess, run_response, validate_key,
 )
-from app.modules.reporting.queries import compare_periods, data_page, overview
+from app.modules.reporting.queries import compare_periods, data_page, overview, published_period_coverage
 from app.modules.reporting.analytics import (options as analytics_options, summarize as analytics_summary,
                                             monthly_summary as analytics_months)
 from app.modules.reporting.pdf_report import render_report
@@ -488,7 +488,8 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
         elif name == "list_runs":
             rows = session.scalars(select(Run).where(Run.scope_id == principal.scope_id)
                        .order_by(Run.created_at.desc()).limit(args.get("limit", 10)))
-            output = {"items": [run_response(session, item) for item in rows]}
+            output = {"items": [run_response(session, item) for item in rows],
+                      "publishedPeriodCoverage": published_period_coverage(session, principal.scope_id)}
         elif name == "get_data":
             output = data_page(session, principal.scope_id, args["tableCode"], args.get("period"), limit=args.get("limit", 10))
         elif name == "compare_periods":
@@ -518,6 +519,8 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
         evidence = {"tool": name, "scopeId": principal.scope_id}
         if "runId" in args:
             evidence["runId"] = args["runId"]
+        if name == "list_runs":
+            evidence.update(source="published", publishedPeriodCoverage=output["publishedPeriodCoverage"])
         if name == 'get_analytics':
             parts = output['partTaxes']
             output['partTaxes'] = {**parts, 'rows': parts['rows'][:20], 'alerts': [],
