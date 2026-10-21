@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import re
 import tarfile
 from types import SimpleNamespace
 
@@ -79,6 +80,24 @@ def test_local_env_overrides_production_without_changing_parent(monkeypatch):
     assert env['DATASTAGE_DOCUMENT_ROOT'].endswith('.data/documents')
     import os
     assert os.environ['DATASTAGE_DATABASE_URL'] == 'production-db'
+
+
+def test_linux_environment_templates_are_assignments_and_separate_migration_identity():
+    from dotenv import dotenv_values
+    runtime_path = ROOT / 'deploy/linux/runtime.env.example'
+    migration_path = ROOT / 'deploy/linux/migration.env.example'
+    for path in (runtime_path, migration_path):
+        for line in path.read_text().splitlines():
+            if line.strip() and not line.lstrip().startswith('#'):
+                assert re.fullmatch(r'[A-Z][A-Z0-9_]*=.*', line), (path.name, line)
+    runtime = dotenv_values(runtime_path)
+    migration = dotenv_values(migration_path)
+    assert runtime['DATASTAGE_ENVIRONMENT'] == 'production'
+    assert runtime['DATASTAGE_FOUNDRY_AUTH_MODE'] == 'default'
+    assert runtime['DATASTAGE_FOUNDRY_ENABLED'] == 'false'
+    assert 'DATASTAGE_MIGRATION_DATABASE_URL' not in runtime
+    assert 'DATASTAGE_MIGRATION_DATABASE_URL' in migration
+    assert 'DATASTAGE_DATABASE_URL' not in migration
 
 
 def test_stop_never_uses_recorded_pid_from_another_workspace():

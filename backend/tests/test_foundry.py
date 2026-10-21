@@ -224,7 +224,7 @@ def test_registration_is_explicit_and_sdk_definition_contains_only_functions(mon
     project_factory.return_value.__enter__.return_value = project
     credential_factory = MagicMock()
     monkeypatch.setattr(setup, "AIProjectClient", project_factory)
-    monkeypatch.setattr(setup, "DefaultAzureCredential", credential_factory)
+    monkeypatch.setattr(setup, "foundry_credential", credential_factory)
     result = register_agent(settings(foundry_model="approved-deployment"))
     assert result == {"name": "datastage-assistant", "version": "3"}
     definition = project.agents.create_version.call_args.kwargs["definition"].as_dict()

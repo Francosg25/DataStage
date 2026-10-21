@@ -1,6 +1,6 @@
 # Configurar el asistente DataStage en Microsoft Foundry
 
-Guía del proyecto, revisada el 3 de octubre de 2026. El dashboard funciona sin IA. El asistente necesita un proyecto Foundry, un modelo desplegado y una identidad autorizada. Esta guía no crea recursos ni activa consumo en Azure por sí misma.
+Guía del proyecto, revisada el 21 de octubre de 2026. El dashboard funciona sin IA. El asistente necesita un proyecto Foundry, un modelo desplegado y una identidad autorizada. Esta guía no crea recursos ni activa consumo en Azure por sí misma.
 
 **Para una cuenta y laptop corporativas:** no necesitas instalar Azure CLI en tu equipo para avanzar. Puedes revisar el proyecto, el modelo y sus datos de conexión desde [Microsoft Foundry](https://ai.azure.com/) en el navegador. Registrar las funciones de DataStage requiere ejecutar el script Python del repositorio en un entorno autorizado por TI; una máquina o proceso de Azure con identidad administrada es la ruta recomendada. Si tu organización permite Azure CLI en la laptop, se ofrece como alternativa al final de la guía. No sabemos qué herramientas, permisos o redes habilita la política de tu empresa.
 
@@ -10,6 +10,36 @@ Guía del proyecto, revisada el 3 de octubre de 2026. El dashboard funciona sin 
 | Revisar la definición de DataStage | Laptop o entorno de desarrollo autorizado | Repositorio y Python del proyecto; sin conexión a Azure |
 | Registrar las funciones | Ejecutor corporativo autorizado | Repositorio, Python, acceso de red a Foundry e identidad con permiso para crear versiones |
 | Responder desde DataStage | Backend donde esté desplegada la API | Identidad para invocar el agente, configuración de la versión y acceso a las fuentes de datos |
+
+## Inicio local en Windows con una versión de agente ya registrada
+
+Esta ruta reutiliza Python y las dependencias instaladas. Usa CMD y el mismo intérprete autorizado que inicia el backend. La sesión personal es exclusiva de `DATASTAGE_ENVIRONMENT=development` y `DATASTAGE_AUTH_MODE=development`, cuyo acceso está limitado a loopback. No se usa en un servidor compartido ni en producción.
+
+Desde `backend`, configura los identificadores reales sin cambiar las opciones de base de datos, documentos, ámbito u otros módulos:
+
+```bat
+..\.venv\Scripts\python.exe -m app.modules.foundry.setup --configure-local --project-endpoint "https://<RECURSO>.services.ai.azure.com/api/projects/<PROYECTO>" --tenant-id "<TENANT_ID_GUID>" --model "<NOMBRE_DEL_DESPLIEGUE>" --agent-name "<NOMBRE_DEL_AGENTE>" --agent-version "<VERSION_EXISTENTE>"
+..\.venv\Scripts\python.exe -m app.modules.foundry.setup --login
+..\.venv\Scripts\python.exe -m app.modules.foundry.setup --check
+```
+
+`--configure-local` actualiza únicamente las claves de Foundry en `backend/.env`, mantiene los demás valores y comentarios y guarda el contenido anterior en `.data/config-backups/` si ya existía el archivo. Las opciones de invocación y acciones quedan desactivadas. Los respaldos son privados: pueden contener otros valores sensibles del `.env` y no se incluyen en Git ni en las entregas.
+
+`--login` es el único comando que abre el navegador. Inicia sesión corporativa y completa la MFA que corresponda. Azure Identity guarda los tokens en su caché cifrada del usuario del sistema operativo, con un nombre exclusivo para el tenant, proyecto y aplicación cliente. DataStage guarda solamente el registro no secreto de la cuenta en `%LOCALAPPDATA%/DataStage/Foundry/` en Windows. Estos datos quedan fuera del repositorio, OneDrive y los paquetes de instalación. Se rechaza almacenamiento de tokens sin cifrar. Referencias: [caché cifrada](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.tokencachepersistenceoptions), [registro de cuenta](https://learn.microsoft.com/en-us/python/api/azure-identity/azure.identity.authenticationrecord).
+
+El cliente de desarrollo del SDK sirve para el piloto local si está permitido por la empresa. Si TI proporciona una aplicación pública de escritorio propia, añade `--client-id "<CLIENT_ID>" --redirect-uri "http://localhost:<PUERTO_APROBADO>"` a `--configure-local`. Ambos valores deben corresponder al registro aprobado por TI; este cliente es distinto de las identidades del servicio y de los registros SPA/API utilizados para entrar a DataStage.
+
+`--check` consulta la versión exacta mediante GET y compara el modelo y los contratos de las herramientas con el backend. No crea versiones, no llama al modelo y no modifica datos. Cuando indique `status: verified`, puedes activar la configuración local:
+
+```bat
+..\.venv\Scripts\python.exe -m app.modules.foundry.setup --enable-local
+```
+
+Este comando vuelve a comprobar la versión y habilita Foundry en el `.env`. Reinicia únicamente la API con tus comandos habituales. El worker y el frontend siguen funcionando como antes. Abre `/agent` para hacer la primera consulta: las respuestas del modelo sí consumen tokens. Contrasta sus cifras con las gráficas usando los mismos filtros.
+
+La API reutiliza la sesión cifrada y nunca abre un navegador al atender preguntas. Si la política corporativa requiere renovar la sesión o completar MFA, mostrará `foundry_login_required`; vuelve a ejecutar `--login` desde CMD. No es necesario registrar otra versión. La sesión depende de la cuenta de Windows y del equipo; no se copia al servidor Linux.
+
+No uses `--apply` para comprobar la conexión: ese comando crea una nueva versión. Los comandos locales anteriores reutilizan la que ya existe y mantienen las acciones de consolidación/reproceso deshabilitadas.
 
 ## 1. Preparar el proyecto y el modelo
 
@@ -35,7 +65,9 @@ La identidad del backend ante Azure es distinta de la identidad del usuario de D
 
 **Si sólo tienes acceso al portal:** puedes verificar el despliegue y probar un agente básico allí. El portal no permite agregar o actualizar las definiciones de las funciones personalizadas de DataStage. Para conectar `get_analytics` y las demás herramientas se requiere ejecutar el script con el SDK, o una integración equivalente por REST, desde un entorno autorizado. El navegador por sí solo no puede ejecutar estas funciones contra la API de DataStage. [Limitación del portal y llamadas a funciones](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/function-calling).
 
-Si TI permite una herramienta de desarrollo ya instalada que Azure Identity reconozca, puede usarse en un entorno de desarrollo, con los permisos anteriores. El acceso al portal con el navegador no autentica automáticamente al proceso Python. El código actual excluye el inicio interactivo mediante navegador, así que no lo presentamos como un paso que vaya a funcionar sin preparación. En Azure, prefiere identidad administrada para el backend. No guardes secretos en Angular ni en Git.
+Si TI permite una herramienta de desarrollo ya instalada que Azure Identity reconozca, puede usarse en un entorno de desarrollo, con los permisos anteriores. El acceso al portal con el navegador no autentica automáticamente al proceso Python. El modo `default` excluye el navegador; el modo `interactive` local utiliza la sesión cifrada creada explícitamente mediante `--login`, como se explica arriba. En Azure, prefiere identidad administrada para el backend. No guardes secretos en Angular ni en Git.
+
+En Linux de producción configura `DATASTAGE_FOUNDRY_AUTH_MODE=default`, junto con endpoint, modelo, nombre y versión. En producción se excluyen las sesiones de CLI, PowerShell, VS Code, broker y caché personal del usuario. Una VM de Azure o un entorno federado puede proporcionar la identidad administrada o de carga de trabajo configurada por TI. Un servidor Linux interno no obtiene una identidad administrada por el simple hecho de ejecutar Linux: TI debe proporcionar una identidad de servicio admitida, por ejemplo una aplicación con certificado y `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_CERTIFICATE_PATH`. El certificado privado se entrega por separado y debe ser legible por la cuenta que ejecuta la API; se excluye del paquete y de Git. `AZURE_CLIENT_ID` identifica al servicio que invoca Foundry, no al frontend de DataStage. La plantilla es `deploy/linux/runtime.env.example`.
 
 ## 4. Preparar la configuración del entorno aprobado
 
@@ -133,6 +165,9 @@ Las acciones siguen requiriendo el rol del usuario. El agente no decide su ident
 | El chat sigue deshabilitado | Comprueba que el proceso API heredó `DATASTAGE_FOUNDRY_ENABLED=true` y reinícialo. |
 | `DefaultAzureCredential` no encuentra identidad | Comprueba que el proceso corre en el entorno con identidad administrada o federada configurada. Si se usa una herramienta de desarrollo autorizada, confirma que su sesión pertenece a esa misma cuenta del sistema. |
 | El portal funciona, pero el script no | El inicio de sesión web no autentica automáticamente al SDK. Confirma la identidad del ejecutor, sus roles y su acceso a red. |
+| `foundry_login_required` en desarrollo | Ejecuta `python -m app.modules.foundry.setup --login` con el intérprete y la cuenta que utilizan la API; la solicitud HTTP nunca abre el navegador. |
+| El almacenamiento cifrado no está disponible | Revisar con TI la protección de datos del usuario y el soporte del SDK. No se permite guardar tokens sin cifrar. |
+| La versión no coincide al ejecutar `--check` | Revisar el modelo, la versión exacta y las herramientas. La comprobación no crea otra versión ni cambia el agente. |
 | 401 o 403 desde Azure | Comprueba directorio, identidad, ámbito y roles de Foundry. |
 | No encuentra modelo o agente | Comprueba el endpoint del proyecto, nombre de despliegue y versión registrada. |
 | 429 | Revisa cuota y capacidad del despliegue. El adaptador ya usa reintentos limitados. |
@@ -147,6 +182,12 @@ Logs locales: `.data/logs/api.error.log` y `.data/logs/api.log`. No publiques to
 Verifica la autenticación real Entra de la aplicación, el ámbito empresarial, la conectividad a SQL Server y la identidad administrada del backend. Prueba las respuestas contra un conjunto de preguntas con resultados conocidos y verifica que las acciones rechazadas tampoco modifiquen datos.
 
 Este adaptador usa `store=True` y `previous_response_id` para continuar llamadas a funciones. Revisa la configuración de región y retención del proyecto. La prueba local automatizada utiliza respuestas simuladas del proveedor; no certifica conectividad con tu tenant. El panel y el tutorial quedaron preparados, pero el agente sólo estará conectado después de completar estos pasos con tus recursos Azure.
+
+Un endpoint privado controla el acceso de red. La ubicación del procesamiento sigue dependiendo del tipo de despliegue del modelo, por ejemplo `GlobalStandard`; debe corresponder a la política corporativa antes de consultar información empresarial real.
+
+Las pruebas de autenticación local verifican aislamiento de caché, cifrado obligatorio, sesión expirada, ausencia de ventanas de login desde la API, conservación del `.env`, respaldo, contratos de herramientas y rechazo del modo personal fuera del desarrollo local. La ejecución real del cifrado de Windows, el acceso privado desde cada equipo y la identidad Linux deben validarse en esos entornos.
+
+Validación del 21 de octubre de 2026: **95 pruebas** de Foundry, autenticación local y revisión de seguridad, más **26 pruebas** de herramientas nativas, correctas en Linux/Python 3.12.14 con las versiones del lock (`azure-identity 1.25.3`, `azure-ai-projects 2.7.0`). También pasaron `pip check`, la comprobación del lock y Ruff en los archivos Python modificados. Las llamadas a Azure de estas pruebas están simuladas; no acreditan la sesión cifrada real en Windows/Python 3.13 ni la identidad de producción.
 
 ## Alternativa: Azure CLI aprobado por TI
 

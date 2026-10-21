@@ -17,10 +17,10 @@ from typing import Callable
 from urllib.parse import urlsplit
 
 from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
 from openai import APIConnectionError, APIStatusError, APITimeoutError
 
 from app.core.errors import ApplicationError
+from .credentials import foundry_credential
 from .tools import tool_definitions, validate_tool_arguments
 
 INSTRUCTIONS = """Eres el asistente corporativo DataStage. Responde con precisión en el idioma indicado por la aplicación.
@@ -81,7 +81,7 @@ _circuits_lock = threading.Lock()
 
 @contextmanager
 def _provider_client(settings):
-    with DefaultAzureCredential(exclude_interactive_browser_credential=True) as credential:
+    with foundry_credential(settings) as credential:
         with AIProjectClient(endpoint=settings.foundry_project_endpoint, credential=credential) as project:
             # SDK retries are disabled: the adapter owns one bounded retry budget.
             with project.get_openai_client(timeout=settings.foundry_timeout_seconds, max_retries=0) as client:
