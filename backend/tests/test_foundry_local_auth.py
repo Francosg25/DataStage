@@ -203,6 +203,58 @@ def test_configuration_preserves_private_values_backs_up_bytes_and_is_idempotent
     assert configure(settings)["backup"] is None
 
 
+@pytest.mark.parametrize("source", ["dotenv", "environment"])
+@pytest.mark.parametrize("old_mode", ["", "interactive_browser", "default # credential chain"])
+def test_cli_reconfigures_invalid_auth_mode_before_validating_old_settings(
+    local_files, registered_agent, monkeypatch, capsys, source, old_mode,
+):
+    original = ('# Keep local settings\r\nDATASTAGE_SCOPE_ID="private-scope"\r\n'
+                'DATASTAGE_DATABASE_URL="sqlite:///private.db"\r\n'
+                f'DATASTAGE_FOUNDRY_AUTH_MODE="{old_mode}"\r\n').encode()
+    local_config.ENV_PATH.write_bytes(original)
+    if source == "environment":
+        monkeypatch.setenv("DATASTAGE_FOUNDRY_AUTH_MODE", old_mode)
+    setup.main([
+        "--configure-local", "--project-endpoint", ENDPOINT, "--tenant-id", TENANT,
+        "--model", "test-deployment", "--agent-name", "datastage-assistant", "--agent-version", "1",
+    ])
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "configured" and result["foundryEnabled"] is False
+    assert Path(result["backup"]).read_bytes() == original
+    # A process variable still takes priority at runtime; the CMD instructions clear it.
+    monkeypatch.delenv("DATASTAGE_FOUNDRY_AUTH_MODE", raising=False)
+    settings = Settings(_env_file=local_config.ENV_PATH)
+    assert settings.foundry_auth_mode == "interactive" and settings.foundry_tenant_id == TENANT
+    assert settings.scope_id == "private-scope" and settings.database_url == "sqlite:///private.db"
+    assert not settings.foundry_enabled and not settings.allow_agent_commands
+    registered_agent.factory.assert_not_called()
+
+
+@pytest.mark.parametrize("unchanged_setting", [
+    "DATASTAGE_MAX_UPLOAD_MB=0", "DATASTAGE_ENVIRONMENT=production", "DATASTAGE_AUTH_MODE=entra",
+])
+def test_cli_reconfiguration_keeps_non_foundry_validation(local_files, unchanged_setting):
+    original = f"DATASTAGE_FOUNDRY_AUTH_MODE=obsolete\n{unchanged_setting}\n".encode()
+    local_config.ENV_PATH.write_bytes(original)
+    with pytest.raises(SystemExit) as error:
+        setup.main([
+            "--configure-local", "--project-endpoint", ENDPOINT, "--tenant-id", TENANT,
+            "--model", "test-deployment", "--agent-name", "datastage-assistant", "--agent-version", "1",
+        ])
+    assert error.value.code == 1
+    assert local_config.ENV_PATH.read_bytes() == original
+    assert not (local_files.parent / ".data").exists()
+
+
+@pytest.mark.parametrize("action", ["--login", "--check"])
+def test_runtime_actions_still_reject_invalid_auth_mode(local_files, registered_agent, action):
+    local_config.ENV_PATH.write_text("DATASTAGE_FOUNDRY_AUTH_MODE=obsolete\n")
+    with pytest.raises(SystemExit) as error:
+        setup.main([action])
+    assert error.value.code == 1
+    registered_agent.factory.assert_not_called()
+
+
 def test_failed_validation_does_not_change_existing_configuration(local_files):
     local_config.ENV_PATH.write_text("DATASTAGE_SCOPE_ID=keep-me\n")
     before = local_config.ENV_PATH.read_bytes()

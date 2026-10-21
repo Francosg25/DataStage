@@ -76,17 +76,29 @@ def update_foundry_env(updates):
     return {"environmentFile": str(ENV_PATH), "backup": str(backup) if backup else None}
 
 
-def configure_local(settings, *, endpoint, tenant_id, model, agent_name, agent_version, client_id=None, redirect_uri=None):
-    require_local(settings)
-    if not all((endpoint, tenant_id, model, agent_name, agent_version)):
+def configure_local(settings=None, *, endpoint, tenant_id, model, agent_name=None, agent_version, client_id=None, redirect_uri=None):
+    if not all((endpoint, tenant_id, model, agent_version)):
         raise ValueError("Indica endpoint, tenant, modelo, nombre y versión existente del agente")
     fields = dict(
         foundry_project_endpoint=validate_endpoint(endpoint), foundry_tenant_id=tenant_id,
-        foundry_model=model, foundry_agent_name=agent_name, foundry_agent_version=agent_version,
+        foundry_model=model, foundry_agent_version=agent_version,
         foundry_auth_mode="interactive", foundry_enabled=False, allow_agent_commands=False,
-        foundry_client_id=settings.foundry_client_id if client_id is None else client_id,
-        foundry_redirect_uri=settings.foundry_redirect_uri if redirect_uri is None else redirect_uri,
     )
-    Settings(_env_file=None, **{**settings.model_dump(), **fields})
+    for key, value in (("foundry_agent_name", agent_name), ("foundry_client_id", client_id),
+                       ("foundry_redirect_uri", redirect_uri)):
+        if value is not None:
+            fields[key] = value
+    # Validate the requested configuration, not the stale Foundry values it replaces.
+    # All other settings still come from their normal sources and remain validated.
+    if settings is None:
+        configured = Settings(_env_file=ENV_PATH, **fields)
+    else:
+        configured = Settings(_env_file=None, **{**settings.model_dump(), **fields})
+    require_local(configured)
+    if not configured.foundry_agent_name:
+        raise ValueError("Indica el nombre existente del agente")
+    fields.update(foundry_agent_name=configured.foundry_agent_name,
+                  foundry_client_id=configured.foundry_client_id,
+                  foundry_redirect_uri=configured.foundry_redirect_uri)
     result = update_foundry_env({"DATASTAGE_" + key.upper(): value for key, value in fields.items()})
     return {**result, "status": "configured", "foundryEnabled": False}

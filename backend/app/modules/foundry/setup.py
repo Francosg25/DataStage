@@ -81,25 +81,26 @@ def main(argv=None):
     )):
         parser.error("Los parámetros de configuración se utilizan únicamente con --configure-local")
     try:
-        settings = Settings(_env_file=local_config.ENV_PATH)
         if args.configure_local:
             result = local_config.configure_local(
-                settings, endpoint=args.project_endpoint, tenant_id=args.tenant_id, model=args.model,
-                agent_name=args.agent_name or settings.foundry_agent_name, agent_version=args.agent_version,
+                endpoint=args.project_endpoint, tenant_id=args.tenant_id, model=args.model,
+                agent_name=args.agent_name, agent_version=args.agent_version,
                 client_id=args.client_id, redirect_uri=args.redirect_uri,
             )
-        elif args.login:
-            result = login_local(settings)
-        elif args.check:
-            result = check_agent(settings)
-        elif args.enable_local:
-            result = enable_local(settings)
-        elif args.apply:
-            result = register_agent(settings)
         else:
-            result = {"agentName": settings.foundry_agent_name, "version": settings.foundry_agent_version,
-                      "model": settings.foundry_model, "authMode": settings.foundry_auth_mode,
-                      "tools": tool_definitions(settings.allow_agent_commands)}
+            settings = Settings(_env_file=local_config.ENV_PATH)
+            if args.login:
+                result = login_local(settings)
+            elif args.check:
+                result = check_agent(settings)
+            elif args.enable_local:
+                result = enable_local(settings)
+            elif args.apply:
+                result = register_agent(settings)
+            else:
+                result = {"agentName": settings.foundry_agent_name, "version": settings.foundry_agent_version,
+                          "model": settings.foundry_model, "authMode": settings.foundry_auth_mode,
+                          "tools": tool_definitions(settings.allow_agent_commands)}
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except ApplicationError as error:
         parser.exit(1, error.detail + "\n")
