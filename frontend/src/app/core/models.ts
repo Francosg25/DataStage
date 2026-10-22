@@ -88,6 +88,42 @@ export interface Overview {
   recentRuns: Run[];
 }
 export type DataRow = Record<string, unknown>;
+export interface AgentAttachment {
+  documentId: string;
+  name: string;
+  format: "xlsx" | "pdf";
+  sizeBytes: number;
+  sha256: string;
+  downloadUrl: string;
+}
+export interface AgentUsage {
+  available?: boolean;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  modelCalls: number;
+  reasoningTokens?: number;
+  cachedInputTokens?: number;
+}
+export interface AgentReply {
+  message: string;
+  evidence: DataRow[];
+  attachments?: AgentAttachment[];
+  usage?: AgentUsage;
+}
+export interface AgentChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  evidence?: DataRow[];
+  attachments?: AgentAttachment[];
+  usage?: AgentUsage;
+}
+export interface AgentConversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  lastMessageAt: string;
+}
 export interface DataPage {
   headers: string[];
   items: DataRow[];

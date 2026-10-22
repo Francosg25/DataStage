@@ -40,6 +40,23 @@ Las tablas 510, 557 y 702 son niveles distintos y no se suman. 505 y 551 no se s
 Un mes sin fuente no vale cero. Una variación de cero a un importe positivo no tiene porcentaje definido.
 No atribuyas causalidad a una correlación. INCI C es reconocimiento correcto, no una incidencia.
 Advierte de cobertura parcial y diferencias de conciliación que afecten tu respuesta.
+Trabaja como un analista de datos corporativo: responde primero a la pregunta, explica
+el cálculo y sus límites cuando ayuden a entenderlo y usa tablas breves para comparar.
+Conserva el contexto de la conversación y responde de manera natural, sin saturar con
+identificadores; la evidencia y los archivos se muestran también como elementos del chat.
+Si una columna, periodo o definición es ambigua, pregunta lo mínimo necesario.
+No entrenas ni aprendes automáticamente de las conversaciones; consultas fuentes actuales.
+Para descubrir tablas, columnas, tipos y capacidades utiliza describe_data. Para consultar
+filas con filtros, clasificar, contar distintos, sumar o agrupar utiliza query_data.
+Consulta el catálogo antes de construir una especificación. No deduzcas columnas de memoria.
+Las métricas de query_data se calculan sobre toda la selección; su vista previa es limitada.
+Respeta complete, matchedSourceRows y previewLimited. Un límite nunca acredita el total.
+Para crear Excel usa create_excel con las hojas y columnas solicitadas; incluye una hoja
+de resumen agregada si se solicita. No copies una muestra para simular un archivo completo.
+Para un informe de KPI y gráficas del dashboard utiliza create_analysis_report y moneda explícita.
+Un archivo sólo existe cuando la herramienta devuelve attachment; comunica sus límites,
+incluidas celdas conservadas como texto por valor inválido o precisión de Excel.
+No confundas generar una descarga con modificar datos operativos: los archivos no cambian las fuentes.
 """
 MAX_CALLS_PER_ROUND = 8
 MAX_CALLS_PER_TURN = 24
@@ -156,6 +173,9 @@ class FoundryAgent:
         cache = {}
         successful_tools = 0
         calls_used = 0
+        attachments = {}
+        usage = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "modelCalls": 0,
+                 "reasoningTokens": 0, "cachedInputTokens": 0, "reportedCalls": 0, "available": False}
         reference = {
             "type": "agent_reference", "name": self.settings.foundry_agent_name,
             "version": self.settings.foundry_agent_version,
@@ -175,24 +195,39 @@ class FoundryAgent:
             "tool_choice": "required",
             "parallel_tool_calls": False,
             "store": True,
-            "max_output_tokens": 2000,
+            "max_output_tokens": self.settings.foundry_max_output_tokens,
             "extra_body": {"agent_reference": reference},
         }
         try:
             with self._client_factory(self.settings) as client:
                 for round_number in range(self.settings.foundry_max_tool_rounds + 1):
                     response = self._request(client, **request)
+                    reported = _get(response, "usage")
+                    usage["modelCalls"] += 1
+                    total = _get(reported, "total_tokens")
+                    if isinstance(total, int) and not isinstance(total, bool) and total >= 0:
+                        usage["reportedCalls"] += 1
+                    usage["available"] = usage["reportedCalls"] == usage["modelCalls"]
+                    for field, key in (("input_tokens", "inputTokens"), ("output_tokens", "outputTokens"), ("total_tokens", "totalTokens")):
+                        count = _get(reported, field, 0)
+                        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                            usage[key] += count
+                    for field, nested, key in (("input_tokens_details", "cached_tokens", "cachedInputTokens"),
+                                               ("output_tokens_details", "reasoning_tokens", "reasoningTokens")):
+                        count = _get(_get(reported, field), nested, 0)
+                        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                            usage[key] += count
                     if _get(response, "status") in {"failed", "cancelled", "incomplete"}:
                         raise ApplicationError(502, "foundry_incomplete_response", "Foundry devolvió una respuesta incompleta.")
                     output = _get(response, "output", []) or []
                     calls = [item for item in output if _get(item, "type") == "function_call"]
                     if not calls:
                         if not successful_tools:
-                            return {"message": "No verified evidence is available for this question. Query a run, period or available documentation." if language == 'en' else "No hay evidencia verificada para responder esta consulta. Consulta una ejecución, un periodo o la documentación disponible.", "evidence": evidence}
+                            return {"message": "No verified evidence is available for this question. Query a run, period or available documentation." if language == 'en' else "No hay evidencia verificada para responder esta consulta. Consulta una ejecución, un periodo o la documentación disponible.", "evidence": evidence, "attachments": list(attachments.values()), "usage": usage}
                         message = _get(response, "output_text", "")
                         if not isinstance(message, str) or not message.strip():
                             raise ApplicationError(502, "foundry_empty_response", "Foundry no devolvió una respuesta textual válida.")
-                        return {"message": message.strip(), "evidence": evidence}
+                        return {"message": message.strip(), "evidence": evidence, "attachments": list(attachments.values()), "usage": usage}
                     if round_number >= self.settings.foundry_max_tool_rounds or len(calls) > MAX_CALLS_PER_ROUND or calls_used + len(calls) > MAX_CALLS_PER_TURN:
                         raise ApplicationError(502, "foundry_tool_limit", "Se alcanzó el límite de herramientas; acota la consulta.")
                     response_id = _get(response, "id")
@@ -213,6 +248,9 @@ class FoundryAgent:
                             result, verified = self._execute(name, raw_arguments, call_id, execute_tool)
                             if verified:
                                 successful_tools += 1
+                                file = result.get("data", {}).get("attachment")
+                                if isinstance(file, dict) and isinstance(file.get("documentId"), str):
+                                    attachments[file["documentId"]] = file
                                 for source in result.get("sources", result.get("evidence", [])):
                                     marker = json.dumps(source, ensure_ascii=False, sort_keys=True)
                                     if marker not in seen_evidence:

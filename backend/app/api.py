@@ -32,8 +32,11 @@ from app.modules.reporting.analytics import (options as analytics_options, summa
                                             monthly_summary as analytics_months)
 from app.modules.reporting.pdf_report import render_report
 from app.modules.reporting.project_maps import catalog as project_maps_catalog, image_path as project_map_image
+from app.modules.foundry.data_queries import describe_data, query_data
+from app.modules.foundry.artifacts import create_excel, create_analysis_report
+from app.modules.foundry.knowledge import search_documentation
 from app.persistence.models import (
-    AgentMessage, AuditEvent, Conversation, Issue, Job, OutboxMessage, Period,
+    AgentArtifact, AgentMessage, AgentMessageDetail, AuditEvent, Conversation, Issue, Job, OutboxMessage, Period,
     ProcessingFile, ProcessingTable, Run, StoredDocument,
 )
 router = APIRouter(prefix="/api/v1", responses={
@@ -108,6 +111,53 @@ class MessageRequest(StrictModel):
     message: str = Field(min_length=1, max_length=8000)
     allowActions: bool = False
     language: Literal['es', 'en'] = 'es'
+
+class AgentAttachmentResponse(StrictModel):
+    documentId: str
+    name: str
+    format: Literal['xlsx', 'pdf']
+    sizeBytes: int
+    sha256: str
+    downloadUrl: str
+
+class AgentUsageResponse(StrictModel):
+    inputTokens: int
+    outputTokens: int
+    totalTokens: int
+    modelCalls: int
+    available: bool = False
+    reasoningTokens: int = 0
+    cachedInputTokens: int = 0
+    reportedCalls: int = 0
+
+class AgentReplyResponse(StrictModel):
+    message: str
+    evidence: list[dict] = Field(default_factory=list)
+    attachments: list[AgentAttachmentResponse] = Field(default_factory=list)
+    usage: AgentUsageResponse | None = None
+
+class ConversationSummary(StrictModel):
+    id: str
+    title: str
+    createdAt: str
+    lastMessageAt: str
+
+class ConversationsResponse(StrictModel):
+    items: list[ConversationSummary]
+
+class AgentHistoryItem(StrictModel):
+    id: str
+    role: Literal['user', 'assistant']
+    text: str
+    createdAt: str
+    evidence: list[dict] = Field(default_factory=list)
+    attachments: list[AgentAttachmentResponse] = Field(default_factory=list)
+    usage: AgentUsageResponse | None = None
+
+class ConversationHistoryResponse(StrictModel):
+    items: list[AgentHistoryItem]
+    total: int
+    historyLimited: bool
 
 class BulkPeriodSelection(StrictModel):
     periodIds: list[str] = Field(min_length=1, max_length=24)
@@ -462,14 +512,62 @@ def conversation(session: DB, principal: Reader, request: Request):
     session.commit()
     return {"id": row.id}
 
-@router.post("/agent/conversations/{conversation_id}/messages")
+
+def own_conversation(session, principal, conversation_id):
+    row = session.get(Conversation, conversation_id)
+    if not row or row.scope_id != principal.scope_id or row.user_id != principal.id:
+        raise ApplicationError(404, "CONVERSATION_NOT_FOUND", "No se encontró la conversación")
+    return row
+
+
+@router.get("/agent/conversations", response_model=ConversationsResponse)
+def conversations(session: DB, principal: Reader, limit: int = Query(20, ge=1, le=50)):
+    first = select(AgentMessage.content).where(AgentMessage.conversation_id == Conversation.id,
+        AgentMessage.role == "user").order_by(AgentMessage.created_at, AgentMessage.id).limit(1).scalar_subquery()
+    last = select(func.max(AgentMessage.created_at)).where(AgentMessage.conversation_id == Conversation.id).scalar_subquery()
+    rows = session.execute(select(Conversation, first.label("title"), last.label("last_at")).where(
+        Conversation.scope_id == principal.scope_id, Conversation.user_id == principal.id)
+        .order_by(func.coalesce(last, Conversation.created_at).desc(), Conversation.id).limit(limit))
+    return {"items": [{"id": row.id, "title": (title or "")[:100], "createdAt": row.created_at.isoformat() + "Z",
+                       "lastMessageAt": (last_at or row.created_at).isoformat() + "Z"} for row, title, last_at in rows]}
+
+
+@router.get("/agent/conversations/{conversation_id}/messages", response_model=ConversationHistoryResponse)
+def conversation_messages(conversation_id: str, session: DB, principal: Reader,
+                          limit: int = Query(100, ge=1, le=100)):
+    own_conversation(session, principal, conversation_id)
+    total = session.scalar(select(func.count()).select_from(AgentMessage).where(AgentMessage.conversation_id == conversation_id))
+    rows = session.execute(select(AgentMessage, AgentMessageDetail.metadata_json).outerjoin(
+        AgentMessageDetail, AgentMessageDetail.message_id == AgentMessage.id).where(
+        AgentMessage.conversation_id == conversation_id).order_by(AgentMessage.created_at.desc(), AgentMessage.id.desc()).limit(limit)).all()
+    return {"items": [{**json.loads(metadata or "{}"), "id": row.id, "role": row.role, "text": row.content,
+                       "createdAt": row.created_at.isoformat() + "Z"} for row, metadata in reversed(rows)],
+            "total": total, "historyLimited": total > limit}
+
+
+@router.get("/agent/conversations/{conversation_id}/artifacts/{document_id}")
+def agent_artifact_download(conversation_id: str, document_id: str, request: Request, session: DB, principal: Reader):
+    own_conversation(session, principal, conversation_id)
+    artifact = session.get(AgentArtifact, document_id)
+    if artifact is None or artifact.conversation_id != conversation_id:
+        raise ApplicationError(404, "ARTIFACT_NOT_FOUND", "No se encontró el archivo de esta conversación")
+    document = get_document(session, document_id, principal.scope_id)
+    if document.kind not in {"agent_excel", "agent_pdf"} or document.status != "available":
+        raise ApplicationError(403, "DOWNLOAD_UNAVAILABLE", "El archivo no está disponible")
+    path = request.app.state.storage.resolve(document.storage_key)
+    if not path.is_file():
+        raise ApplicationError(503, "DOCUMENT_UNAVAILABLE", "El archivo no está disponible temporalmente")
+    audit(session, principal.scope_id, principal.id, "agent.artifact.download", documentId=document_id, conversationId=conversation_id)
+    session.commit()
+    return FileResponse(path, filename=document.original_name, media_type="application/pdf" if document.kind == "agent_pdf"
+                        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+@router.post("/agent/conversations/{conversation_id}/messages", response_model=AgentReplyResponse)
 def agent_message(conversation_id: str, body: MessageRequest, request: Request, session: DB, principal: Reader):
     settings = request.app.state.settings
     if not settings.foundry_enabled:
         raise ApplicationError(503, "FOUNDRY_NOT_CONFIGURED", "Microsoft Foundry no está configurado en este entorno")
-    conversation = session.get(Conversation, conversation_id)
-    if not conversation or conversation.scope_id != principal.scope_id or conversation.user_id != principal.id:
-        raise ApplicationError(404, "CONVERSATION_NOT_FOUND", "No se encontró la conversación")
+    own_conversation(session, principal, conversation_id)
     history = list(session.scalars(select(AgentMessage).where(AgentMessage.conversation_id == conversation_id)
                    .order_by(AgentMessage.created_at.desc(), AgentMessage.id.desc()).limit(20)))[::-1]
     history = [{"role": item.role, "content": item.content[:8000]} for item in history]
@@ -492,6 +590,18 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
                       "publishedPeriodCoverage": published_period_coverage(session, principal.scope_id)}
         elif name == "get_data":
             output = data_page(session, principal.scope_id, args["tableCode"], args.get("period"), limit=args.get("limit", 10))
+        elif name == "describe_data":
+            output = describe_data(args["tableCode"])
+        elif name == "query_data":
+            output = query_data(session, principal.scope_id, args["query"]).preview(args["limit"])
+        elif name == "create_excel":
+            output = create_excel(session, request.app.state.storage, principal, conversation_id, args, body.language)
+        elif name == "create_analysis_report":
+            report = analytics_summary(session, settings, principal.scope_id, source=args['source'], year=args['year'],
+                                       start_month=args['startMonth'], end_month=args['endMonth'],
+                                       operation=args['operation'], customs=args['customs'], document=args['document'],
+                                       currency=args['currency'])
+            output = create_analysis_report(session, request.app.state.storage, principal, conversation_id, report, body.language)
         elif name == "compare_periods":
             output = compare_periods(session, principal.scope_id, args["firstPeriod"], args["secondPeriod"])
         elif name == 'get_analytics':
@@ -499,13 +609,7 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
                                        start_month=args['startMonth'], end_month=args['endMonth'],
                                        operation=args['operation'], customs=args['customs'], document=args['document'])
         elif name == "search_documentation":
-            documents = [
-                {"title": "Procesamiento", "text": "Selecciona un periodo, adjunta un ZIP con ASC delimitados por pipe y consulta la ejecución. El periodo no se infiere por nombre del ZIP."},
-                {"title": "Calidad", "text": "Fechas inválidas se conservan como texto y generan advertencia. WARNING funcional indica al menos un archivo con ERROR."},
-                {"title": "Reprocesos", "text": "Los reprocesos requieren permiso Reprocessor y motivo. Crean una versión nueva y conservan la anterior."},
-                {"title": "Compatibilidad", "text": "La paridad con Office Scripts requiere ASC originales y aprobación de diferencias. Fechas ambiguas usan la política configurada de la ejecución."}]
-            terms = args["query"].casefold().split()
-            output = {"items": [doc for doc in documents if any(term in (doc["title"]+" "+doc["text"]).casefold() for term in terms)]}
+            output = search_documentation(args["query"])
         elif name == "request_report":
             report_run = get_run(session, args["runId"], principal.scope_id)
             output = run_response(session, report_run)
@@ -521,6 +625,14 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
             evidence["runId"] = args["runId"]
         if name == "list_runs":
             evidence.update(source="published", publishedPeriodCoverage=output["publishedPeriodCoverage"])
+        if name == "query_data":
+            evidence.update(source="published", query=output["query"], sources=output["sources"],
+                            matchedSourceRows=output["matchedSourceRows"], complete=output["complete"])
+        if name in {"create_excel", "create_analysis_report"}:
+            evidence.update(documentId=output["attachment"]["documentId"], sources=output["manifest"]["sources"],
+                            downloadUrl=output["attachment"]["downloadUrl"])
+        if name == "search_documentation":
+            evidence["sources"] = [{"path": item["source"], "offset": item["offset"]} for item in output["items"]]
         if name == 'get_analytics':
             parts = output['partTaxes']
             output['partTaxes'] = {**parts, 'rows': parts['rows'][:20], 'alerts': [],
@@ -537,7 +649,11 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
     from app.modules.foundry import FoundryAgent
     answer = FoundryAgent(settings).respond(history, execute_tool, language=body.language)
     session.add(AgentMessage(conversation_id=conversation_id, role="user", content=body.message))
-    session.add(AgentMessage(conversation_id=conversation_id, role="assistant", content=answer["message"]))
+    reply = AgentMessage(id=str(uuid4()), conversation_id=conversation_id, role="assistant", content=answer["message"])
+    session.add(reply)
+    session.flush()
+    session.add(AgentMessageDetail(message_id=reply.id, metadata_json=json.dumps(
+        {key: answer[key] for key in ("evidence", "attachments", "usage") if key in answer}, ensure_ascii=False)))
     audit(session, principal.scope_id, principal.id, "agent.message", conversationId=conversation_id)
     session.commit()
     return answer

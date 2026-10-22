@@ -22,6 +22,9 @@ export interface BulkPeriodPreview {
 }
 import {
   AppConfig,
+  AgentReply,
+  AgentChatMessage,
+  AgentConversation,
   ConsolidationRange,
   Identity,
   Page,
@@ -211,8 +214,26 @@ export class Api {
       {},
     );
   }
+  conversations() {
+    return this.http.get<{ items: AgentConversation[] }>(
+      `${this.base}/agent/conversations`,
+    );
+  }
+  conversationMessages(id: string) {
+    return this.http.get<{
+      items: AgentChatMessage[];
+      total: number;
+      historyLimited: boolean;
+    }>(`${this.base}/agent/conversations/${encodeURIComponent(id)}/messages`);
+  }
+  agentArtifact(conversationId: string, documentId: string) {
+    return this.http.get(
+      `${this.base}/agent/conversations/${encodeURIComponent(conversationId)}/artifacts/${encodeURIComponent(documentId)}`,
+      { responseType: "blob", observe: "response" },
+    );
+  }
   message(id: string, message: string, allowActions = false) {
-    return this.http.post<{ message: string; evidence: DataRow[] }>(
+    return this.http.post<AgentReply>(
       `${this.base}/agent/conversations/${encodeURIComponent(id)}/messages`,
       { message, allowActions, language: this.i18n.language() },
     );

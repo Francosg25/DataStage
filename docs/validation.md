@@ -1,6 +1,6 @@
 # Validación histórica
 
-Para esta rama, consultar primero [validación Linux directo](native-validation.md). El contenido siguiente registra verificaciones anteriores; no acredita la instalación actual.
+Para el despliegue, consultar [validación Linux directo](native-validation.md). Para las nuevas capacidades del asistente, consultar el registro del 22 de octubre de 2026 al final de esta página. Los registros anteriores no acreditan por sí solos la instalación actual.
 
 # Validación de la implementación
 
@@ -49,3 +49,25 @@ La evidencia virtual verifica cruces de 505/507/501, RFC del contribuyente, auto
 La inicialización privada conserva los 250 proveedores originales y su primer reporte. La evidencia del anual se incorporó una sola vez: el catálogo actual contiene 259 proveedores (9 altas extranjeras claras) y 122 identidades agrupadas pendientes por contradicciones o datos incompletos. Sus decisiones de negocio no fueron inventadas. La carga anual no crea publicaciones mensuales ficticias. Los [hallazgos de las fuentes](supplier-source-validation.md) y el [flujo de uso](suppliers.md) detallan la procedencia y las reglas.
 
 La ejecución de la suite general detectó además **seis fallos preexistentes ajenos a proveedores** en exportación numérica/identificadores y detección del catálogo de números de parte. Se reprodujeron los mismos seis en una copia aislada de `HEAD c7dc8fb15acae1718d2bd1dec9320040f5861a16` preparada con `git archive`, sin modificar el árbol de trabajo. La copia obtuvo 30 pruebas y 15,043 subpruebas aprobadas; el JUnit privado se conserva en `.data/supplier-before/baseline-supplier-regression.xml`. No se alteró esa lógica como parte de proveedores.
+
+## Asistente: consultas, archivos y cambio de modelo — 22 de octubre de 2026
+
+Ampliación en `feature/foundry-agent-setup`, sobre `2f99ed96d013963fb1f696fa2b3de1d6a05b493e`. Los datos de prueba son sintéticos y Azure está simulado; no se usó la clave de la captura ni se hizo inferencia contra el proyecto corporativo.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Foundry, autenticación/configuración, consultas, reportes, seguridad, persistencia y PDF del dashboard | 165 aprobadas; 1 omitida por falta de SQL Server de pruebas |
+| Backend completo | 480 aprobadas, 15,043 subpruebas aprobadas, 1 omitida; persisten los seis fallos preexistentes detallados abajo |
+| Frontend completo | 122 pruebas aprobadas en 18 suites |
+| Compilación Angular de producción | Correcta, 1.02 MB inicial; no se añadieron dependencias |
+| Ruff en Python modificado, Prettier en componentes y modelos del chat, `git diff --check` | Correctos |
+| Migración aditiva | SQLite `0003 → 0004` conserva mensajes y documentos; paridad con metadata y ciclo completo de migraciones aprobados |
+| Contrato HTTP | OpenAPI regenerado, 49 rutas; respuestas de mensajes, historial, adjuntos y uso tipadas |
+| Seguridad de archivos | XLSX conserva tipos, identificadores y ceros; fórmulas/enlaces de datos se escriben como texto; descargas privadas y limpieza ante fallo verificadas |
+| Nuevo deployment | `gpt-6-luna` identificado en la captura y contrastado con documentación de Microsoft; llamada real, calidad de respuestas y cuota pendientes en la red corporativa |
+
+Las pruebas específicas incluyen: sumas de 125 filas frente a una vista previa de dos; libro con 120 filas completas y hoja agregada; pagos `21` y `21.0` como misma categoría; cobertura de tablas y meses; rechazo de periodos ajenos o sin publicar, SQL no permitido, columnas desconocidas, mezcla de monedas, valores inválidos y exceso de tamaño; fechas numéricas de Excel; PDF ES/EN; recuperación de historial y adjuntos; aislamiento entre autores incluso dentro del mismo ámbito; uso de tokens acumulado por ronda; actualización de modelo/versión con respaldo y sin cambiar `.env` cuando falla la verificación. El renderer del chat presenta tablas sin ejecutar HTML o enlaces del modelo.
+
+Los seis fallos de la suite general se reprodujeron sin esta mejora, en un checkout aislado de `2f99ed9`: dos aserciones de exportación (`test_export_native_measures_dates_and_counts_preserves_identifiers_monthly_and_annual`, `test_numeric_export_keeps_invalid_and_overprecision_values_without_coercing_to_zero`), el conteo antiguo del catálogo de PN, dos subcasos de alias (`1616-5YY3237(ALT)` y `MATERIAL OVERHEAD`) y el reconocimiento de tokens del catálogo. La suite general no está totalmente aprobada. El exportador de ejecuciones y el diccionario privado no se modificaron en esta entrega.
+
+La [guía del asistente](assistant-corporate.md) define los pasos de actualización y aceptación contra datos conocidos. Quedan pendientes el nuevo modelo real, SQL Server y Entra/servidor de producción; la prueba SQLite no los sustituye.

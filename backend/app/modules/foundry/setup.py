@@ -66,6 +66,19 @@ def enable_local(settings: Settings) -> dict:
             "foundryEnabled": True, "restartApi": True}
 
 
+def upgrade_local(settings: Settings) -> dict:
+    """Register/verify new capabilities, then pin the new version with a backup."""
+    local_config.require_local(settings)
+    if settings.foundry_auth_mode != "interactive" or settings.allow_agent_commands:
+        raise ValueError("La actualización local requiere sesión interactiva y acciones deshabilitadas")
+    registered = register_agent(settings)
+    updated = settings.model_copy(update={"foundry_agent_version": str(registered["version"])})
+    verified = check_agent(updated)
+    return {**verified, **local_config.update_foundry_env({"DATASTAGE_FOUNDRY_AGENT_VERSION": updated.foundry_agent_version,
+                                                         "DATASTAGE_FOUNDRY_MODEL": updated.foundry_model}),
+            "foundryEnabled": settings.foundry_enabled, "restartApi": True}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Configura y comprueba el asistente Foundry DataStage.")
     actions = parser.add_mutually_exclusive_group()
@@ -74,14 +87,15 @@ def main(argv=None):
     actions.add_argument("--check", action="store_true", help="Leer y comprobar la versión existente; no crea versiones ni ejecuta el modelo.")
     actions.add_argument("--enable-local", action="store_true", help="Comprobar la versión y habilitar las consultas en backend/.env.")
     actions.add_argument("--apply", action="store_true", help="Crear explícitamente una NUEVA versión en Foundry.")
+    actions.add_argument("--upgrade-local", action="store_true", help="Registrar y verificar nuevas capacidades, guardar respaldo y actualizar sólo la versión local del agente.")
     for option in ("project-endpoint", "tenant-id", "model", "agent-name", "agent-version", "client-id", "redirect-uri"):
         parser.add_argument("--" + option)
     args = parser.parse_args(argv)
     if not args.configure_local and any(value is not None for value in (
-        args.project_endpoint, args.tenant_id, args.model, args.agent_name,
+        args.project_endpoint, args.tenant_id, args.agent_name,
         args.agent_version, args.client_id, args.redirect_uri,
-    )):
-        parser.error("Los parámetros de configuración se utilizan únicamente con --configure-local")
+    )) or args.model is not None and not (args.configure_local or args.upgrade_local):
+        parser.error("Usa --configure-local para parámetros de configuración; --model también se admite con --upgrade-local")
     try:
         if args.configure_local:
             result = local_config.configure_local(
@@ -99,6 +113,12 @@ def main(argv=None):
                 result = enable_local(settings)
             elif args.apply:
                 result = register_agent(settings)
+            elif args.upgrade_local:
+                if args.model is not None:
+                    if not args.model.strip():
+                        raise ValueError("Indica el nombre exacto del deployment del modelo")
+                    settings = settings.model_copy(update={"foundry_model": args.model.strip()})
+                result = upgrade_local(settings)
             else:
                 result = {"agentName": settings.foundry_agent_name, "version": settings.foundry_agent_version,
                           "model": settings.foundry_model, "authMode": settings.foundry_auth_mode,

@@ -294,7 +294,7 @@ def registered_agent(monkeypatch):
 
 def test_check_reads_exact_version_and_never_creates_or_calls_model(registered_agent):
     result = setup.check_agent(local_settings())
-    assert result["version"] == "1" and result["tools"] == 7 and result["modelCalled"] is False
+    assert result["version"] == "1" and result["tools"] == 11 and result["modelCalled"] is False
     registered_agent.project.agents.get_version.assert_called_once_with(
         agent_name="datastage-assistant", agent_version="1")
     registered_agent.project.agents.create_version.assert_not_called()
@@ -329,6 +329,41 @@ def test_enable_verifies_before_updating_only_foundry_flag(local_files, register
     updated = Settings(_env_file=local_config.ENV_PATH)
     assert updated.foundry_enabled and not updated.allow_agent_commands
     registered_agent.project.agents.create_version.assert_not_called()
+
+
+def test_upgrade_pins_the_new_model_only_after_verification_and_keeps_other_settings(local_files, monkeypatch):
+    configure()
+    with local_config.ENV_PATH.open("a") as stream:
+        stream.write("\nDATASTAGE_SCOPE_ID=keep-scope\n# keep this comment\n")
+    before = local_config.ENV_PATH.read_bytes()
+    settings = Settings(_env_file=local_config.ENV_PATH).model_copy(update={"foundry_model": "gpt-6-luna"})
+    register = MagicMock(return_value={"name": settings.foundry_agent_name, "version": "2"})
+    checked = []
+
+    def verify(value):
+        assert local_config.ENV_PATH.read_bytes() == before
+        checked.append(value)
+        return {"model": value.foundry_model, "version": value.foundry_agent_version, "tools": 11, "modelCalled": False}
+
+    monkeypatch.setattr(setup, "register_agent", register)
+    monkeypatch.setattr(setup, "check_agent", verify)
+    result = setup.upgrade_local(settings)
+    current = Settings(_env_file=local_config.ENV_PATH)
+    assert current.foundry_model == "gpt-6-luna" and current.foundry_agent_version == "2"
+    assert current.scope_id == "keep-scope" and "# keep this comment" in local_config.ENV_PATH.read_text()
+    assert not current.foundry_enabled and not current.allow_agent_commands
+    assert checked[0].foundry_agent_version == "2" and result["modelCalled"] is False
+    assert Path(result["backup"]).read_bytes() == before
+
+
+def test_failed_upgrade_does_not_switch_local_model_or_agent_version(local_files, monkeypatch):
+    configure()
+    before = local_config.ENV_PATH.read_bytes()
+    monkeypatch.setattr(setup, "register_agent", MagicMock(return_value={"name": "datastage-assistant", "version": "2"}))
+    monkeypatch.setattr(setup, "check_agent", MagicMock(side_effect=ValueError("new contract not verified")))
+    with pytest.raises(ValueError, match="not verified"):
+        setup.upgrade_local(local_settings(foundry_model="gpt-6-luna"))
+    assert local_config.ENV_PATH.read_bytes() == before
 
 
 def test_preview_is_offline_and_cli_flags_are_exclusive(local_files, registered_agent, capsys):

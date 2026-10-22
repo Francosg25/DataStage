@@ -1,7 +1,9 @@
 import { SUPPLIER_ENGLISH } from "./supplier-translations";
+import { AGENT_ENGLISH } from "./agent-translations";
 
 export const ENGLISH: Record<string, string> = {
   ...SUPPLIER_ENGLISH,
+  ...AGENT_ENGLISH,
   "Mapas del proyecto": "Project maps",
   Desde: "From",
   Hasta: "Through",

@@ -192,6 +192,21 @@ class AgentMessage(Identity, Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
+class AgentMessageDetail(Base):
+    __tablename__ = "agent_message_details"
+    message_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_messages.id"), primary_key=True)
+    metadata_json: Mapped[str] = mapped_column(LargeText, default="{}")
+
+
+class AgentArtifact(Base):
+    __tablename__ = "agent_artifacts"
+    __table_args__ = (UniqueConstraint("conversation_id", "request_hash", name="uq_agent_artifact_request"),)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("stored_documents.id"), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_conversations.id"))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    manifest_json: Mapped[str] = mapped_column(LargeText, default="{}")
+
+
 # Errors and warnings expose separate read-only contracts backed by one indexed
 # issue store. Application writes use Issue so severity validation is centralized.
 @event.listens_for(Base.metadata, "after_create")

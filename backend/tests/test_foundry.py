@@ -221,15 +221,46 @@ def test_no_tool_evidence_means_no_fabricated_provider_answer():
 
 def test_registered_schemas_are_strict_and_closed():
     definitions = tool_definitions(True)
-    assert len(definitions) == 9
+    assert len(definitions) == 13
     for tool in definitions:
         schema = tool["parameters"]
         assert schema["additionalProperties"] is False
         assert set(schema["required"]) == set(schema["properties"])
         assert tool["strict"] is True
         assert "scope_id" not in schema["properties"]
-    assert len(tool_definitions(False)) == 7
+        for nested in schema.get("$defs", {}).values():
+            if nested.get("type") == "object":
+                assert nested["additionalProperties"] is False
+                assert set(nested["required"]) == set(nested["properties"])
+    assert len(tool_definitions(False)) == 11
     assert validate_tool_arguments("start_annual", {"anio": 2026, "rangoNombre": "Ene-Ago"}, allow_commands=True)["anio"] == 2026
+
+
+def test_usage_counts_all_model_rounds_and_only_real_tool_attachments_are_exposed():
+    args = {"title": "May", "sheets": [{"name": "Invoices", "query": {
+        "tableCode": "505", "periods": ["Mayo_2025"], "columns": ["ValorDolares"],
+        "filters": [], "groupBy": [], "metrics": [], "orderBy": []}}]}
+    first = response([call("create_excel", args)])
+    last = response(message="Descarga el archivo", id="response_2")
+    for item in (first, last):
+        item.usage = SimpleNamespace(input_tokens=100, output_tokens=20, total_tokens=120,
+                                     input_tokens_details=SimpleNamespace(cached_tokens=50),
+                                     output_tokens_details=SimpleNamespace(reasoning_tokens=10))
+    provider, client = make_agent([first, last], foundry_model="gpt-6-luna")
+    file = {"documentId": RUN_ID, "name": "May.xlsx", "format": "xlsx"}
+    result = provider.respond(HISTORY, MagicMock(return_value={"data": {"attachment": file}, "evidence": [{"documentId": RUN_ID}]}))
+    assert result["attachments"] == [file]
+    assert result["usage"] == {"inputTokens": 200, "outputTokens": 40, "totalTokens": 240,
+                                "reasoningTokens": 20, "cachedInputTokens": 100, "modelCalls": 2,
+                                "reportedCalls": 2, "available": True}
+    assert client.responses.create.call_args.kwargs["max_output_tokens"] == 4000
+
+
+def test_missing_usage_is_reported_as_unavailable_instead_of_free_usage():
+    provider, _ = make_agent([response([call()]), response()])
+    result = provider.respond(HISTORY, MagicMock(return_value={"data": {"status": "completed"}, "evidence": []}))
+    assert result["usage"]["available"] is False
+    assert result["usage"]["modelCalls"] == 2
 
 
 def test_registration_is_explicit_and_sdk_definition_contains_only_functions(monkeypatch):
@@ -247,7 +278,7 @@ def test_registration_is_explicit_and_sdk_definition_contains_only_functions(mon
     assert definition["kind"] == "prompt"
     assert definition["model"] == "approved-deployment"
     assert definition["instructions"] == adapter.INSTRUCTIONS
-    assert len(definition["tools"]) == 7
+    assert len(definition["tools"]) == 11
     assert {tool["type"] for tool in definition["tools"]} == {"function"}
 
 

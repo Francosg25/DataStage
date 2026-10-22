@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     foundry_client_id: str = ""
     foundry_redirect_uri: str = ""
     foundry_max_tool_rounds: int = Field(default=5, ge=1, le=10)
+    foundry_max_output_tokens: int = Field(default=4000, ge=512, le=16384)
     foundry_timeout_seconds: int = Field(default=45, ge=5, le=120)
     allow_agent_commands: bool = False
     project_maps_root: Path | None = None

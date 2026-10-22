@@ -144,16 +144,22 @@ Revisa que cada respuesta incluya evidencia y que sus cifras coincidan con el da
 | `compare_periods` | Comparación de conteos y cobertura operativa | No |
 | `search_documentation` | Extractos de la documentación local aprobada incluida en el backend | No |
 | `request_report` | Información del reporte Excel existente | No |
+| `describe_data` | Catálogo autorizado de tablas, columnas, tipos y unidades | No |
+| `query_data` | Filtros, conteos, sumas, promedios, agrupaciones y orden; totales sobre la selección completa | No |
+| `create_excel` | Excel personalizado de hasta cinco hojas, con tipos reales y hoja de fuentes | Crea una descarga privada; no cambia datos operativos |
+| `create_analysis_report` | PDF de KPI y gráficas del dashboard con moneda y filtros explícitos | Crea una descarga privada; no cambia datos operativos |
 | `start_annual` | Crea una consolidación anual | Sí, requiere `Operator` o `Admin` |
 | `reprocess_run` | Crea una nueva versión con motivo y versión esperada | Sí, requiere `Reprocessor` o `Admin` |
 
 `search_documentation` no indexa automáticamente archivos del equipo ni el PDF completo. La semántica del dashboard está implementada en código y en `docs/analytics.md`. Incorporar una base documental de búsqueda ampliada sería una integración adicional.
 
-`list_runs` devuelve dos conceptos separados: `items` contiene las ejecuciones recientes y `publishedPeriodCoverage` enumera todos los meses con una ejecución mensual activa y publicada del ámbito autorizado. El límite de resultados sólo aplica a `items`. Los rangos de los consolidados anuales son intervalos seleccionados, no prueba de que cada mes esté cargado. Por ejemplo, un consolidado enero-julio con cargas mensuales de mayo y junio debe informar únicamente mayo y junio como meses publicados. La cobertura se añade también a la evidencia. Esta ampliación del resultado y del contexto de consulta conserva los siete contratos de funciones y la versión registrada existente.
+`list_runs` devuelve dos conceptos separados: `items` contiene las ejecuciones recientes y `publishedPeriodCoverage` enumera todos los meses con una ejecución mensual activa y publicada del ámbito autorizado. El límite de resultados sólo aplica a `items`. Los rangos de los consolidados anuales son intervalos seleccionados, no prueba de que cada mes esté cargado. Por ejemplo, un consolidado enero-julio con cargas mensuales de mayo y junio debe informar únicamente mayo y junio como meses publicados. La cobertura se añade también a la evidencia. La entrega actual registra once herramientas de consulta/generación; una versión anterior de siete herramientas debe actualizarse antes de utilizar las nuevas capacidades.
 
 Ejecutar DataStage en la laptop no convierte el modelo en local: las preguntas del chat y una llamada real a `FoundryAgent.respond` invocan Azure y pueden consumir tokens de entrada y salida, incluidas las llamadas sucesivas para resolver herramientas. `--configure-local`, `--login`, `--check` y las pruebas con proveedor simulado no ejecutan inferencia del modelo. Un código HTTP de error por sí solo no determina si hubo procesamiento facturable. El consumo y el importe se verifican con las métricas y Cost Management de Azure. Referencia: [costos de Foundry](https://learn.microsoft.com/en-us/azure/foundry/concepts/manage-costs).
 
-`request_report` recupera información de un Excel existente; no genera todavía documentos con tablas, columnas y filtros elegidos en el chat. Esa capacidad requiere una herramienta adicional de exportación validada por el backend. La aplicación consultaría las fuentes autorizadas y construiría el XLSX con números y fechas reales; el modelo interpretaría la solicitud. No forma parte de las siete herramientas actuales.
+`create_excel` genera archivos personalizados reales: el modelo propone una especificación de columnas, filtros y agrupaciones; Python consulta las versiones mensuales autorizadas y construye el XLSX completo. `request_report` sigue localizando el reporte original de una ejecución. Las nuevas descargas se muestran como botones del chat y sólo están disponibles para su autor. Consulta [capacidades, límites, actualización y prueba de aceptación](assistant-corporate.md).
+
+El modelo se basa en redes neuronales profundas (deep learning) ya entrenadas. La integración añade recuperación de datos y herramientas; no entrena un modelo propio ni aprende automáticamente de las conversaciones. La calidad depende también de la cobertura real, las reglas de negocio y la validación contra datos conocidos.
 
 ## 8. Habilitar tareas del asistente
 

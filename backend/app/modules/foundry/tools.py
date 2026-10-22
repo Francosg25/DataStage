@@ -48,6 +48,59 @@ class GetAnalytics(ToolArguments):
     document: Annotated[str, Field(max_length=10)]
 
 
+class DescribeData(ToolArguments):
+    tableCode: Annotated[str, Field(max_length=30, description="Vacío lista las tablas; un código devuelve sus columnas y tipos.")]
+
+
+ColumnName = Annotated[str, Field(min_length=1, max_length=100)]
+
+
+class DataFilter(ToolArguments):
+    column: ColumnName
+    operator: Literal["eq", "ne", "contains", "gt", "gte", "lt", "lte", "is_empty", "not_empty"]
+    value: Annotated[str, Field(max_length=500, description="Número sin separadores o fecha ISO para rangos. Vacío con is_empty/not_empty.")]
+
+
+class DataMetric(ToolArguments):
+    function: Literal["count_rows", "count_distinct", "sum", "mean", "min", "max"]
+    column: Annotated[str, Field(max_length=100, description="Vacío sólo para count_rows.")]
+    alias: Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[\w ÁÉÍÓÚÜÑáéíóúüñ.-]+$")]
+
+
+class DataOrder(ToolArguments):
+    column: ColumnName
+    direction: Literal["asc", "desc"]
+
+
+class DataQuery(ToolArguments):
+    tableCode: Annotated[str, Field(min_length=1, max_length=30, pattern=r"^[a-z0-9_]+$")]
+    periods: Annotated[list[PeriodName], Field(min_length=1, max_length=24)]
+    columns: Annotated[list[ColumnName], Field(max_length=40, description="Columnas del detalle; vacío para una agregación.")]
+    filters: Annotated[list[DataFilter], Field(max_length=10)]
+    groupBy: Annotated[list[ColumnName], Field(max_length=4)]
+    metrics: Annotated[list[DataMetric], Field(max_length=6)]
+    orderBy: Annotated[list[DataOrder], Field(max_length=3)]
+
+
+class QueryData(ToolArguments):
+    query: DataQuery
+    limit: Limit
+
+
+class ExcelSheet(ToolArguments):
+    name: Annotated[str, Field(min_length=1, max_length=31)]
+    query: DataQuery
+
+
+class CreateExcel(ToolArguments):
+    title: Annotated[str, Field(min_length=1, max_length=100)]
+    sheets: Annotated[list[ExcelSheet], Field(min_length=1, max_length=5)]
+
+
+class CreateAnalysisReport(GetAnalytics):
+    currency: Literal["USD", "MXN"]
+
+
 class StartAnnual(ToolArguments):
     anio: Annotated[int, Field(ge=1900, le=2100)]
     rangoNombre: Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ -]+$")]
@@ -66,6 +119,10 @@ TOOL_MODELS = {
     "compare_periods": ComparePeriods,
     "search_documentation": SearchDocumentation,
     "request_report": GetRun,
+    "describe_data": DescribeData,
+    "query_data": QueryData,
+    "create_excel": CreateExcel,
+    "create_analysis_report": CreateAnalysisReport,
     "start_annual": StartAnnual,
     "reprocess_run": ReprocessRun,
 }
@@ -78,6 +135,10 @@ DESCRIPTIONS = {
     "compare_periods": "Compara conteos y cobertura de dos periodos autorizados.",
     "search_documentation": "Busca documentación local aprobada y devuelve extractos con sus fuentes.",
     "request_report": "Obtiene el reporte existente de una ejecución autorizada, sin modificar datos.",
+    "describe_data": "Descubre tablas aprobadas y sus columnas, tipos, unidades y límites. Úsala antes de preparar consultas o Excel; tableCode vacío lista tablas.",
+    "query_data": "Consulta una tabla mensual publicada con filtros, orden, conteos distintos, sumas y agrupaciones calculadas por Python sobre TODAS las filas del rango autorizado. Sólo la vista previa se limita; complete y totals describen cobertura. Sin SQL ni cruces que dupliquen importes.",
+    "create_excel": "Genera un Excel descargable real de hasta cinco hojas con columnas, filtros y/o agrupaciones elegidos. Exporta el resultado completo de cada consulta, con números y fechas reales y trazabilidad. No depende de muestras ni modifica los datos fuente.",
+    "create_analysis_report": "Genera un informe PDF descargable con los KPI, gráficos y fuentes del análisis del periodo y filtros solicitados. La moneda es explícita y el idioma lo determina la aplicación.",
     "start_annual": "Solicita consolidación anual sólo si el usuario autorizó acciones y tiene permiso.",
     "reprocess_run": "Solicita reproceso con motivo y versión esperada, sujeto a autorización del backend.",
 }
