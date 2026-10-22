@@ -610,6 +610,14 @@ select {
   font-weight: 400;
   flex: none;
 }
+.kpi-description {
+  margin: 0 0 8px;
+  min-height: 3em;
+  color: #526570;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
 .kpi-value {
   display: flex;
   align-items: center;
@@ -668,10 +676,27 @@ select {
   background: #8b9ca6;
 }
 .kpi-note {
+  display: grid;
+  gap: 3px;
   font-size: 10px;
   color: #8b989f;
   line-height: 1.5;
   margin-top: 5px;
+}
+.metric-source {
+  color: #526570;
+  overflow-wrap: anywhere;
+}
+.analysis-source {
+  margin: 4px 0 12px;
+  color: #526570;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.section-heading p.analysis-source {
+  color: #526570;
+  font-size: 11px;
 }
 .section-heading {
   display: flex;

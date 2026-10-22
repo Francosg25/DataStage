@@ -139,6 +139,12 @@ Chart.register(...registerables);
           }
         </div>
         <p class="activity-note">
+          <span class="activity-source">{{
+            i18n.choose(
+              "Fuente: todas las hojas procesadas de las cargas publicadas.",
+              "Source: all processed sheets in published uploads."
+            )
+          }}</span>
           {{
             i18n.choose(
               "Filas de todas las tablas de cada carga mensual activa. Cada barra conserva su mes y año; no es un conteo de pedimentos.",
@@ -261,6 +267,11 @@ Chart.register(...registerables);
       .activity-data summary {
         cursor: pointer;
         color: #234c57;
+      }
+      .activity-source {
+        display: block;
+        margin-bottom: 4px;
+        color: #526570;
       }
       .activity-data table {
         width: 100%;

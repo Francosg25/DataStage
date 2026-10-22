@@ -1,5 +1,40 @@
 # Analytics de DataStage
 
+## Descripciones y hojas visibles en la interfaz
+
+Las ocho tarjetas del panorama general incluyen una explicación breve en español
+e inglés. Describen pedimentos distintos, valor declarado de importación y
+exportación, IGI e IVA en efectivo (FP 0), IVA registrado como crédito IVA/IEPS
+(FP 21), pedimentos con modificaciones y porcentaje de eventos de selección en
+rojo. La comparativa mensual reutiliza esas explicaciones y añade la definición
+de partidas. Se conservan los cálculos: los KPI muestran el agregado del rango,
+y la variación corresponde al último mes disponible frente al anterior.
+
+Cada gráfica muestra una línea **Fuente: hoja(s)** sin abrir «Detalles»; también
+se conserva al ver los datos y al descargar PNG. Los códigos identifican las
+hojas/tablas exportadas, no su posición dentro del Excel. **SEL** mantiene su
+identificador alfabético: no se le asigna un número inventado.
+
+| Gráfica o tabla | Hoja(s) del cálculo |
+|---|---|
+| Valor declarado de mercancías por mes y por fracción | 551 |
+| Pedimentos por aduana y por clave de documento | 501 |
+| IGI/IVA por mes y forma de pago | 557 para pagos; 551 verifica la operación de importación |
+| Números de parte con mayor IGI y comparativas de pagos por PN | 557 para pagos, 551 para partidas y 558 para observaciones que identifican el PN |
+| Fracciones con mayor IGI pagado, FP 0 | 557 y 551; añade 558 cuando se aplica una búsqueda de PN |
+| Rectificaciones por aduana/patente y por patente | 701 para rectificados; 501 para las bases y porcentajes |
+| PN pendientes de corrección | 551 y observaciones 558 |
+| Comparativa mensual | Cambia con el indicador: 501, 551, 557/551 o 701 |
+| Actividad por periodo del resumen operativo | Todas las hojas procesadas de las cargas publicadas; no una sola hoja ni un conteo de pedimentos |
+
+La referencia añade **501** cuando se usa su tipo de cambio: valores de 551
+mostrados en MXN y pagos de 557 mostrados en USD. Los filtros generales de 501
+siguen aplicándose. El catálogo de PN apoya la identificación de observaciones
+558; no se presenta como una hoja numérica. Las referencias no implican que haya
+cobertura: se mantienen los estados «Sin dato», los ceros reales y las reglas de
+conciliación existentes. Esta mejora no añade consultas, cambia agregados ni
+modifica los datos empresariales.
+
 ## Fuentes y granularidad
 
 El contrato de lectura es `GET /api/v1/reports/analytics/options` y `GET /api/v1/reports/analytics`. Ambos requieren acceso Reader y derivan el ámbito de la identidad autenticada. La API nunca acepta un ámbito del navegador.

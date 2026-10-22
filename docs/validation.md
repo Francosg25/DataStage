@@ -101,3 +101,22 @@ La memoria se implementa en la base de DataStage, con edición explícita por au
 Se verificaron persistencia tras reiniciar y en otro chat, aislamiento por usuario y ámbito también para administradores, edición, desactivación sin borrado, eliminación con control de versión, rechazo de sobrescrituras desde pestañas antiguas, rollback, límites y Unicode. Las notas no se aceptan desde el cuerpo de mensajes ni habilitan herramientas prohibidas. Se auditan cantidades y versiones sin copiar el contenido; el historial conserva el número de notas incluidas, no una copia automática del bloque de memoria.
 
 En el DOM se verificaron la revisión de una nota propuesta, cancelación sin escrituras, guardado explícito, rechazo de mensajes largos sin truncarlos, confirmación de borrado, desactivación, conflictos y controles ES/EN. La confirmación de cómo el modelo real aplica preferencias, la revisión visual en el navegador corporativo y SQL Server/Entra reales quedan pendientes. No se hicieron llamadas de inferencia al proyecto corporativo ni cambios en infraestructura de producción. La función no certifica que el modelo siga siempre cada preferencia: requiere las pruebas de aceptación de la guía del asistente.
+
+## Descripciones de KPI y referencias de hojas — 22 de octubre de 2026
+
+- Frontend completo: **143 pruebas aprobadas en 20 suites**. Las nueve pruebas
+  focalizadas de presentación/procedencia también pasan.
+- Compilación Angular de producción correcta: bundle inicial de **1.03 MB**.
+- Prettier en TypeScript/SCSS modificados y `git diff --check`: correctos.
+- DOM ES/EN: ocho KPI con descripciones; fuente visible con «Detalles» cerrado y
+  al ver tablas; referencias por indicador/moneda en la comparativa mensual;
+  cruce 558 al buscar PN; referencias 701/501 en rectificaciones; actividad
+  general atribuida a todas las hojas procesadas.
+- Exportación PNG: se comprueba que dibuja la referencia de hojas en la imagen.
+  Los códigos y cruces se contrastaron con el agregador y `part_taxes.py`.
+
+La revisión visual en el navegador corporativo queda pendiente: este entorno no
+tiene un navegador instalado. No se cambiaron cálculos, API, base, dependencias
+ni configuración Foundry; estas pruebas no hacen inferencia real ni certifican
+SQL Server/Entra o un despliegue productivo. La correspondencia de hojas y las
+reglas de conversión se documentan en `docs/analytics.md`.

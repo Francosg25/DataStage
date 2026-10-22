@@ -177,6 +177,9 @@
       <div class="kpi-label">
         {{ t(metric.es,metric.en) }}<span>{{ metric.unit }}</span>
       </div>
+      <p class="kpi-description">
+        <span class="loading-skeleton loading-skeleton-text"></span>
+      </p>
       <div class="kpi-value">
         <span class="loading-skeleton loading-skeleton-value"></span>
       </div>
@@ -304,6 +307,9 @@ r.partTaxes.invalidItemKeys > 0) {
       <div class="kpi-label">
         {{ t(metric.es,metric.en) }}<span>{{ metric.unit }}</span>
       </div>
+      <p class="kpi-description">
+        {{ t(metric.descriptionEs,metric.descriptionEn) }}
+      </p>
       <div
         class="kpi-value"
         [title]="loading() ? '' : format(r.totals[metric.key],metric.unit)"
@@ -343,8 +349,8 @@ r.partTaxes.invalidItemKeys > 0) {
         }
       </div>
       <div class="kpi-note">
-        {{ metric.source }} · {{ t('Último mes vs. anterior','Latest vs. prior
-        month') }}
+        <span class="metric-source">{{ sheetSource(metric.sourceSheets) }}</span>
+        <span>{{ t('Variación: último mes vs. anterior','Change: latest vs. prior month') }}</span>
       </div>
     </article>
     }
@@ -361,6 +367,7 @@ r.partTaxes.invalidItemKeys > 0) {
   <ds-analytics-chart
     [loading]="loading()"
     [title]="t('Valor declarado de mercancías por mes','Monthly declared goods value')"
+    [sourceSheets]="tradeSources()"
     [subtitle]="t('Valor de las partidas · 551','Line-item value · 551')"
     [unit]="currency()"
     [context]="chartContext()"
@@ -375,6 +382,7 @@ r.partTaxes.invalidItemKeys > 0) {
     <ds-analytics-chart
       [loading]="loading()"
       [title]="t('Pedimentos por aduana','Declarations by customs office')"
+      [sourceSheets]="['501']"
       [subtitle]="t('Pedimentos únicos por mes · 501','Distinct declarations per month · 501')"
       [unit]="t('Pedimentos','Declarations')"
       [context]="chartContext()"
@@ -388,6 +396,7 @@ r.partTaxes.invalidItemKeys > 0) {
     <ds-analytics-chart
       [loading]="loading()"
       [title]="t('Pedimentos por clave de documento','Declarations by document code')"
+      [sourceSheets]="['501']"
       [subtitle]="t('Pedimentos únicos por mes · 501','Distinct declarations per month · 501')"
       [unit]="t('Pedimentos','Declarations')"
       [context]="chartContext()"
@@ -402,6 +411,7 @@ r.partTaxes.invalidItemKeys > 0) {
     <ds-analytics-chart
       [loading]="loading()"
       [title]="t('Valor declarado por fracción arancelaria','Declared value by tariff code')"
+      [sourceSheets]="tradeSources()"
       [subtitle]="t('Valor de las partidas · 551','Line-item value · 551')"
       [unit]="currency()"
       [context]="chartContext()"
@@ -451,6 +461,7 @@ r.partTaxes.invalidItemKeys > 0) {
     duty') : t('IVA · Impuesto al Valor Agregado','IVA · Value-added tax') }}
     <span>{{ currency() }} · FP 0</span>
   </h3>
+  <p class="analysis-source">{{ sheetSource(paymentSources(true)) }}</p>
   <div class="table-scroll">
     <table class="analysis-table">
       <thead>
@@ -527,6 +538,7 @@ r.partTaxes.invalidItemKeys > 0) {
       <ds-icon name="download" /> CSV
     </button>
   </div>
+  <p class="analysis-source">{{ sheetSource(['551','558']) }}</p>
   <div class="alert-search">
     <label>
       {{ t('Buscar PN en pendientes','Search pending PN') }}
@@ -868,6 +880,7 @@ r.partTaxes.invalidItemKeys > 0) {
       <ds-analytics-chart
         [loading]="loading()"
         [title]="t('Números de parte con mayor IGI','Top part numbers by import duty')"
+        [sourceSheets]="paymentSources(true)"
         [subtitle]="currency() + ' · ' + t('10 principales de la selección · PN y fracción','Top 10 in selection · PN and tariff')"
         [unit]="currency()"
         [context]="partContext()"
@@ -880,6 +893,7 @@ r.partTaxes.invalidItemKeys > 0) {
       <ds-analytics-chart
         [loading]="loading()"
         [title]="t('Fracciones con mayor IGI pagado · Forma de pago 0','Top tariff codes by paid import duty · Payment method 0')"
+        [sourceSheets]="paymentSources(!!partSearch().trim())"
         [subtitle]="currency() + ' · ' + t('10 principales por importe pagado · 551 / 557','Top 10 by amount paid · 551 / 557')"
         [unit]="currency()"
         [context]="partContext()"
@@ -910,9 +924,9 @@ r.partTaxes.invalidItemKeys > 0) {
           by payment method') }}
         </h2>
         <p>
-          {{ currency() }} · {{ t('Importaciones · 551 / 557','Imports · 551 /
-          557') }}
+          {{ currency() }} · {{ t('Importaciones','Imports') }}
         </p>
+        <p class="analysis-source">{{ sheetSource(paymentSources()) }}</p>
       </div>
       <span class="data-source"
         >{{ t('Importes separados por forma de pago','Amounts separated by
@@ -1045,8 +1059,9 @@ r.partTaxes.invalidItemKeys > 0) {
         </h2>
         <p>
           {{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{
-          r.year }} · 501 / 701
+          r.year }}
         </p>
+        <p class="analysis-source">{{ sheetSource(['701','501']) }}</p>
       </div>
       <span class="data-source"
         >{{ t('Base global filtrada:','Filtered global base:') }}
@@ -1146,8 +1161,9 @@ r.partTaxes.invalidItemKeys > 0) {
         </h2>
         <p>
           {{ i18n.month(r.startMonth) }} - {{ i18n.month(r.endMonth) }} {{
-          r.year }} · 501 / 701
+          r.year }}
         </p>
+        <p class="analysis-source">{{ sheetSource(['701','501']) }}</p>
       </div>
       <span class="data-source"
         >{{ t('Base global filtrada:','Filtered global base:') }}

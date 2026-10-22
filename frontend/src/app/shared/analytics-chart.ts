@@ -11,6 +11,7 @@ import {
 } from "@angular/core";
 import { Chart, ChartDataset, registerables } from "chart.js";
 import { I18n } from "../core/i18n";
+import { sheetSource } from "../core/analytics-metadata";
 import { Icon } from "./ui";
 
 Chart.register(...registerables);
@@ -91,7 +92,7 @@ export interface ChartSeries {
         role="img"
         [class.chart-loading]="loading()"
         [attr.aria-hidden]="loading()"
-        [attr.aria-label]="title() + '. ' + subtitle()"
+        [attr.aria-label]="title() + '. ' + sourceLabel() + '. ' + subtitle()"
       ></canvas>
       @if (loading()) {
         <div class="chart-loading-cover" aria-hidden="true">
@@ -141,8 +142,15 @@ export interface ChartSeries {
         }
       </div>
     }
-    @if (hasDetails() || (!loading() && (hasMissingData() || allZero()))) {
+    @if (
+      sourceSheets().length ||
+      hasDetails() ||
+      (!loading() && (hasMissingData() || allZero()))
+    ) {
       <footer>
+        @if (sourceSheets().length) {
+          <p class="chart-source">{{ sourceLabel() }}</p>
+        }
         @if (hasDetails()) {
           <details class="chart-details">
             <summary>{{ i18n.choose("Detalles", "Details") }}</summary>
@@ -298,6 +306,14 @@ export interface ChartSeries {
         min-height: 30px;
         margin-top: auto;
       }
+      .chart-source {
+        color: #526570;
+        font-size: 11px;
+        overflow-wrap: anywhere;
+      }
+      .chart-source + .chart-details {
+        margin-top: 4px;
+      }
       .viz-table {
         height: 255px;
         overflow: auto;
@@ -354,6 +370,7 @@ export class AnalyticsChart {
   i18n = inject(I18n);
   title = input.required<string>();
   subtitle = input("");
+  sourceSheets = input<readonly string[]>([]);
   footnote = input("");
   context = input("");
   unit = input("");
@@ -367,6 +384,9 @@ export class AnalyticsChart {
   selected = output<number>();
   table = signal(false);
   expanded = signal(false);
+  sourceLabel() {
+    return sheetSource(this.sourceSheets(), this.i18n.language());
+  }
   private canvas = viewChild<ElementRef<HTMLCanvasElement>>("canvas");
   private chart?: Chart;
   private signature = "";
@@ -629,7 +649,12 @@ export class AnalyticsChart {
       }
       return lines;
     };
-    const header = [this.title(), this.subtitle(), this.context()]
+    const header = [
+      this.title(),
+      this.sourceLabel(),
+      this.subtitle(),
+      this.context(),
+    ]
       .filter(Boolean)
       .flatMap(wrap);
     const footer = wrap(

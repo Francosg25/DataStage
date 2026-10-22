@@ -4,6 +4,7 @@ import { AnalyticsChart } from "./analytics-chart";
 
 vi.mock("chart.js", () => ({
   Chart: class {
+    constructor(readonly canvas: HTMLCanvasElement) {}
     static register() {}
     destroy() {}
     resize() {}
@@ -33,6 +34,61 @@ function createChart() {
 }
 
 describe("concise chart presentation", () => {
+  it("includes visible worksheet provenance in the exported PNG", () => {
+    const fixture = createChart();
+    fixture.componentRef.setInput("sourceSheets", ["551", "501"]);
+    fixture.detectChanges();
+    const fillText = vi.fn();
+    const context = {
+      measureText: (text: string) => ({ width: text.length * 8 }),
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      fillText,
+    } as unknown as CanvasRenderingContext2D;
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue(context);
+    const toDataURL = vi
+      .spyOn(HTMLCanvasElement.prototype, "toDataURL")
+      .mockReturnValue("data:image/png;base64,test");
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {});
+    try {
+      fixture.componentInstance.download();
+      expect(
+        fillText.mock.calls.some(
+          ([line]) => line === "Fuente: hojas 551 · 501",
+        ),
+      ).toBe(true);
+      expect(click).toHaveBeenCalledOnce();
+    } finally {
+      getContext.mockRestore();
+      toDataURL.mockRestore();
+      click.mockRestore();
+    }
+  });
+  it("keeps worksheet provenance visible with details closed, in the data view and in both languages", () => {
+    const fixture = createChart();
+    fixture.componentRef.setInput("sourceSheets", ["557", "551", "501"]);
+    fixture.detectChanges();
+    const element: HTMLElement = fixture.nativeElement;
+    const source = () => element.querySelector(".chart-source");
+    expect(source()?.textContent).toBe("Fuente: hojas 557 · 551 · 501");
+    expect(source()?.closest("details")).toBeNull();
+    expect(element.querySelector<HTMLDetailsElement>("details")?.open).toBe(
+      false,
+    );
+    fixture.componentInstance.table.set(true);
+    fixture.componentInstance.i18n.set("en");
+    fixture.componentRef.setInput("sourceSheets", ["sel"]);
+    fixture.detectChanges();
+    expect(source()?.textContent).toBe("Source: sheet SEL");
+    expect(element.querySelector(".viz-table")).not.toBeNull();
+    expect(
+      element.querySelector("canvas")?.getAttribute("aria-label"),
+    ).toContain("Source: sheet SEL");
+  });
   it("keeps title/unit visible and groups explanations into native details closed by default", () => {
     const fixture = createChart();
     const element: HTMLElement = fixture.nativeElement;

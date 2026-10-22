@@ -10,6 +10,7 @@ import {
   AnalyticsComparisonMonth,
 } from "../core/analytics";
 import { I18n } from "../core/i18n";
+import { metricHelp, sheetSource } from "../core/analytics-metadata";
 import { errorText } from "../core/models";
 import { AnalyticsChart, ChartSeries } from "./analytics-chart";
 
@@ -110,6 +111,7 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
       <ds-analytics-chart
         [loading]="loading()"
         [title]="metricName()"
+        [sourceSheets]="metricSources()"
         [subtitle]="metricUnit()"
         [unit]="metricUnit() || t('Cantidad', 'Count')"
         [context]="
@@ -134,6 +136,10 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
             <h3>
               {{ m.name }} <small>{{ m.unit }}</small>
             </h3>
+            <p class="comparison-description">
+              {{ t(m.descriptionEs, m.descriptionEn) }}
+            </p>
+            <p class="comparison-source">{{ sheetSource(m.sourceSheets) }}</p>
             <div>
               <span
                 >{{ labels()[0]
@@ -154,6 +160,17 @@ import { AnalyticsChart, ChartSeries } from "./analytics-chart";
     }
   `,
   styles: `
+    .comparisons .comparison-description,
+    .comparisons .comparison-source {
+      margin: 6px 0;
+      color: #526570;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    .comparisons .comparison-source {
+      font-size: 11px;
+    }
     .date-selector {
       border: 0;
       padding: 0;
@@ -473,7 +490,16 @@ export class MonthComparison {
         name: this.t("Pedimentos rectificados", "Amended declarations"),
         unit: "",
       },
-    ];
+    ].map((metric) => ({ ...metric, ...metricHelp(metric.key, currency) }));
+  }
+  sheetSource(sheets: readonly string[]) {
+    return sheetSource(sheets, this.i18n.language());
+  }
+  metricSources() {
+    return (
+      this.metrics().find((metric) => metric.key === this.metric)
+        ?.sourceSheets || []
+    );
   }
   metricName() {
     return this.metrics().find((m) => m.key === this.metric)?.name || "";

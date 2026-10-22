@@ -14,6 +14,11 @@ import {
 } from "../core/analytics";
 import { customsLabel } from "../core/customs-labels";
 import { I18n } from "../core/i18n";
+import {
+  metricHelp,
+  monetarySources,
+  sheetSource,
+} from "../core/analytics-metadata";
 import { errorText } from "../core/models";
 import { Icon } from "../shared/ui";
 import { AnalyticsChart, ChartSeries } from "../shared/analytics-chart";
@@ -248,7 +253,23 @@ export class Analytics {
         source: "SEL",
         color: "#cf7165",
       },
-    ];
+    ].map((metric) => ({
+      ...metric,
+      ...metricHelp(metric.key, this.currency()),
+    }));
+  }
+  sheetSource(sheets: readonly string[]) {
+    return sheetSource(sheets, this.i18n.language());
+  }
+  tradeSources() {
+    return monetarySources(["551"], "USD", this.currency());
+  }
+  paymentSources(withPartNumbers = false) {
+    return monetarySources(
+      withPartNumbers ? ["557", "551", "558"] : ["557", "551"],
+      "MXN",
+      this.currency(),
+    );
   }
   readonly tableCodes = [
     "501",
