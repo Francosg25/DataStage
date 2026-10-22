@@ -17,12 +17,13 @@ def allowed_source(name):
     if p.is_absolute() or any(x.startswith('.') or x == '__pycache__' for x in p.parts):
         return False
     if name.startswith('backend/app/'):
-        return p.suffix == '.py'
+        return p.suffix == '.py' or name == 'backend/app/resources/reports/blank.pptx'
     if name.startswith('backend/migrations/'):
         return p.suffix in {'.py', '.mako'}
     return (name in {'backend/alembic.ini', 'backend/requirements.lock', 'backend/pyproject.toml'}
             or name.startswith('deploy/linux/') and p.suffix in {'.py', '.sh', '.service', '.example', '.template'}
-            or name in {'docs/linux-direct.md', 'docs/windows-local.md', 'docs/native-validation.md', 'docs/azure-foundry.md', 'docs/entra-id.md', 'docs/entra-id-primeros-pasos.txt'})
+            or name in {'docs/linux-direct.md', 'docs/windows-local.md', 'docs/native-validation.md', 'docs/azure-foundry.md', 'docs/assistant-corporate.md', 'docs/entra-id.md', 'docs/entra-id-primeros-pasos.txt',
+                        'docs/analytics.md', 'docs/suppliers.md', 'docs/compatibility.md', 'docs/operations.md', 'docs/data-model.md'})
 
 
 def payload(root):

@@ -232,7 +232,11 @@ def query_data(session, scope, specification):
         missing = [row for row in result_rows if empty(row[index])]
         populated.sort(key=lambda row: sort_key(row[index]), reverse=order.direction == "desc")
         result_rows = populated + missing
-    return QueryResult(output_headers, types, result_rows, sources, len(raw_rows), len(records), query.model_dump())
+    from .relational_queries import column_info
+    units = ([column_info(code, header).unit for header in groups] +
+             [column_info(code, header).unit if header and function not in {"count_rows", "count_distinct"} else ""
+              for function, header, _ in metrics]) if metrics else [column_info(code, header).unit for header in columns]
+    return QueryResult(output_headers, types, result_rows, sources, len(raw_rows), len(records), query.model_dump(), units=units)
 
 
 def empty(value):

@@ -5,10 +5,11 @@ from sqlalchemy import delete, exists, func, select, update
 
 from app.core.errors import ApplicationError
 from app.modules.processing.service import audit
-from app.persistence.models import AgentArtifact, AgentMessage, AgentMessageDetail, Conversation, StoredDocument
+from app.persistence.models import AgentArtifact, AgentMessage, AgentMessageDetail, AgentUpload, Conversation, StoredDocument
 
 log = logging.getLogger("datastage.agent")
-ARTIFACT_KINDS = ("agent_excel", "agent_pdf")
+ARTIFACT_KINDS = ("agent_excel", "agent_pdf", "agent_docx", "agent_pptx", "agent_csv", "agent_json",
+                  "agent_png", "agent_svg", "agent_html", "agent_zip", "agent_upload", "agent_upload_data")
 
 
 def own_conversation(session, principal, conversation_id, *, lock=False):
@@ -33,6 +34,10 @@ def delete_conversation(session, principal, conversation_id):
     documents = list(session.scalars(select(StoredDocument).join(
         AgentArtifact, AgentArtifact.document_id == StoredDocument.id).where(
         AgentArtifact.conversation_id == conversation_id)))
+    uploads = list(session.scalars(select(AgentUpload).where(AgentUpload.conversation_id == conversation_id)))
+    upload_ids = [value for upload in uploads for value in (upload.document_id, upload.parsed_document_id)]
+    if upload_ids:
+        documents.extend(session.scalars(select(StoredDocument).where(StoredDocument.id.in_(upload_ids))))
     for document in documents:
         if (document.scope_id != principal.scope_id or document.kind not in ARTIFACT_KINDS
                 or document.run_id is not None):
@@ -46,6 +51,7 @@ def delete_conversation(session, principal, conversation_id):
     session.execute(delete(AgentMessageDetail).where(AgentMessageDetail.message_id.in_(messages)))
     session.execute(delete(AgentMessage).where(AgentMessage.conversation_id == conversation_id))
     session.execute(delete(AgentArtifact).where(AgentArtifact.conversation_id == conversation_id))
+    session.execute(delete(AgentUpload).where(AgentUpload.conversation_id == conversation_id))
     session.execute(delete(Conversation).where(Conversation.id == conversation_id))
     audit(session, principal.scope_id, principal.id, "agent.conversation.delete",
           conversationId=conversation_id, messages=count, documents=len(documents))
@@ -58,7 +64,8 @@ def cleanup_deleted_artifacts(factory, storage, limit=20):
     with factory() as session:
         documents = list(session.scalars(select(StoredDocument).where(
             StoredDocument.status == "pending_delete", StoredDocument.kind.in_(ARTIFACT_KINDS),
-            StoredDocument.run_id.is_(None), ~exists().where(AgentArtifact.document_id == StoredDocument.id))
+            StoredDocument.run_id.is_(None), ~exists().where(AgentArtifact.document_id == StoredDocument.id),
+            ~exists().where((AgentUpload.document_id == StoredDocument.id) | (AgentUpload.parsed_document_id == StoredDocument.id)))
             .order_by(StoredDocument.created_at, StoredDocument.id).limit(limit)))
         for document in documents:
             shared = session.scalar(select(StoredDocument.id).where(

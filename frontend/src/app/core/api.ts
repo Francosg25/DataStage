@@ -23,6 +23,8 @@ export interface BulkPeriodPreview {
 import {
   AppConfig,
   AgentReply,
+  AgentUpload,
+  AgentFiles,
   AgentChatMessage,
   AgentConversation,
   AgentMemoryProfile,
@@ -255,6 +257,30 @@ export class Api {
   agentArtifact(conversationId: string, documentId: string) {
     return this.http.get(
       `${this.base}/agent/conversations/${encodeURIComponent(conversationId)}/artifacts/${encodeURIComponent(documentId)}`,
+      { responseType: "blob", observe: "response" },
+    );
+  }
+  agentFiles(conversationId: string) {
+    return this.http.get<AgentFiles>(
+      `${this.base}/agent/conversations/${encodeURIComponent(conversationId)}/files`,
+    );
+  }
+  uploadAgentFile(conversationId: string, file: File) {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    return this.http.post<AgentUpload>(
+      `${this.base}/agent/conversations/${encodeURIComponent(conversationId)}/files`,
+      body,
+    );
+  }
+  removeAgentFile(conversationId: string, fileId: string) {
+    return this.http.delete<void>(
+      `${this.base}/agent/conversations/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(fileId)}`,
+    );
+  }
+  downloadAgentFile(conversationId: string, fileId: string) {
+    return this.http.get(
+      `${this.base}/agent/conversations/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(fileId)}/download`,
       { responseType: "blob", observe: "response" },
     );
   }

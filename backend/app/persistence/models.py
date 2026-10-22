@@ -217,6 +217,15 @@ class AgentMemoryProfile(Identity, Base):
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
 
+class AgentUpload(Base):
+    __tablename__ = "agent_uploads"
+    __table_args__ = (Index("ix_agent_uploads_conversation", "conversation_id"),)
+    document_id: Mapped[str] = mapped_column(String(36), ForeignKey("stored_documents.id"), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_conversations.id"))
+    parsed_document_id: Mapped[str] = mapped_column(String(36), ForeignKey("stored_documents.id"), unique=True)
+    metadata_json: Mapped[str] = mapped_column(LargeText, default="{}")
+
+
 class AgentMemory(Identity, Base):
     __tablename__ = "agent_memories"
     __table_args__ = (Index("ix_agent_memories_profile", "profile_id"),)

@@ -3,9 +3,9 @@
     <span class="eyebrow">{{ "MICROSOFT FOUNDRY" | t }}</span>
     <h1>{{ "Tu asistente de datos" | t }}</h1>
     <p>
-      {{ i18n.choose("Consulta tus datos y crea reportes y Excel desde esta
-      conversación.", "Explore your data and create reports and Excel files in
-      this conversation.") }}
+      {{ i18n.choose("Consulta tus datos, adjunta archivos y crea reportes desde
+      esta conversación.", "Explore your data, attach files and create reports
+      in this conversation.") }}
     </p>
   </div>
   <div class="agent-heading-actions">
@@ -155,6 +155,20 @@
           />
           } @else {
           <p>{{ message.text }}</p>
+          @if (message.sourceFiles?.length) {
+          <div class="message-source-files">
+            @for (file of message.sourceFiles; track file.fileId) {
+            <button
+              type="button"
+              (click)="downloadSource(file)"
+              [disabled]="!fileAvailable(file) || interacting() || !!downloading()"
+              [title]="fileAvailable(file) ? i18n.choose('Descargar adjunto', 'Download attachment') : i18n.choose('Adjunto retirado de la conversación', 'Attachment removed from this conversation')"
+            >
+              <ds-icon name="paperclip" />{{ file.name }}
+            </button>
+            }
+          </div>
+          }
           <button
             type="button"
             class="remember-message"
@@ -174,7 +188,10 @@
               [disabled]="!!downloading() || deleting()"
               [attr.aria-label]="i18n.choose('Descargar ', 'Download ') + file.name"
             >
-              <span class="file-type" [class.pdf-file]="file.format === 'pdf'"
+              <span
+                class="file-type"
+                [class.pdf-file]="file.format === 'pdf'"
+                [attr.data-format]="file.format"
                 ><ds-icon name="file"
               /></span>
               <span class="file-description"
@@ -257,8 +274,75 @@
   <div class="chat-composer">
     @if (error()) {
     <div class="error-message" role="alert">{{ error() | t }}</div>
+    } @if (sourceFiles().length || uploading()) {
+    <div
+      class="source-files"
+      [attr.aria-label]="i18n.choose('Adjuntos de la conversación', 'Conversation attachments')"
+    >
+      @for (file of sourceFiles(); track file.fileId) {
+      <div
+        class="source-file"
+        [class.file-warning]="file.warnings.includes('pdf_requires_ocr')"
+      >
+        <ds-icon name="file" />
+        <button
+          type="button"
+          class="source-name"
+          (click)="downloadSource(file)"
+          [disabled]="interacting() || !!downloading()"
+        >
+          <strong>{{ file.name }}</strong
+          ><small
+            >{{ file.format.toUpperCase() }} · {{ size(file.sizeBytes) }} · {{
+            fileNote(file) }}</small
+          >
+        </button>
+        <button
+          type="button"
+          class="remove-source"
+          (click)="removeFile(file)"
+          [disabled]="interacting() || !!downloading()"
+          [attr.aria-label]="i18n.choose('Retirar ', 'Remove ') + file.name"
+          [title]="i18n.choose('Retirar de esta conversación', 'Remove from this conversation')"
+        >
+          <ds-icon name="close" />
+        </button>
+      </div>
+      } @if (uploading()) {
+      <div class="attachment-reading" role="status">
+        {{ i18n.choose("Cargando y leyendo", "Uploading and reading") }}: {{
+        uploading() }}
+      </div>
+      <mat-progress-bar
+        mode="indeterminate"
+        [attr.aria-label]="i18n.choose('Lectura del adjunto', 'Reading attachment')"
+      />
+      }
+    </div>
     }
     <form class="chat-input" (submit)="$event.preventDefault(); send()">
+      <input
+        #fileInput
+        type="file"
+        class="attachment-input"
+        accept=".xlsx,.csv,.pdf,.docx,.pptx"
+        multiple
+        (change)="attach($event)"
+        [disabled]="interacting()"
+        aria-hidden="true"
+        tabindex="-1"
+      />
+      <button
+        type="button"
+        mat-icon-button
+        class="attach-button"
+        (click)="fileInput.click()"
+        [disabled]="interacting() || sourceFiles().length >= 5"
+        [attr.aria-label]="i18n.choose('Adjuntar archivos', 'Attach files')"
+        [title]="i18n.choose('Adjuntar XLSX, CSV, PDF, Word o PowerPoint', 'Attach XLSX, CSV, PDF, Word or PowerPoint')"
+      >
+        <ds-icon name="paperclip" />
+      </button>
       <textarea
         [formControl]="message"
         cdkTextareaAutosize
@@ -267,7 +351,7 @@
         rows="2"
         maxlength="4000"
         (keydown)="keydown($event)"
-        [readOnly]="deleting() || confirmingDelete()"
+        [readOnly]="interacting()"
         [attr.aria-label]="'Escribe tu consulta' | t"
         [placeholder]="i18n.choose('Pregunta por tus datos o pide un archivo…', 'Ask about your data or request a file…')"
       ></textarea>
@@ -280,6 +364,10 @@
         <ds-icon name="arrow" />
       </button>
     </form>
+    <p class="attachment-help">
+      XLSX, CSV, PDF, DOCX, PPTX · {{ i18n.choose("5 archivos, 10 MiB cada uno",
+      "5 files, 10 MiB each") }}
+    </p>
     <div class="composer-hint">
       {{ i18n.choose("Enter para enviar · Mayús + Enter para una nueva línea",
       "Enter to send · Shift + Enter for a new line") }}

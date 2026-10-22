@@ -24,6 +24,17 @@ function createAgent(enabled: boolean, permitted: boolean) {
   const deleteConversation = vi.fn<Api["deleteConversation"]>(() =>
     of(undefined),
   );
+  const agentFiles = vi.fn<Api["agentFiles"]>(() =>
+    of({
+      items: [],
+      maxFiles: 5,
+      maxFileBytes: 10485760,
+      maxTotalBytes: 26214400,
+    }),
+  );
+  const uploadAgentFile = vi.fn<Api["uploadAgentFile"]>();
+  const removeAgentFile = vi.fn<Api["removeAgentFile"]>(() => of(undefined));
+  const downloadAgentFile = vi.fn<Api["downloadAgentFile"]>();
   TestBed.configureTestingModule({
     providers: [
       provideRouter([]),
@@ -36,6 +47,10 @@ function createAgent(enabled: boolean, permitted: boolean) {
           conversationMessages,
           agentArtifact,
           deleteConversation,
+          agentFiles,
+          uploadAgentFile,
+          removeAgentFile,
+          downloadAgentFile,
         },
       },
       {
@@ -61,6 +76,10 @@ function createAgent(enabled: boolean, permitted: boolean) {
     conversationMessages,
     agentArtifact,
     deleteConversation,
+    agentFiles,
+    uploadAgentFile,
+    removeAgentFile,
+    downloadAgentFile,
     dialog: fixture.debugElement.injector.get(MatDialog),
   };
 }
@@ -74,6 +93,165 @@ afterEach(() => {
 });
 
 describe("envío del formulario del asistente", () => {
+  it("adjunta desde el clip, conserva el texto, muestra el archivo y permite retirarlo", async () => {
+    const {
+      component,
+      fixture,
+      uploadAgentFile,
+      removeAgentFile,
+      conversation,
+      message,
+    } = createAgent(false, false);
+    const pending = new Subject<any>();
+    uploadAgentFile.mockReturnValue(pending);
+    const file = new File(["Name,Amount\nAlpha,10"], "vendors.csv", {
+      type: "text/csv",
+    });
+    const input: HTMLInputElement =
+      fixture.nativeElement.querySelector("input[type=file]");
+    const click = vi.spyOn(input, "click").mockImplementation(() => {});
+    fixture.nativeElement.querySelector(".attach-button").click();
+    expect(click).toHaveBeenCalledOnce();
+    Object.defineProperty(input, "files", {
+      value: [file],
+      configurable: true,
+    });
+    input.dispatchEvent(new Event("change"));
+    await vi.waitFor(() =>
+      expect(uploadAgentFile).toHaveBeenCalledWith("conversation-1", file),
+    );
+    fixture.detectChanges();
+    expect(component.interacting()).toBe(true);
+    expect(
+      fixture.nativeElement.querySelector(".attachment-reading").textContent,
+    ).toContain("vendors.csv");
+    expect(message).not.toHaveBeenCalled();
+    const uploaded = {
+      fileId: "file-1",
+      name: file.name,
+      format: "csv",
+      sizeBytes: file.size,
+      sha256: "abc",
+      createdAt: "2026-10-22T00:00:00Z",
+      complete: true,
+      warnings: [],
+      sheets: [
+        {
+          name: "CSV",
+          headers: ["Name", "Amount"],
+          types: ["text", "number"],
+          rows: 1,
+        },
+      ],
+    };
+    pending.next(uploaded);
+    pending.complete();
+    await vi.waitFor(() => expect(component.uploading()).toBe(""));
+    fixture.detectChanges();
+    expect(component.message.value).toBe("Consolida el periodo");
+    expect(
+      fixture.nativeElement.querySelector(".source-name strong").textContent,
+    ).toBe("vendors.csv");
+    fixture.nativeElement.querySelector(".remove-source").click();
+    await vi.waitFor(() => expect(component.sourceFiles()).toEqual([]));
+    expect(removeAgentFile).toHaveBeenCalledWith("conversation-1", "file-1");
+    expect(conversation).toHaveBeenCalledOnce();
+  });
+
+  it("rechaza formatos y tamaños no admitidos antes de cargar y muestra controles en inglés", async () => {
+    const { component, fixture, uploadAgentFile } = createAgent(false, false);
+    component.i18n.set("en");
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement
+        .querySelector(".attach-button")
+        .getAttribute("aria-label"),
+    ).toBe("Attach files");
+    const input: HTMLInputElement =
+      fixture.nativeElement.querySelector("input[type=file]");
+    Object.defineProperty(input, "files", {
+      value: [new File(["x"], "program.exe")],
+      configurable: true,
+    });
+    await component.attach({ target: input } as unknown as Event);
+    expect(component.error()).toContain("Attach XLSX");
+    const large = new File(["x"], "large.xlsx");
+    Object.defineProperty(large, "size", { value: 10485761 });
+    Object.defineProperty(input, "files", {
+      value: [large],
+      configurable: true,
+    });
+    await component.attach({ target: input } as unknown as Event);
+    expect(component.error()).toContain("10 MiB");
+    expect(uploadAgentFile).not.toHaveBeenCalled();
+  });
+
+  it("conserva los archivos ya cargados ante un error y recupera los adjuntos al abrir el historial", async () => {
+    const {
+      component,
+      fixture,
+      uploadAgentFile,
+      agentFiles,
+      conversationMessages,
+    } = createAgent(false, false);
+    const uploaded = {
+      fileId: "f",
+      name: "source.pdf",
+      format: "pdf",
+      sizeBytes: 100,
+      sha256: "abc",
+      createdAt: "2026-10-22T00:00:00Z",
+      complete: true,
+      warnings: ["pdf_requires_ocr"],
+      sheets: [
+        {
+          name: "Pages",
+          headers: ["Page", "Text"],
+          types: ["number", "text"],
+          rows: 1,
+        },
+      ],
+    };
+    component.sourceFiles.set([uploaded]);
+    uploadAgentFile.mockReturnValue(
+      throwError(() => ({ error: { detail: "Archivo no válido" } })),
+    );
+    const input: HTMLInputElement =
+      fixture.nativeElement.querySelector("input[type=file]");
+    Object.defineProperty(input, "files", {
+      value: [new File(["x"], "bad.csv")],
+      configurable: true,
+    });
+    await component.attach({ target: input } as unknown as Event);
+    expect(component.sourceFiles()).toEqual([uploaded]);
+    expect(component.message.value).toBe("Consolida el periodo");
+    component.newConversation();
+    expect(component.sourceFiles()).toEqual([]);
+    agentFiles.mockReturnValue(
+      of({
+        items: [uploaded],
+        maxFiles: 5,
+        maxFileBytes: 10485760,
+        maxTotalBytes: 26214400,
+      }),
+    );
+    conversationMessages.mockReturnValue(
+      of({
+        items: [{ role: "user", text: "Review PDF", sourceFiles: [uploaded] }],
+        total: 1,
+        historyLimited: false,
+      }),
+    );
+    await component.openConversation("saved");
+    fixture.detectChanges();
+    expect(component.sourceFiles()).toEqual([uploaded]);
+    expect(
+      fixture.nativeElement.querySelector(".file-warning").textContent,
+    ).toContain("OCR");
+    expect(
+      fixture.nativeElement.querySelector(".message-source-files").textContent,
+    ).toContain("source.pdf");
+  });
   it("evita la recarga, conserva la consulta durante la espera y muestra la respuesta", async () => {
     const { component, fixture, conversation, message } = createAgent(
       false,

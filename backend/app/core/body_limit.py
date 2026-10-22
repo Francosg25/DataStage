@@ -1,5 +1,6 @@
 """Enforce limits on bytes actually received, including chunked multipart uploads."""
 import json
+import re
 
 from starlette.formparsers import MultiPartException
 
@@ -15,7 +16,8 @@ class BodyLimitMiddleware:
             return await self.app(scope, receive, send)
         path = scope.get("path", "")
         limit = self.upload_bytes if path == "/api/v1/monthly-runs" else (
-            self.source_bytes if path == "/api/v1/source-files" else 1024 * 1024)
+            self.source_bytes if path == "/api/v1/source-files" else
+            11 * 1024 * 1024 if re.fullmatch(r"/api/v1/agent/conversations/[^/]+/files", path) else 1024 * 1024)
         response_body = json.dumps({
             "type": "urn:datastage:problem:request_too_large", "title": "REQUEST_TOO_LARGE",
             "status": 413, "detail": "La solicitud supera el tamaño permitido", "instance": path,

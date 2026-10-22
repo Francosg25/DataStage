@@ -18,16 +18,27 @@ from app.persistence.models import AgentArtifact, StoredDocument
 from .data_queries import MAX_EXPORT_CELLS, query_data
 
 MAX_ARTIFACT_BYTES = 20 * 1024 * 1024
+FORMATS = {
+    "xlsx": ("agent_excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    "pdf": ("agent_pdf", "application/pdf"),
+    "docx": ("agent_docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    "pptx": ("agent_pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    "csv": ("agent_csv", "text/csv; charset=utf-8"), "json": ("agent_json", "application/json"),
+    "png": ("agent_png", "image/png"), "svg": ("agent_svg", "image/svg+xml"),
+    "html": ("agent_html", "text/html; charset=utf-8"), "zip": ("agent_zip", "application/zip"),
+}
 
 
 def attachment(document, conversation_id):
     return {"documentId": document.id, "name": document.original_name,
-            "format": "pdf" if document.kind == "agent_pdf" else "xlsx",
+            "format": next(name for name, (kind, _) in FORMATS.items() if kind == document.kind),
             "sizeBytes": document.size_bytes, "sha256": document.sha256,
             "downloadUrl": f"/api/v1/agent/conversations/{conversation_id}/artifacts/{document.id}"}
 
 
 def store_artifact(session, storage, principal, conversation_id, content, suffix, title, manifest):
+    if suffix.lstrip(".") not in FORMATS:
+        raise ApplicationError(400, "agent_format_unknown", "Formato de descarga no admitido.")
     request_hash = fingerprint({"format": suffix, "title": title, "manifest": manifest})
     existing = session.scalar(select(AgentArtifact).where(AgentArtifact.conversation_id == conversation_id,
                                                          AgentArtifact.request_hash == request_hash))
@@ -40,7 +51,7 @@ def store_artifact(session, storage, principal, conversation_id, content, suffix
         raise ApplicationError(413, "agent_artifact_too_large", "El reporte supera 20 MiB. Reduce las columnas o periodos.")
     stored = storage.put_bytes(content, suffix)
     title = re.sub(r"[^\w -]+", "", title).strip().replace(" ", "_")[:80] or "DataStage"
-    doc = StoredDocument(id=str(uuid4()), scope_id=principal.scope_id, kind="agent_pdf" if suffix == ".pdf" else "agent_excel",
+    doc = StoredDocument(id=str(uuid4()), scope_id=principal.scope_id, kind=FORMATS[suffix.lstrip(".")][0],
                          original_name=f"{title}{suffix}", status="available", **stored)
     try:
         with session.begin_nested():

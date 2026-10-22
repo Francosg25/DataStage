@@ -234,7 +234,7 @@ def test_memory_migration_is_additive_and_downgrade_keeps_prior_chats(tmp_path):
         connection.execute(text("INSERT INTO agent_memory_profiles (id,scope_id,user_id,enabled,version,updated_at) VALUES ('p','s','u',1,1,:now)"), {"now": "2026-10-22 00:00:00"})
         connection.execute(text("INSERT INTO agent_memories (id,profile_id,title,content,created_at,updated_at) VALUES ('n','p','Currency','USD',:now,:now)"), {"now": "2026-10-22 00:00:00"})
         assert connection.scalar(text("SELECT content FROM agent_messages WHERE id='m'")) == "Keep the message"
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261022_0005"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261022_0006"
         command.downgrade(config, "20261022_0004")
         assert connection.scalar(text("SELECT content FROM agent_messages WHERE id='m'")) == "Keep the message"
     engine.dispose()

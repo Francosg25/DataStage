@@ -294,7 +294,7 @@ def registered_agent(monkeypatch):
 
 def test_check_reads_exact_version_and_never_creates_or_calls_model(registered_agent):
     result = setup.check_agent(local_settings())
-    assert result["version"] == "1" and result["tools"] == 11 and result["modelCalled"] is False
+    assert result["version"] == "1" and result["tools"] == 16 and result["modelCalled"] is False
     registered_agent.project.agents.get_version.assert_called_once_with(
         agent_name="datastage-assistant", agent_version="1")
     registered_agent.project.agents.create_version.assert_not_called()
@@ -343,7 +343,7 @@ def test_upgrade_pins_the_new_model_only_after_verification_and_keeps_other_sett
     def verify(value):
         assert local_config.ENV_PATH.read_bytes() == before
         checked.append(value)
-        return {"model": value.foundry_model, "version": value.foundry_agent_version, "tools": 11, "modelCalled": False}
+        return {"model": value.foundry_model, "version": value.foundry_agent_version, "tools": 16, "modelCalled": False}
 
     monkeypatch.setattr(setup, "register_agent", register)
     monkeypatch.setattr(setup, "check_agent", verify)

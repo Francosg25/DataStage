@@ -29,6 +29,53 @@ describe("contratos de la API", () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it("uploads, lists, downloads and removes conversation attachments with corporate authentication", async () => {
+    const file = new File(["Name,Amount\nAlpha,10"], "vendors.csv", {
+      type: "text/csv",
+    });
+    const uploading = firstValueFrom(api.uploadAgentFile("chat/id", file));
+    await Promise.resolve();
+    const post = http.expectOne("/api/v1/agent/conversations/chat%2Fid/files");
+    expect(post.request.method).toBe("POST");
+    expect(post.request.body instanceof FormData).toBe(true);
+    expect(post.request.body.get("file").name).toBe("vendors.csv");
+    expect(post.request.headers.get("Authorization")).toBe(
+      "Bearer corporate-access-token",
+    );
+    expect(post.request.headers.has("Content-Type")).toBe(false);
+    post.flush({ fileId: "file-1", name: file.name });
+    expect((await uploading).fileId).toBe("file-1");
+    const listing = firstValueFrom(api.agentFiles("chat/id"));
+    await Promise.resolve();
+    http.expectOne("/api/v1/agent/conversations/chat%2Fid/files").flush({
+      items: [],
+      maxFiles: 5,
+      maxFileBytes: 10485760,
+      maxTotalBytes: 26214400,
+    });
+    expect((await listing).maxFiles).toBe(5);
+    const downloading = firstValueFrom(
+      api.downloadAgentFile("chat/id", "file/id"),
+    );
+    await Promise.resolve();
+    const get = http.expectOne(
+      "/api/v1/agent/conversations/chat%2Fid/files/file%2Fid/download",
+    );
+    expect(get.request.responseType).toBe("blob");
+    expect(get.request.headers.get("Authorization")).toBe(
+      "Bearer corporate-access-token",
+    );
+    get.flush(new Blob(["test"]));
+    expect((await downloading).body).toBeTruthy();
+    const deleting = firstValueFrom(api.removeAgentFile("chat/id", "file/id"));
+    await Promise.resolve();
+    const request = http.expectOne(
+      "/api/v1/agent/conversations/chat%2Fid/files/file%2Fid",
+    );
+    expect(request.request.method).toBe("DELETE");
+    request.flush(null);
+    await deleting;
+  });
   it("loads, updates and clears only the authenticated user's memory with a version guard", async () => {
     const profile = {
       enabled: true,

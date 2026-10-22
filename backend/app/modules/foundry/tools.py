@@ -116,6 +116,50 @@ class CreateAnalysisReport(GetAnalytics):
     currency: Literal["USD", "MXN"]
 
 
+class ListAttachments(ToolArguments):
+    pass
+
+
+class DescribeAttachment(ToolArguments):
+    fileId: RunId
+
+
+class AttachmentQuery(ToolArguments):
+    fileId: RunId
+    sheet: Annotated[str, Field(min_length=1, max_length=100)]
+    columns: Annotated[list[ColumnName], Field(max_length=40)]
+    filters: Annotated[list[DataFilter], Field(max_length=10)]
+    groupBy: Annotated[list[ColumnName], Field(max_length=4)]
+    metrics: Annotated[list[DataMetric], Field(max_length=6)]
+    orderBy: Annotated[list[DataOrder], Field(max_length=3)]
+
+
+class QueryAttachment(ToolArguments):
+    query: AttachmentQuery
+    limit: Limit
+    offset: Annotated[int, Field(ge=0, le=50000)]
+    textOffset: Annotated[int, Field(ge=0, le=50000, description="0 normalmente; para continuar una celda larga usa su nextTextOffset y selecciona esa fila/columna.")] = 0
+    textLimit: Annotated[int, Field(ge=100, le=6000, description="Máximo de caracteres por celda en la vista previa; 1000 normalmente. Los datos originales permanecen completos.")] = 1000
+
+
+class FileSection(ToolArguments):
+    title: Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[^\r\n\t]+$")]
+    query: DataQuery | AttachmentQuery
+    commentary: Annotated[str, Field(max_length=800, description="Comentario del asistente basado en resultados verificados; vacío si no hace falta.")]
+    chart: Literal["none", "bar", "line"]
+
+
+class CreateFile(ToolArguments):
+    title: Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[^\r\n\t]+$")]
+    format: Literal["docx", "pptx", "csv", "json", "png", "svg", "html", "pdf", "xlsx"]
+    sections: Annotated[list[FileSection], Field(min_length=1, max_length=5)]
+
+
+class CreatePackage(ToolArguments):
+    title: Annotated[str, Field(min_length=1, max_length=100)]
+    documentIds: Annotated[list[RunId], Field(min_length=1, max_length=10)]
+
+
 class StartAnnual(ToolArguments):
     anio: Annotated[int, Field(ge=1900, le=2100)]
     rangoNombre: Annotated[str, Field(min_length=1, max_length=40, pattern=r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ -]+$")]
@@ -138,6 +182,11 @@ TOOL_MODELS = {
     "query_data": QueryData,
     "create_excel": CreateExcel,
     "create_analysis_report": CreateAnalysisReport,
+    "list_attachments": ListAttachments,
+    "describe_attachment": DescribeAttachment,
+    "query_attachment": QueryAttachment,
+    "create_file": CreateFile,
+    "create_package": CreatePackage,
     "start_annual": StartAnnual,
     "reprocess_run": ReprocessRun,
 }
@@ -154,6 +203,11 @@ DESCRIPTIONS = {
     "query_data": "Consulta datos mensuales publicados: columnas de una o varias tablas mediante joins del catálogo, cálculos por fila, filtros, agrupaciones y orden. Usa 501.Campo para campos relacionados; joins/calculations vacíos si no se usan. Resultados completos con vista previa limitada. Rechaza cruces ambiguos e importes duplicados. Sin SQL ni código.",
     "create_excel": "Genera Excel real de hasta cinco hojas con consultas completas: cruces autorizados, columnas calculadas, filtros y agrupaciones. Números y fechas nativos, fuentes y diagnóstico de relaciones. Exporta todas las filas autorizadas, no muestras; no modifica las fuentes.",
     "create_analysis_report": "Genera un informe PDF descargable con los KPI, gráficos y fuentes del análisis del periodo y filtros solicitados. La moneda es explícita y el idioma lo determina la aplicación.",
+    "list_attachments": "Enumera los archivos privados adjuntos a ESTA conversación, sus hojas/páginas, filas y advertencias. No son meses publicados ni documentos operativos.",
+    "describe_attachment": "Consulta cabeceras, tipos, hojas y advertencias de un adjunto de esta conversación antes de analizarlo. No ejecuta macros, fórmulas ni enlaces.",
+    "query_attachment": "Lee, filtra, ordena o agrega TODAS las filas de una hoja adjunta. columns vacío con métricas. Vista previa paginada: offset para filas, textOffset/textLimit para celdas largas. textContinuations indica resultado/fila/columna y nextTextOffset; para continuar selecciona esa fila y columna. No infieras todo un documento desde una muestra.",
+    "create_file": "Genera un archivo real DOCX/PPTX/CSV/JSON/PNG/SVG/HTML/PDF/XLSX a partir de consultas completas publicadas o de adjuntos. Cada sección tiene título, query, commentary y chart (none/bar/line). CSV/PNG/SVG usan una sección. Documentos visuales: máximo 8 columnas, 200 filas por sección y 2000 celdas totales. Gráficas: categoría y métricas numéricas compatibles, máximo 30 filas; no se truncan. Para tablas grandes usa CSV/JSON/XLSX. Las fuentes quedan incluidas.",
+    "create_package": "Empaqueta hasta 10 archivos YA generados en esta conversación en un ZIP con manifiesto de fuentes y hashes. Usa sólo documentIds de descargas reales; no admite rutas ni archivos de otros usuarios.",
     "start_annual": "Solicita consolidación anual sólo si el usuario autorizó acciones y tiene permiso.",
     "reprocess_run": "Solicita reproceso con motivo y versión esperada, sujeto a autorización del backend.",
 }

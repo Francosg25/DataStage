@@ -157,3 +157,52 @@ reales en la red corporativa, además de SQL Server/Entra y el servidor reales.
 No se modificó el frontend ni se repitió su suite por este cambio de backend.
 Los seis fallos generales preexistentes registrados anteriormente no quedan
 resueltos ni se declara una aprobación de toda la suite del repositorio.
+
+## Asistente: adjuntos y nuevos formatos — 22 de octubre de 2026
+
+Implementado sobre `d43da48` en `feature/foundry-agent-setup`. Se añade el clip
+para fuentes privadas XLSX/CSV/PDF/DOCX/PPTX y las herramientas de consulta,
+generación DOCX/PPTX/CSV/JSON/PNG/SVG/HTML y paquetes ZIP. Se conservan XLSX/PDF,
+el modelo configurado y el carácter opcional de Foundry. Las herramientas de
+lectura/generación pasan de once a dieciséis; las dos acciones opcionales siguen
+deshabilitadas por defecto.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Backend afectado: archivos, cruces, reportes, Foundry, configuración/autenticación local, cobertura, memoria, seguridad, API/worker, persistencia y despliegue nativo | **282 aprobadas; 1 omitida** por falta de SQL Server de pruebas |
+| Frontend completo | **147 aprobadas en 20 suites**, incluidas subida multipart autenticada, historial, retirada, progreso, errores y controles ES/EN |
+| Scripts de instalación y paquete | **27 aprobadas**, incluida la lista permitida de plantilla PowerPoint y documentación del asistente |
+| Angular de producción | Compilación correcta; bundle inicial **1.04 MB**; sin nuevas dependencias frontend |
+| Dependencias Python | **63 versiones exactas** verificadas; `pip check` correcto; tres paquetes nuevos instalados y probados en Python 3.12/Linux |
+| Compatibilidad Windows | Resueltos los wheels de python-docx 1.2.0, lxml 6.1.1 y pypdf 6.10.0 para CPython 3.13/Windows amd64; no sustituye una ejecución real en Windows corporativo |
+| Migración aditiva `20261022_0006` | Ciclo SQLite y paridad con metadata correctos, 76 tablas; DDL SQL Server compila; no se migraron bases corporativas |
+| Contrato HTTP | OpenAPI regenerado: 54 rutas, con operaciones de fuentes privadas y referencias en mensajes/historial |
+| Archivos visuales sintéticos | Word renderizado y revisado en dos páginas; PDF revisado; PowerPoint importado/renderizado en cinco diapositivas, convertido con LibreOffice y revisado; tablas y gráficas nativas, fuentes legibles y cero hallazgos del validador geométrico |
+| Paquete Linux | Generado y verificado con el instalador; hashes correctos y 150 entradas; incluye lectores, renderers, migración, plantilla y documentación, sin credenciales, bases, documentos de negocio ni entornos |
+| Calidad | Ruff en todos los Python modificados, Prettier en el frontend modificado y `git diff --check` correctos |
+
+Las pruebas usan archivos reales con datos sintéticos y Azure simulado. Se
+verifican sumas y exportación de todas las filas frente a una vista previa,
+continuación de texto extenso, números/fechas nativos e identificadores
+textuales, fórmulas como texto sin ejecución, PDF sin texto o con páginas sin
+texto, límites y tiempos de lectura, archivos cifrados o con estructuras
+maliciosas, XML con entidades también en extensiones mayúsculas, control de
+monedas/unidades y rechazo de datos inválidos sin inventar ceros. Las descargas
+de los nueve formatos individuales y el ZIP se abren y contrastan con sus
+fuentes. No se generan documentos desde SQL, código o rutas del modelo.
+
+También se comprueban aislamiento entre autores/ámbitos y conversaciones,
+subidas repetidas, revocación de adjuntos, instantáneas ya generadas, borrado
+completo de conversación, integridad de los hashes y limpieza reintentable
+cuando un archivo está bloqueado. Los adjuntos no publican meses ni modifican
+proveedores. La subida y lectura local no ejecutan inferencia; las preguntas
+reales sí consumen modelo e incluyen los fragmentos consultados.
+
+Quedan pendientes registrar la versión actual en el proyecto corporativo,
+preguntas de aceptación con GPT-6 Luna, revisión visual del chat en el navegador
+corporativo y ejecución real en Windows, SQL Server/Entra y Ubuntu de destino.
+No se hicieron llamadas de inferencia a Azure ni cambios sobre infraestructura
+de producción. No hay OCR ni visión de imágenes adjuntas; PDF/Word/PowerPoint
+se leen como texto y tablas según los límites de la guía. Los seis fallos
+generales preexistentes documentados arriba no se han corregido ni se declara
+aprobada toda la suite del repositorio.

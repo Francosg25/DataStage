@@ -25,6 +25,8 @@ import {
   AgentAttachment,
   AgentChatMessage,
   AgentConversation,
+  AgentSourceFile,
+  AgentUpload,
   errorText,
 } from "../core/models";
 import { Icon, DataTable } from "../shared/ui";
@@ -71,6 +73,9 @@ export class Agent {
   historyLimited = signal(false);
   pendingText = signal("");
   downloading = signal("");
+  sourceFiles = signal<AgentUpload[]>([]);
+  uploading = signal("");
+  removingFile = signal("");
   busy = signal(false);
   deleting = signal(false);
   confirmingDelete = signal(false);
@@ -98,7 +103,7 @@ export class Agent {
             if (
               items.length &&
               !prompt &&
-              !this.busy() &&
+              !this.interacting() &&
               !this.conversationId() &&
               !this.messages().length
             )
@@ -122,6 +127,7 @@ export class Agent {
     if (this.interacting()) return;
     this.conversationId.set(undefined);
     this.messages.set([]);
+    this.sourceFiles.set([]);
     this.historyLimited.set(false);
     this.error.set("");
     this.message.reset();
@@ -136,9 +142,13 @@ export class Agent {
     this.loadingHistory.set(true);
     this.error.set("");
     try {
-      const history = await firstValueFrom(this.api.conversationMessages(id));
+      const [history, files] = await Promise.all([
+        firstValueFrom(this.api.conversationMessages(id)),
+        firstValueFrom(this.api.agentFiles(id)),
+      ]);
       this.conversationId.set(id);
       this.messages.set(history.items);
+      this.sourceFiles.set(files.items);
       this.historyLimited.set(history.historyLimited);
     } catch (error) {
       this.error.set(errorText(error));
@@ -168,13 +178,140 @@ export class Agent {
       ? `${(bytes / 1048576).toFixed(1)} MB`
       : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
   }
+  async attach(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files || []);
+    input.value = "";
+    if (
+      !files.length ||
+      this.interacting() ||
+      !this.auth.config()?.foundryEnabled
+    )
+      return;
+    if (
+      files.length + this.sourceFiles().length > 5 ||
+      files.some((file) => file.size > 10 * 1048576) ||
+      files.reduce(
+        (sum, file) => sum + file.size,
+        this.sourceFiles().reduce((sum, file) => sum + file.sizeBytes, 0),
+      ) >
+        25 * 1048576
+    ) {
+      this.error.set(
+        this.i18n.choose(
+          "Puedes adjuntar 5 archivos: 10 MiB por archivo y 25 MiB en total.",
+          "Attach up to 5 files: 10 MiB each and 25 MiB in total.",
+        ),
+      );
+      return;
+    }
+    if (files.some((file) => !/\.(xlsx|csv|pdf|docx|pptx)$/i.test(file.name))) {
+      this.error.set(
+        this.i18n.choose(
+          "Adjunta archivos XLSX, CSV, PDF, DOCX o PPTX.",
+          "Attach XLSX, CSV, PDF, DOCX or PPTX files.",
+        ),
+      );
+      return;
+    }
+    this.uploading.set(files[0].name);
+    this.error.set("");
+    try {
+      if (!this.conversationId())
+        this.conversationId.set(
+          (await firstValueFrom(this.api.conversation())).id,
+        );
+      for (const file of files) {
+        this.uploading.set(file.name);
+        const result = await firstValueFrom(
+          this.api.uploadAgentFile(this.conversationId()!, file),
+        );
+        this.sourceFiles.update((items) => [
+          ...items.filter((item) => item.fileId !== result.fileId),
+          result,
+        ]);
+      }
+      const list = await firstValueFrom(this.api.conversations());
+      this.conversations.set(list.items);
+    } catch (error) {
+      this.error.set(errorText(error));
+    } finally {
+      this.uploading.set("");
+    }
+  }
+  async removeFile(file: AgentUpload) {
+    const id = this.conversationId();
+    if (!id || this.interacting() || this.downloading()) return;
+    this.removingFile.set(file.fileId);
+    this.error.set("");
+    try {
+      await firstValueFrom(this.api.removeAgentFile(id, file.fileId));
+      this.sourceFiles.update((items) =>
+        items.filter((item) => item.fileId !== file.fileId),
+      );
+    } catch (error) {
+      this.error.set(errorText(error));
+    } finally {
+      this.removingFile.set("");
+    }
+  }
+  fileAvailable(file: AgentSourceFile) {
+    return this.sourceFiles().some((item) => item.fileId === file.fileId);
+  }
+  async downloadSource(file: AgentSourceFile) {
+    const id = this.conversationId();
+    if (
+      !id ||
+      this.interacting() ||
+      this.downloading() ||
+      !this.fileAvailable(file)
+    )
+      return;
+    this.downloading.set(file.fileId);
+    this.error.set("");
+    try {
+      const response = await firstValueFrom(
+        this.api.downloadAgentFile(id, file.fileId),
+      );
+      saveSupplierDownload(this.document, response, file.name);
+    } catch (error) {
+      this.error.set(errorText(error));
+    } finally {
+      this.downloading.set("");
+    }
+  }
+  fileNote(file: AgentUpload) {
+    if (file.warnings.includes("pdf_some_pages_without_text"))
+      return this.i18n.choose(
+        "Hay páginas sin texto detectado",
+        "Some pages have no detected text",
+      );
+    if (file.warnings.includes("pdf_requires_ocr"))
+      return this.i18n.choose(
+        "PDF sin texto: requiere OCR",
+        "PDF has no text: OCR required",
+      );
+    if (file.warnings.includes("formulas_preserved_as_text"))
+      return this.i18n.choose(
+        "Fórmulas conservadas como texto",
+        "Formulas preserved as text",
+      );
+    if (file.format === "docx" || file.format === "pptx")
+      return this.i18n.choose(
+        "Lectura de texto y tablas",
+        "Text and table reading",
+      );
+    return `${file.sheets.length} ${this.i18n.choose("hojas", "sheets")} · ${file.sheets.reduce((sum, page) => sum + page.rows, 0).toLocaleString()} ${this.i18n.choose("filas", "rows")}`;
+  }
   interacting() {
     return (
       this.busy() ||
       this.loadingHistory() ||
       this.deleting() ||
       this.confirmingDelete() ||
-      this.managingMemory()
+      this.managingMemory() ||
+      !!this.uploading() ||
+      !!this.removingFile()
     );
   }
   artifactUrls(message: AgentChatMessage) {
@@ -222,6 +359,7 @@ export class Agent {
       );
       this.conversationId.set(undefined);
       this.messages.set([]);
+      this.sourceFiles.set([]);
       this.historyLimited.set(false);
       this.message.reset();
       this.allowActions.reset(false);
@@ -281,7 +419,7 @@ export class Agent {
       );
       this.messages.update((m) => [
         ...m,
-        { role: "user", text },
+        { role: "user", text, sourceFiles: response.sourceFiles },
         {
           role: "assistant",
           text: response.message,

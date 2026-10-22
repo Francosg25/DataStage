@@ -246,7 +246,7 @@ def test_no_tool_evidence_means_no_fabricated_provider_answer():
 
 def test_registered_schemas_are_strict_and_closed():
     definitions = tool_definitions(True)
-    assert len(definitions) == 13
+    assert len(definitions) == 18
     for tool in definitions:
         schema = tool["parameters"]
         assert schema["additionalProperties"] is False
@@ -257,7 +257,7 @@ def test_registered_schemas_are_strict_and_closed():
             if nested.get("type") == "object":
                 assert nested["additionalProperties"] is False
                 assert set(nested["required"]) == set(nested["properties"])
-    assert len(tool_definitions(False)) == 11
+    assert len(tool_definitions(False)) == 16
     assert validate_tool_arguments("start_annual", {"anio": 2026, "rangoNombre": "Ene-Ago"}, allow_commands=True)["anio"] == 2026
 
 
@@ -303,7 +303,7 @@ def test_registration_is_explicit_and_sdk_definition_contains_only_functions(mon
     assert definition["kind"] == "prompt"
     assert definition["model"] == "approved-deployment"
     assert definition["instructions"] == adapter.INSTRUCTIONS
-    assert len(definition["tools"]) == 11
+    assert len(definition["tools"]) == 16
     assert {tool["type"] for tool in definition["tools"]} == {"function"}
 
 

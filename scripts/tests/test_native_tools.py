@@ -32,6 +32,16 @@ def test_package_excludes_data_secrets_and_development_files(path):
     assert not builder.allowed_source(path)
 
 
+def test_package_includes_only_the_approved_presentation_template_and_knowledge():
+    assert builder.allowed_source('backend/app/resources/reports/blank.pptx')
+    assert not builder.allowed_source('backend/app/resources/reports/customer.pptx')
+    assert not builder.allowed_source('backend/app/resources/reports/customer.xlsx')
+    for name in ('analytics', 'suppliers', 'compatibility', 'operations', 'data-model',
+                 'assistant-corporate', 'azure-foundry'):
+        assert builder.allowed_source('docs/' + name + '.md')
+    assert not builder.allowed_source('docs/private-customer.md')
+
+
 def package(extra=None, bad_hash=False):
     files = {'backend/app/main.py': b'# main', 'backend/app/worker.py': b'# worker',
              'backend/alembic.ini': b'[alembic]', 'frontend/index.html': b'<html/>'}

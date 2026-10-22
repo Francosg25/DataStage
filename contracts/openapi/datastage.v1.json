@@ -4356,6 +4356,479 @@
         ]
       }
     },
+    "/api/v1/agent/conversations/{conversation_id}/files": {
+      "get": {
+        "summary": "Agent Files",
+        "operationId": "agent_files_api_v1_agent_conversations__conversation_id__files_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentFilesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solicitud inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticación requerida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permiso insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Recurso no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto de versión o idempotencia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Carga demasiado grande",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Servicio no disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EntraBearer": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Agent File Upload",
+        "operationId": "agent_file_upload_api_v1_agent_conversations__conversation_id__files_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_agent_file_upload_api_v1_agent_conversations__conversation_id__files_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solicitud inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticación requerida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permiso insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Recurso no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto de versión o idempotencia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Carga demasiado grande",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Servicio no disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EntraBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/agent/conversations/{conversation_id}/files/{file_id}": {
+      "delete": {
+        "summary": "Agent File Delete",
+        "operationId": "agent_file_delete_api_v1_agent_conversations__conversation_id__files__file_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Solicitud inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticación requerida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permiso insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Recurso no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto de versión o idempotencia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Carga demasiado grande",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Servicio no disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EntraBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/agent/conversations/{conversation_id}/files/{file_id}/download": {
+      "get": {
+        "summary": "Agent File Download",
+        "operationId": "agent_file_download_api_v1_agent_conversations__conversation_id__files__file_id__download_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Solicitud inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Autenticación requerida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permiso insuficiente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Recurso no encontrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicto de versión o idempotencia",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Carga demasiado grande",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validación",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Servicio no disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "EntraBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/suppliers/summary": {
       "get": {
         "tags": [
@@ -5854,7 +6327,15 @@
             "type": "string",
             "enum": [
               "xlsx",
-              "pdf"
+              "pdf",
+              "docx",
+              "pptx",
+              "csv",
+              "json",
+              "png",
+              "svg",
+              "html",
+              "zip"
             ],
             "title": "Format"
           },
@@ -5882,6 +6363,38 @@
           "downloadUrl"
         ],
         "title": "AgentAttachmentResponse"
+      },
+      "AgentFilesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AgentUploadResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "maxFiles": {
+            "type": "integer",
+            "title": "Maxfiles"
+          },
+          "maxFileBytes": {
+            "type": "integer",
+            "title": "Maxfilebytes"
+          },
+          "maxTotalBytes": {
+            "type": "integer",
+            "title": "Maxtotalbytes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "maxFiles",
+          "maxFileBytes",
+          "maxTotalBytes"
+        ],
+        "title": "AgentFilesResponse"
       },
       "AgentHistoryItem": {
         "properties": {
@@ -5934,6 +6447,13 @@
             "type": "integer",
             "title": "Memorycontextcount",
             "default": 0
+          },
+          "sourceFiles": {
+            "items": {
+              "$ref": "#/components/schemas/AgentSourceFile"
+            },
+            "type": "array",
+            "title": "Sourcefiles"
           }
         },
         "additionalProperties": false,
@@ -5981,6 +6501,13 @@
             "type": "integer",
             "title": "Memorycontextcount",
             "default": 0
+          },
+          "sourceFiles": {
+            "items": {
+              "$ref": "#/components/schemas/AgentSourceFile"
+            },
+            "type": "array",
+            "title": "Sourcefiles"
           }
         },
         "additionalProperties": false,
@@ -5989,6 +6516,96 @@
           "message"
         ],
         "title": "AgentReplyResponse"
+      },
+      "AgentSourceFile": {
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "title": "Fileid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "title": "Sizebytes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fileId",
+          "name",
+          "format",
+          "sizeBytes"
+        ],
+        "title": "AgentSourceFile"
+      },
+      "AgentUploadResponse": {
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "title": "Fileid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "title": "Sizebytes"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "sheets": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sheets"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fileId",
+          "name",
+          "format",
+          "sizeBytes",
+          "sha256",
+          "createdAt",
+          "sheets",
+          "warnings",
+          "complete"
+        ],
+        "title": "AgentUploadResponse"
       },
       "AgentUsageResponse": {
         "properties": {
@@ -6155,6 +6772,20 @@
         "additionalProperties": false,
         "type": "object",
         "title": "AnnualRequest"
+      },
+      "Body_agent_file_upload_api_v1_agent_conversations__conversation_id__files_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_agent_file_upload_api_v1_agent_conversations__conversation_id__files_post"
       },
       "Body_import_lists_api_v1_suppliers_import_post": {
         "properties": {

@@ -1,6 +1,6 @@
 # Asistente corporativo de DataStage
 
-El chat consulta los datos publicados del usuario, calcula resultados verificables y genera archivos reales. El modelo interpreta la solicitud y explica los resultados; las consultas y los archivos se ejecutan en Python dentro de DataStage. Se conservan las métricas y reglas de negocio del dashboard.
+El chat consulta los datos publicados del usuario, calcula resultados verificables y genera archivos reales. El modelo interpreta la solicitud y explica los resultados; las consultas y los archivos se ejecutan en Python dentro de DataStage. Se conservan las métricas y reglas de negocio del dashboard. Para instalar la versión actual con adjuntos y formatos adicionales, sigue [la puesta en marcha de esta ampliación](#instalar-esta-ampliación-en-windows).
 
 ## Qué puedes pedir
 
@@ -68,6 +68,79 @@ Reinicia la API con tu comando habitual y abre una conversación nueva para que 
 
 Prueba con un mes publicado y sus tablas disponibles: «Genera un Excel de mayo de 2025 con las partidas 551, fracción y valor en dólares; añade RFC y tipo de cambio de 501, calcula valor en MXN y una segunda hoja con el total por fracción. Indica si alguna partida no pudo cruzarse». Contrasta los resultados con las fuentes y revisa la hoja **Fuentes**. La prueba automatizada es local y simulada; esta pregunta real sí invoca Foundry.
 
+## Adjuntos y generación de archivos
+
+El **clip** junto al cuadro de texto permite adjuntar archivos antes de enviar la pregunta. Si hace falta se crea una conversación; cargar y leer un archivo no invoca el modelo. Escribe qué necesitas y pulsa enviar. Los archivos aparecen sobre el cuadro de texto, con nombre, tamaño, estado de lectura y botón para retirarlos. También se recuperan al abrir el historial. Las preguntas reales y los fragmentos que consulte el modelo sí forman parte de su consumo de entrada.
+
+| Entrada | Lectura disponible |
+| --- | --- |
+| XLSX | Hojas, cabeceras, valores, números y fechas nativos; identificadores con ceros conservados |
+| CSV | Separadores habituales y UTF-8/Windows-1252; se infieren sólo decimales sin ambigüedad y se conservan identificadores |
+| PDF | Texto por página; un PDF escaneado sin texto se identifica como **requiere OCR** |
+| DOCX | Párrafos del cuerpo y tablas; las imágenes y objetos no se interpretan |
+| PPTX | Texto de las diapositivas y sus tablas como texto; sin interpretación de imágenes ni gráficas |
+
+Las fórmulas de un XLSX se conservan como **texto literal**, sin recalcularlas ni sustituirlas por el cero de una caché. No se ejecutan macros, enlaces, programas ni objetos incrustados. Los formatos con macros y las estructuras activas no se admiten. Los adjuntos son fuentes privadas de la conversación: no crean meses publicados, altas de proveedores ni registros de negocio. Para preguntas sobre meses cargados se sigue utilizando `list_runs`, y los KPI oficiales se obtienen del dashboard.
+
+El agente dispone de `list_attachments`, `describe_attachment` y `query_attachment`. Puede seleccionar columnas, filtrar, ordenar, contar o agregar **todas las filas** de una hoja sin calcular totales desde una muestra. Una moneda declarada en el archivo se debe filtrar o agrupar antes de agregar; las unidades desconocidas no se convierten automáticamente. Los archivos adjuntos no habilitan cruces arbitrarios contra la base ni una conciliación automática entre archivos: esas relaciones requieren una función explícita de negocio.
+
+La vista previa distingue filas y texto limitado. `offset`/`nextOffset` recorren resultados; `textContinuations` identifica fila, columna y `nextTextOffset` para continuar una celda extensa con `textOffset`/`textLimit`. El modelo recibe hasta 20,000 caracteres de texto por vista previa, con un máximo de 6,000 por celda; los originales y las exportaciones no se recortan. El número de rondas y el contexto del modelo siguen acotados. No se promete un resumen íntegro de documentos que el agente no haya leído completamente.
+
+| Salida | Contenido |
+| --- | --- |
+| XLSX | Consultas completas de publicaciones o adjuntos, con números y fechas nativos y hoja de fuentes |
+| DOCX | Informe editable con comentarios, tablas, gráficas y apéndice de fuentes |
+| PPTX | Presentación de datos en plantilla corporativa, con tablas y gráficas **nativas editables**, libro de datos incrustado y fuentes |
+| CSV | Una consulta completa en UTF-8 con BOM; texto que parece fórmula recibe un apóstrofo de protección |
+| JSON | Datos completos, tipos, consultas y manifiesto de fuentes |
+| PNG / SVG | Gráfica de barras o líneas, con valores reales, unidad conocida y metadatos de fuentes |
+| HTML | Informe estático navegable con tablas, gráficas y fuentes; sin scripts, formularios ni recursos externos |
+| PDF | Informe de consultas con tablas y gráficas; el informe de KPI del dashboard conserva su herramienta específica |
+| ZIP | Hasta diez descargas ya generadas en esta conversación y `manifest.json` con fuentes, tamaños y hashes |
+
+`create_file` genera esos formatos desde una o varias consultas. `create_package` empaqueta descargas existentes; no acepta rutas ni ZIP anidados. CSV conserva los números como texto delimitado propio de ese formato, no como celdas Excel. Los identificadores permanecen textuales en XLSX. Los valores inválidos o con precisión que Excel no conserva se escriben como texto y se contabilizan. El CSV no lleva el manifiesto dentro de sus filas; la evidencia queda en el chat y se puede incluir en un ZIP. Word y PowerPoint incluyen además el plan completo en un componente XML del archivo, junto a las fuentes legibles.
+
+### Límites y almacenamiento
+
+- **Adjuntos:** cinco por conversación, 10 MiB cada uno y 25 MiB en total; veinte hojas/tablas, ochenta columnas, 50,000 filas por hoja, 200,000 celdas y dos millones de caracteres de texto por archivo. PDF: hasta 200 páginas. Se rechazan los excesos completos, sin presentar un análisis parcial como total.
+- **Lectura:** proceso Python independiente, plazo de treinta segundos, hasta dos lectores concurrentes por instancia de API. En Linux se limita también CPU y memoria del lector; en Windows se aplican el plazo y los límites de bytes/estructura. No se requiere Code Interpreter, Office, LibreOffice ni Node en el servidor.
+- **Documentos visuales:** hasta cinco secciones, ocho columnas, 200 filas por sección y 2,000 celdas en total; celdas de hasta 240 caracteres. Las gráficas dentro de documentos admiten doce categorías; las imágenes independientes admiten treinta. PowerPoint admite cuarenta diapositivas. Para detalle mayor, usar XLSX/CSV/JSON o agrupar.
+- **Descargas:** máximo de 20 MiB por archivo, 500,000 celdas en exportaciones tabulares. ZIP: hasta 40 MiB de archivos de origen y 20 MiB comprimidos. Las referencias originales por versión o hash se conservan en el manifiesto.
+
+El original adjunto y su copia analizada se guardan en el directorio documental persistente compartido, con registros en la nueva tabla **`agent_uploads`**. Los permisos corresponden al autor y ámbito de la conversación, incluso para administradores. Las rutas genéricas de documentos no conceden acceso a estos archivos. La subida, descarga y retirada se auditan sin copiar el contenido a los eventos.
+
+Retirar un adjunto revoca su lectura y descarga y elimina la copia analizada; el worker reintenta la eliminación física si OneDrive u otro proceso la bloquea. Los reportes ya generados permanecen como instantáneas y pueden contener datos de ese adjunto. Borrar la conversación revoca también sus reportes. Retirar archivos no borra texto ya enviado al modelo o citado en mensajes anteriores, ni copias de respaldo o de Azure. El respaldo y la política de retención deben incluir originales, copias analizadas y descargas.
+
+### Instalar esta ampliación en Windows
+
+Detén API, worker y frontend y actualiza el código de la rama. Desde `backend`, utiliza el mismo intérprete autorizado del proyecto y el repositorio de paquetes aprobado:
+
+```cmd
+..\.venv\Scripts\python.exe -m pip install --no-deps python-docx==1.2.0 lxml==6.1.1 pypdf==6.10.0 pillow==12.3.0
+..\.venv\Scripts\python.exe -m pip check
+```
+
+Tres paquetes son nuevos; Pillow ya estaba fijado en el lock. No se actualizan Angular, Node ni los SDK de Azure por esta función. Para una instalación nueva se utiliza el lock completo. Si TI requiere un índice corporativo o un wheelhouse, utiliza esa configuración o `--no-index --find-links` apuntando al directorio aprobado; no cambies políticas de ejecución.
+
+La migración aditiva **`20261022_0006`** crea `agent_uploads`; el esquema completo pasa a 76 tablas. Si tu SQLite está gestionado por Alembic, aplica con los servicios detenidos **antes de arrancar la API**:
+
+```cmd
+..\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+Si el SQLite local se creó con `create_all` y no tiene `alembic_version`, el arranque habitual crea la tabla nueva. No ejecutes `stamp`, borres tablas ni inicialices de nuevo la base para adoptar esta mejora. En producción la migración la aplica TI con su identidad separada y concede al runtime CRUD sobre `agent_uploads`. No se migra producción al iniciar la API.
+
+Después, registra **una vez** las **dieciséis herramientas** y sus instrucciones actualizadas, conservando el deployment configurado:
+
+```cmd
+..\.venv\Scripts\python.exe -m app.modules.foundry.setup --upgrade-local
+..\.venv\Scripts\python.exe -m app.modules.foundry.setup --check
+```
+
+Esos dos pasos no ejecutan inferencia. Reinicia API, worker y frontend con tus comandos habituales y abre un chat nuevo. No repitas `--upgrade-local` tras un resultado correcto: registra una versión nueva en cada ejecución. La versión anterior de once herramientas no puede leer adjuntos ni generar los nuevos formatos sólo por reiniciar.
+
+Prueba: adjunta un CSV/Excel y pide «Suma el importe por proveedor y crea un Word con la tabla y una gráfica». Después «Genera el mismo análisis en PowerPoint y CSV y reúne las descargas en un ZIP». Comprueba la suma contra el archivo completo, abre cada descarga y recupera el chat. Prueba también retirar un adjunto: debe desaparecer de los disponibles; sus reportes previos deben conservarse como instantáneas. Las preguntas reales de aceptación consumen modelo.
+
 ## Conversación, archivos y permisos
 
 Las conversaciones, evidencias, archivos y el uso reportado se conservan en la base y el almacenamiento documental de DataStage. Sólo el mismo autor y ámbito pueden recuperar el historial o descargar sus archivos generados. Conocer un identificador de documento o compartir un ámbito no concede acceso a otra conversación. Las acciones y descargas quedan auditadas con la identidad actual.
@@ -119,11 +192,11 @@ El borrado o la desactivación se aplica al contexto personal de las siguientes 
 
 ### Instalar la mejora de memoria
 
-La migración aditiva **`20261022_0005`** crea `agent_memory_profiles` y `agent_memories`; no modifica columnas ni elimina conversaciones, archivos o datos de negocio. El esquema completo tiene 75 tablas. No se generan notas iniciales a partir de los chats existentes y la memoria empieza desactivada para cada usuario hasta que la active y guarde.
+La migración aditiva **`20261022_0005`** crea `agent_memory_profiles` y `agent_memories`; no modifica columnas ni elimina conversaciones, archivos o datos de negocio. Las tablas de negocio existentes se conservan. No se generan notas iniciales a partir de los chats existentes y la memoria empieza desactivada para cada usuario hasta que la active y guarde.
 
 Actualiza el código con los servicios detenidos. Si tu SQLite local **ya está gestionado por Alembic**, aplica `..\.venv\Scripts\python.exe -m alembic upgrade head` desde `backend` **antes de reiniciar la API**. Si tu SQLite local fue creado con `create_all` y no está gestionado por Alembic, el arranque habitual crea las dos tablas nuevas; no uses `stamp` ni borres la base. No mezcles una creación automática de tablas con una revisión Alembic anterior pendiente de actualizar. En producción TI aplica la migración mediante la identidad separada y concede al runtime los permisos de las dos tablas, según [Linux directo](linux-direct.md). La API de producción no crea ni migra tablas al arrancar.
 
-Reinicia API y frontend con los comandos habituales. El worker conserva su configuración. No se cambian dependencias, `.env`, autenticación, modelo, `INSTRUCTIONS` registrado ni las once herramientas. **No repitas `--upgrade-local` por esta función**: el contexto personal lo añade DataStage a cada petición, manteniendo la misma referencia del agente.
+Reinicia API y frontend con los comandos habituales. El worker conserva su configuración. La mejora de memoria por sí sola no cambia dependencias, `.env`, autenticación, modelo ni las herramientas registradas. **No repitas `--upgrade-local` sólo por memoria**: el contexto personal lo añade DataStage a cada petición, manteniendo la misma referencia del agente.
 
 ## Actualizar la instalación local y cambiar el modelo
 
@@ -138,7 +211,7 @@ Conserva el proyecto, tenant, autenticación y configuración actuales. La captu
 
 Si la base local fue creada inicialmente con `create_all` y todavía no está gestionada por Alembic, utiliza el arranque normal. No borres la base ni ejecutes un `stamp` sin comprobar previamente su esquema y seguir la guía de migración. En producción la migración es obligatoria y se ejecuta con una identidad distinta de los servicios, según `linux-direct.md`. La prueba de migraciones usa una base temporal, nunca la base corporativa del usuario.
 
-3. Registra una versión nueva con las once herramientas, verifica su definición y actualiza sólo el modelo y la versión en `backend/.env`:
+3. Registra una versión nueva con las dieciséis herramientas, verifica su definición y actualiza sólo el modelo y la versión en `backend/.env`:
 
 ```cmd
 ..\.venv\Scripts\python.exe -m app.modules.foundry.setup --upgrade-local --model "gpt-6-luna"

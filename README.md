@@ -10,7 +10,7 @@ El dashboard está en `/analytics`: evolución mensual, comercio, contribuciones
 
 El asistente comparte las métricas del dashboard mediante `get_analytics`. La [guía de Azure Foundry](docs/azure-foundry.md) también está disponible en `/foundry-guide`, desde la sección Asistente.
 
-El chat también consulta tablas publicadas, combina columnas mediante relaciones verificadas por pedimento o partida y realiza cálculos, filtros y agrupaciones. Genera Excel personalizados y PDF de KPI, conserva conversaciones y muestra descargas y uso del modelo. Consulta la [guía del asistente corporativo](docs/assistant-corporate.md) para activar las nuevas capacidades conservando el modelo y la autenticación configurados.
+El chat consulta tablas publicadas y adjuntos privados, combina datos mediante relaciones verificadas por pedimento o partida y realiza cálculos, filtros y agrupaciones. El clip admite XLSX, CSV, PDF, DOCX y PPTX. Genera Excel, PDF, Word, PowerPoint, CSV/JSON, gráficas PNG/SVG, HTML y paquetes ZIP con fuentes. Consulta la [guía del asistente corporativo](docs/assistant-corporate.md#adjuntos-y-generación-de-archivos) para instalar las dependencias, aplicar la migración y actualizar el agente conservando su modelo y autenticación.
 
 Aplicación Angular + FastAPI para cargar ZIP/ASC, procesar periodos mensuales, consolidar el año, consultar resultados y descargar Excel. La API y el worker comparten el motor Python y una base de datos. Los documentos se conservan fuera de la base, con hash y trazabilidad.
 

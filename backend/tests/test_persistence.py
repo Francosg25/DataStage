@@ -52,7 +52,7 @@ def test_all_official_tables_have_explicit_columns_and_typed_dates(database):
     assert "fecha_pago_real" in get_business_table("501").c
     assert "tipo_fecha" in get_business_table("506").c
     names = set(inspect(engine).get_table_names())
-    assert len(names) == 75
+    assert len(names) == 76
     assert {"supplier_scopes", "suppliers", "supplier_equivalences", "supplier_observations", "supplier_reports",
             "supplier_report_requests"} <= names
     assert get_business_table("unknown") is None

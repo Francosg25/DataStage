@@ -1,6 +1,123 @@
 :host {
   display: block;
 }
+.attachment-input {
+  display: none;
+}
+.file-type[data-format="docx"] {
+  color: #2b62a4;
+  background: #edf3fb;
+}
+.file-type[data-format="pptx"] {
+  color: #ac572c;
+  background: #fff2e9;
+}
+.file-type[data-format="png"],
+.file-type[data-format="svg"] {
+  color: #795ba5;
+  background: #f4f0fa;
+}
+.file-type[data-format="zip"] {
+  color: #936e23;
+  background: #fff8e9;
+}
+.source-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+.source-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 9px 8px 9px 12px;
+  background: #f1f6f7;
+  border: 1px solid #dae6e8;
+  border-radius: 10px;
+  color: #345663;
+}
+.source-file.file-warning {
+  background: #fff8e8;
+  border-color: #e6d5ad;
+}
+.source-name,
+.remove-source,
+.message-source-files button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.source-name {
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+.source-name strong,
+.source-name small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.source-name strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.source-name small {
+  margin-top: 4px;
+  color: #6c838c;
+  font-size: 10px;
+}
+.remove-source {
+  padding: 7px;
+  display: flex;
+  align-items: center;
+}
+.remove-source ds-icon {
+  width: 14px;
+  height: 14px;
+}
+.source-file button:disabled,
+.message-source-files button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.attachment-help {
+  margin: 7px 0 0;
+  font-size: 10px;
+  color: #7b919a;
+}
+.attachment-reading {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: #4a727b;
+  overflow-wrap: anywhere;
+}
+.source-files mat-progress-bar {
+  flex-basis: 100%;
+}
+.message-source-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.message-source-files button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.message-source-files ds-icon {
+  width: 13px;
+  height: 13px;
+}
 .agent-heading {
   gap: 20px;
 }

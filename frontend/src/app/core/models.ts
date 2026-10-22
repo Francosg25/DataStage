@@ -91,7 +91,17 @@ export type DataRow = Record<string, unknown>;
 export interface AgentAttachment {
   documentId: string;
   name: string;
-  format: "xlsx" | "pdf";
+  format:
+    | "xlsx"
+    | "pdf"
+    | "docx"
+    | "pptx"
+    | "csv"
+    | "json"
+    | "png"
+    | "svg"
+    | "html"
+    | "zip";
   sizeBytes: number;
   sha256: string;
   downloadUrl: string;
@@ -111,6 +121,7 @@ export interface AgentReply {
   attachments?: AgentAttachment[];
   usage?: AgentUsage;
   memoryContextCount?: number;
+  sourceFiles?: AgentSourceFile[];
 }
 export interface AgentChatMessage {
   role: "user" | "assistant";
@@ -119,6 +130,26 @@ export interface AgentChatMessage {
   attachments?: AgentAttachment[];
   usage?: AgentUsage;
   memoryContextCount?: number;
+  sourceFiles?: AgentSourceFile[];
+}
+export interface AgentSourceFile {
+  fileId: string;
+  name: string;
+  format: string;
+  sizeBytes: number;
+}
+export interface AgentUpload extends AgentSourceFile {
+  sha256: string;
+  createdAt: string;
+  complete: boolean;
+  warnings: string[];
+  sheets: { name: string; headers: string[]; types: string[]; rows: number }[];
+}
+export interface AgentFiles {
+  items: AgentUpload[];
+  maxFiles: number;
+  maxFileBytes: number;
+  maxTotalBytes: number;
 }
 export interface AgentMemoryItem {
   id: string;
