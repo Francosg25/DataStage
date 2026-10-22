@@ -38,6 +38,35 @@ Las dos tablas nuevas de la migración `20261022_0004` son aditivas: `agent_mess
 
 El chat presenta tablas y formato básico sin ejecutar HTML del modelo. Los botones de descarga utilizan identificadores devueltos por el backend, no enlaces inventados en la respuesta. Los archivos normales de una ejecución continúan en su descarga existente.
 
+### Eliminar una conversación
+
+Selecciona la conversación en la barra superior y pulsa el botón de la papelera. La confirmación identifica el chat y explica qué se eliminará. Cancelar conserva el historial. Al confirmar, se borran los mensajes, su evidencia y métricas guardadas y las descargas generadas de esa conversación en DataStage. Los meses publicados, documentos originales, proveedores, otras conversaciones y reglas de negocio no se modifican.
+
+El borrado exige el autor y ámbito autenticados, incluso para administradores. Queda un evento `agent.conversation.delete` con identidad, fecha, ID y cantidades, sin copiar el texto de la conversación. Los datos se eliminan en una transacción; una respuesta que llega tarde desde otra pestaña no vuelve a crear el historial. No se cambian tablas ni se necesita una nueva migración para esta función.
+
+Primero se revocan las descargas en la base. La API intenta eliminar los archivos físicos y el worker reintenta cada minuto, en lotes de 20, si Windows/OneDrive o el almacenamiento los mantienen bloqueados. Los registros `stored_documents.status = pending_delete` permiten reintentar sin perder la ubicación. Una base de datos no disponible pospone el reintento; no se borran archivos operativos ni archivos que compartan clave de almacenamiento con otro documento. API y worker deben seguir usando el mismo directorio persistente. Los bloqueos permanentes se diagnostican en los registros `datastage.agent`.
+
+Este borrado es de DataStage: no purga copias de respaldo ni las respuestas que ya se hayan almacenado en Foundry (`store=True`). No se afirma un borrado integral en Azure; la retención y eliminación de esas copias debe gestionarse por separado con TI y las APIs de Azure. No se envía ninguna llamada de inferencia para borrar un chat.
+
+### Contexto, memoria y aprendizaje
+
+| Capacidad | Estado actual |
+| --- | --- |
+| Continuar la conversación abierta | Sí: la siguiente pregunta recibe los últimos 20 mensajes previos, hasta 8,000 caracteres por mensaje |
+| Recuperar una conversación al volver a la página | Sí: se muestran hasta los últimos 100 mensajes guardados y sus archivos |
+| Recordar automáticamente otros chats del usuario | No: los chats son independientes; abrir uno nuevo no carga los anteriores |
+| Recordar preferencias personales entre conversaciones | No se ha implementado una memoria de preferencias |
+| Consultar información de meses nuevos | Sí, cuando se publique: las herramientas consultan las fuentes actuales del ámbito autorizado |
+| Entrenar o modificar el modelo con cada conversación | No: guardar contexto no es entrenar el modelo |
+
+Por ejemplo, dentro del mismo chat puedes pedir «haz el mismo reporte para junio» después de uno de mayo. En una conversación nueva tendrás que indicar de nuevo el reporte y los filtros. Un proveedor corregido en el catálogo se encontrará al consultar ese catálogo actualizado; una corrección escrita sólo en un chat no modifica la regla de negocio ni el catálogo compartido.
+
+Una futura memoria persistente debería guardar preferencias y definiciones confirmadas, aisladas por usuario/ámbito, con opciones para revisar, corregir y olvidar. Los conocimientos de negocio compartidos requieren validación y una fuente mantenida. No conviene convertir automáticamente cada respuesta o corrección del chat en una regla corporativa. Esta entrega no activa memoria entre chats ni entrenamiento continuo. [Microsoft distingue la persistencia de conversaciones del entrenamiento de modelos](https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy).
+
+La interfaz conserva español e inglés, agrupa fuentes y consumo como detalles desplegables, muestra las descargas como tarjetas y elimina de la lectura los enlaces técnicos duplicados de archivos verificados. Enter envía; Mayús + Enter inserta una línea. Un campo vacío no se presenta como un error de validación.
+
+Para instalar únicamente esta mejora del chat en una instalación que ya tiene las once herramientas: actualiza `feature/foundry-agent-setup` con el procedimiento Git habitual y reinicia API, worker y frontend con los comandos de siempre. No requiere instalar dependencias, migrar tablas ni ejecutar otra vez `--upgrade-local`; conserva la versión y el modelo ya configurados. El reinicio del worker activa los reintentos de limpieza de archivos bloqueados.
+
 Generar un reporte no requiere habilitar las acciones de consolidación o reproceso. Esas acciones mantienen sus permisos y consentimiento por mensaje; permanecen deshabilitadas durante esta puesta en marcha.
 
 ## Actualizar la instalación local y cambiar el modelo

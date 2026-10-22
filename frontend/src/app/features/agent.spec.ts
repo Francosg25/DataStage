@@ -2,11 +2,13 @@ import { TestBed } from "@angular/core/testing";
 import { provideRouter } from "@angular/router";
 import { of, Subject, throwError } from "rxjs";
 import { HttpResponse } from "@angular/common/http";
+import { MatDialog, MatDialogRef } from "@angular/material/dialog";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Api } from "../core/api";
 import { AgentReply } from "../core/models";
 import { Auth } from "../core/auth";
 import { Agent } from "./agent";
+import { ConversationDeleteDialog } from "./conversation-delete-dialog";
 function createAgent(enabled: boolean, permitted: boolean) {
   const message = vi
     .fn<Api["message"]>()
@@ -19,6 +21,9 @@ function createAgent(enabled: boolean, permitted: boolean) {
     of({ items: [], total: 0, historyLimited: false }),
   );
   const agentArtifact = vi.fn<Api["agentArtifact"]>();
+  const deleteConversation = vi.fn<Api["deleteConversation"]>(() =>
+    of(undefined),
+  );
   TestBed.configureTestingModule({
     providers: [
       provideRouter([]),
@@ -30,6 +35,7 @@ function createAgent(enabled: boolean, permitted: boolean) {
           conversations,
           conversationMessages,
           agentArtifact,
+          deleteConversation,
         },
       },
       {
@@ -54,6 +60,8 @@ function createAgent(enabled: boolean, permitted: boolean) {
     conversations,
     conversationMessages,
     agentArtifact,
+    deleteConversation,
+    dialog: fixture.debugElement.injector.get(MatDialog),
   };
 }
 
@@ -314,5 +322,166 @@ describe("archivos e historial del asistente", () => {
     expect(
       fixture.nativeElement.querySelector(".chat-usage summary").textContent,
     ).not.toContain("0 tokens");
+  });
+});
+
+describe("eliminación de conversaciones", () => {
+  it("pide confirmación, permite cancelar y conserva los mensajes", async () => {
+    const { component, fixture, deleteConversation } = createAgent(
+      false,
+      false,
+    );
+    component.conversationId.set("saved-chat");
+    component.messages.set([{ role: "assistant", text: "Keep this" }]);
+    fixture.detectChanges();
+    const button: HTMLButtonElement = fixture.nativeElement.querySelector(
+      ".delete-conversation",
+    );
+    button.click();
+    TestBed.tick();
+    await fixture.whenStable();
+    await vi.waitFor(() =>
+      expect(document.querySelector("mat-dialog-container")).not.toBeNull(),
+    );
+    expect(deleteConversation).not.toHaveBeenCalled();
+    expect(
+      document.querySelector("mat-dialog-container")!.textContent,
+    ).toContain("Los meses cargados");
+    (document.querySelector("[data-cancel]") as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(component.confirmingDelete()).toBe(false));
+    expect(deleteConversation).not.toHaveBeenCalled();
+    expect(component.messages()[0].text).toBe("Keep this");
+  });
+
+  it("borra únicamente la conversación confirmada y bloquea envíos duplicados durante la eliminación", async () => {
+    const {
+      component,
+      fixture,
+      deleteConversation,
+      conversations,
+      message,
+      dialog,
+    } = createAgent(false, false);
+    component.conversationId.set("saved-chat");
+    component.messages.set([{ role: "assistant", text: "Saved answer" }]);
+    const remaining = {
+      id: "other-chat",
+      title: "Other",
+      createdAt: "2026-01-01",
+      lastMessageAt: "2026-01-01",
+    };
+    component.conversations.set([
+      { ...remaining, id: "saved-chat" },
+      remaining,
+    ]);
+    conversations.mockReturnValue(of({ items: [remaining] }));
+    const open = vi.spyOn(dialog, "open").mockReturnValue({
+      afterClosed: () => of(true),
+    } as MatDialogRef<ConversationDeleteDialog>);
+    const pending = new Subject<void>();
+    deleteConversation.mockReturnValue(pending);
+    const deleting = component.deleteConversation();
+    await vi.waitFor(() =>
+      expect(deleteConversation).toHaveBeenCalledWith("saved-chat"),
+    );
+    fixture.detectChanges();
+    expect(component.deleting()).toBe(true);
+    expect(
+      fixture.nativeElement.querySelector("button[type=submit]").disabled,
+    ).toBe(true);
+    await component.send();
+    await component.deleteConversation();
+    component.newConversation();
+    expect(component.conversationId()).toBe("saved-chat");
+    expect(message).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledOnce();
+    pending.next();
+    pending.complete();
+    await deleting;
+    expect(component.conversationId()).toBeUndefined();
+    expect(component.messages()).toEqual([]);
+    expect(component.conversations()).toEqual([remaining]);
+    expect(component.deleting()).toBe(false);
+  });
+
+  it("conserva el historial y muestra el error si el servidor rechaza el borrado", async () => {
+    const { component, deleteConversation, dialog } = createAgent(false, false);
+    component.conversationId.set("saved-chat");
+    component.messages.set([{ role: "assistant", text: "Saved answer" }]);
+    vi.spyOn(dialog, "open").mockReturnValue({
+      afterClosed: () => of(true),
+    } as MatDialogRef<ConversationDeleteDialog>);
+    deleteConversation.mockReturnValue(
+      throwError(() => ({
+        status: 503,
+        error: { detail: "Reintenta más tarde" },
+      })),
+    );
+    await component.deleteConversation();
+    expect(component.conversationId()).toBe("saved-chat");
+    expect(component.messages()[0].text).toBe("Saved answer");
+    expect(component.error()).toContain("Reintenta");
+    expect(component.deleting()).toBe(false);
+  });
+});
+
+describe("lectura y escritura del chat", () => {
+  it("presenta los controles y la confirmación en inglés sin enviar consultas al modelo", async () => {
+    const { component, fixture, deleteConversation, message } = createAgent(
+      false,
+      false,
+    );
+    component.i18n.set("en");
+    component.conversationId.set("saved-chat");
+    component.message.reset();
+    fixture.detectChanges();
+    const button: HTMLButtonElement = fixture.nativeElement.querySelector(
+      ".delete-conversation",
+    );
+    expect(button.getAttribute("aria-label")).toBe("Delete conversation");
+    expect(
+      fixture.nativeElement.querySelector("textarea").placeholder,
+    ).toContain("Ask about your data");
+    expect(
+      fixture.nativeElement.querySelector("button[type=submit]").disabled,
+    ).toBe(true);
+    button.click();
+    TestBed.tick();
+    await fixture.whenStable();
+    expect(
+      document.querySelector("mat-dialog-container")!.textContent,
+    ).toContain("Uploaded months and source data will be kept");
+    (document.querySelector("[data-cancel]") as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(component.confirmingDelete()).toBe(false));
+    expect(deleteConversation).not.toHaveBeenCalled();
+    expect(message).not.toHaveBeenCalled();
+  });
+
+  it("envía con Enter, conserva Shift+Enter y no interrumpe un teclado en composición", async () => {
+    const { component, fixture, message } = createAgent(false, false);
+    const textarea: HTMLTextAreaElement =
+      fixture.nativeElement.querySelector("textarea");
+    for (const options of [{ shiftKey: true }, { isComposing: true }]) {
+      const event = new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+        ...options,
+      });
+      textarea.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(message).not.toHaveBeenCalled();
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    textarea.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    await vi.waitFor(() => expect(message).toHaveBeenCalledOnce());
+    expect(component.message.value).toBe("");
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector("mat-form-field")).toBeNull();
   });
 });

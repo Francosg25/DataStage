@@ -11,6 +11,30 @@ interface Block {
   rows: string[][];
 }
 
+export function withoutArtifactLinks(
+  text: string,
+  artifactUrls: string[],
+): string {
+  // Only collapse links for files actually returned by the backend. The card
+  // downloads by document ID; model-provided URLs never become executable HTML.
+  const approved = new Set(artifactUrls);
+  let code = false;
+  return text
+    .split("\n")
+    .map((line) => {
+      if (line.trim().startsWith("```")) code = !code;
+      if (code) return line;
+      return line.replace(
+        /\[([^\]\n]+)\]\(\s*([^\s)]+)\s*\)/g,
+        (match, label: string, url: string) => {
+          if (!approved.has(url)) return match;
+          return line.trim() === match ? "" : label;
+        },
+      );
+    })
+    .join("\n");
+}
+
 export function inlineText(text: string): Inline[] {
   return text
     .split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g)
@@ -186,11 +210,15 @@ export function assistantBlocks(text: string): Block[] {
     }
     p {
       white-space: pre-wrap;
-      margin: 8px 0;
+      margin: 0 0 12px;
+      overflow-wrap: anywhere;
     }
     h3 {
       font-size: 15px;
       margin: 16px 0 8px;
+    }
+    :host > :last-child {
+      margin-bottom: 0;
     }
     ul {
       padding-left: 22px;
@@ -241,6 +269,9 @@ export function assistantBlocks(text: string): Block[] {
 })
 export class AssistantText {
   text = input("");
-  blocks = computed(() => assistantBlocks(this.text()));
+  artifactUrls = input<string[]>([]);
+  blocks = computed(() =>
+    assistantBlocks(withoutArtifactLinks(this.text(), this.artifactUrls())),
+  );
   parts = inlineText;
 }

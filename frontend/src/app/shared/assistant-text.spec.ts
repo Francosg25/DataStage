@@ -33,4 +33,24 @@ describe("respuestas del asistente", () => {
     expect(fixture.nativeElement.querySelector("a")).toBeNull();
     expect(fixture.nativeElement.textContent).toContain("onerror");
   });
+  it("sustituye los enlaces técnicos de archivos reales por sus tarjetas y conserva los enlaces sin verificar como texto", () => {
+    const fixture = TestBed.createComponent(AssistantText);
+    const url = "/api/v1/agent/conversations/chat/artifacts/document";
+    fixture.componentRef.setInput("artifactUrls", [url]);
+    fixture.componentRef.setInput(
+      "text",
+      `Archivo preparado.\n\n[Download the Excel file]( ${url} )\n\nConsulta [este archivo](${url}) abajo.\n\n[Unverified](https://unknown.invalid)\n\n\`\`\`text\n[Keep example](${url})\n\`\`\``,
+    );
+    fixture.detectChanges();
+    const paragraphs = [...fixture.nativeElement.querySelectorAll("p")]
+      .map((node) => (node as HTMLElement).textContent)
+      .join(" ");
+    expect(paragraphs).not.toContain(url);
+    expect(paragraphs).toContain("este archivo abajo");
+    expect(paragraphs).toContain("https://unknown.invalid");
+    expect(fixture.nativeElement.querySelector("pre").textContent).toContain(
+      url,
+    );
+    expect(fixture.nativeElement.querySelector("a")).toBeNull();
+  });
 });

@@ -18,7 +18,7 @@ from app.modules.foundry.artifacts import create_excel
 from app.modules.foundry.data_queries import describe_data, query_data
 from app.modules.identity.auth import Principal, current_principal
 from app.persistence.business import BUSINESS_TABLES, HEADER_COLUMNS, normalize_header
-from app.persistence.models import AgentArtifact, AgentMessage, AuditEvent, Conversation, Period, ProcessingFile, ProcessingTable, Run, StoredDocument
+from app.persistence.models import AgentArtifact, AgentMessage, AgentMessageDetail, AuditEvent, Conversation, Period, ProcessingFile, ProcessingTable, Run, StoredDocument
 
 NAMES = {5: "Mayo", 6: "Junio", 7: "Julio"}
 READER = Principal("analyst", "Analyst", frozenset({"Reader"}), "authorized")
@@ -265,6 +265,130 @@ def test_legacy_messages_remain_readable_and_followups_include_history(system, m
     messages = client.get(f"/api/v1/agent/conversations/{conversation_id}/messages").json()["items"]
     assert messages[0]["text"] == "Quiero mayo de 2025"
     assert messages[0]["attachments"] == []
+
+
+def chat_excel(system, monkeypatch):
+    app, client = system
+    with app.state.session_factory.begin() as session:
+        seed(session, "505", [{"ProveedorMercancia": "Vendor", "ValorDolares": "10"}])
+    arguments = {"title": "Mayo", "sheets": [{"name": "Detalle", "query": specification()}]}
+    conversation_id, response, _ = request_chat(client, monkeypatch, "create_excel", arguments)
+    assert response.status_code == 200
+    return conversation_id, response.json()["attachments"][0], arguments
+
+
+def test_delete_chat_removes_messages_metadata_and_downloads_but_keeps_other_chats_and_source_data(system, monkeypatch):
+    app, client = system
+    conversation_id, file, arguments = chat_excel(system, monkeypatch)
+    other, other_reply, _ = request_chat(client, monkeypatch, "create_excel", arguments)
+    other_file = other_reply.json()["attachments"][0]
+    with app.state.session_factory() as session:
+        key = session.get(StoredDocument, file["documentId"]).storage_key
+    # History management works even when the optional inference integration is disabled.
+    app.state.settings.foundry_enabled = False
+    assert client.delete(f"/api/v1/agent/conversations/{conversation_id}").status_code == 204
+    assert not app.state.storage.resolve(key).exists()
+    assert client.get(f"/api/v1/agent/conversations/{conversation_id}/messages").status_code == 404
+    assert client.get(file["downloadUrl"]).status_code == 404
+    assert client.post(f"/api/v1/agent/conversations/{conversation_id}/messages", json={"message": "Hello"}).status_code == 503
+    assert [item["id"] for item in client.get("/api/v1/agent/conversations").json()["items"]] == [other]
+    assert client.get(other_file["downloadUrl"]).status_code == 200
+    with app.state.session_factory() as session:
+        assert session.get(Conversation, conversation_id) is None
+        assert session.get(StoredDocument, file["documentId"]) is None
+        assert session.scalar(select(func.count()).select_from(AgentMessage)) == 2
+        assert session.scalar(select(func.count()).select_from(AgentMessageDetail)) == 1
+        assert session.scalar(select(func.count()).select_from(BUSINESS_TABLES["505"])) == 1
+        event = session.scalar(select(AuditEvent).where(AuditEvent.action == "agent.conversation.delete"))
+        assert event.actor == READER.id and event.scope_id == READER.scope_id
+        assert json.loads(event.details_json) == {"conversationId": conversation_id, "messages": 2, "documents": 1}
+        assert "Vendor" not in event.details_json
+    assert client.delete(f"/api/v1/agent/conversations/{conversation_id}").status_code == 404
+
+
+@pytest.mark.parametrize("scope,user", [("authorized", "other"), ("other", READER.id)])
+def test_delete_chat_requires_both_author_and_scope(system, monkeypatch, scope, user):
+    app, client = system
+    conversation_id, file, _ = chat_excel(system, monkeypatch)
+    app.dependency_overrides[current_principal] = lambda: Principal(user, "Other", frozenset({"Admin"}), scope)
+    assert client.delete(f"/api/v1/agent/conversations/{conversation_id}").status_code == 404
+    app.dependency_overrides[current_principal] = lambda: READER
+    assert client.get(file["downloadUrl"]).status_code == 200
+    assert client.get(f"/api/v1/agent/conversations/{conversation_id}/messages").json()["total"] == 2
+
+
+def test_delete_failure_rolls_back_history_and_never_removes_files_before_commit(system, monkeypatch):
+    from sqlalchemy.orm import Session
+
+    app, client = system
+    conversation_id, file, _ = chat_excel(system, monkeypatch)
+    original = Session.commit
+
+    def fail_commit(session):
+        if any(isinstance(item, AuditEvent) and item.action == "agent.conversation.delete" for item in session.new):
+            raise RuntimeError("Database unavailable")
+        return original(session)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Session, "commit", fail_commit)
+        with pytest.raises(RuntimeError, match="Database unavailable"):
+            client.delete(f"/api/v1/agent/conversations/{conversation_id}")
+    assert client.get(file["downloadUrl"]).status_code == 200
+    assert client.get(f"/api/v1/agent/conversations/{conversation_id}/messages").json()["total"] == 2
+    with app.state.session_factory() as session:
+        assert session.get(StoredDocument, file["documentId"]).status == "available"
+        assert session.scalar(select(func.count()).select_from(AgentMessageDetail)) == 1
+        assert session.scalar(select(AuditEvent).where(AuditEvent.action == "agent.conversation.delete")) is None
+
+
+def test_locked_chat_file_is_revoked_immediately_and_cleanup_retries_safely(system, monkeypatch):
+    from pathlib import Path
+    from app.modules.foundry.conversations import cleanup_deleted_artifacts
+
+    app, client = system
+    conversation_id, file, _ = chat_excel(system, monkeypatch)
+    with app.state.session_factory() as session:
+        path = app.state.storage.resolve(session.get(StoredDocument, file["documentId"]).storage_key)
+    original = Path.unlink
+
+    def locked(candidate, *args, **kwargs):
+        if candidate == path:
+            raise PermissionError("File temporarily locked")
+        return original(candidate, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "unlink", locked)
+        assert client.delete(f"/api/v1/agent/conversations/{conversation_id}").status_code == 204
+    assert path.exists()
+    assert client.get(file["downloadUrl"]).status_code == 404
+    with app.state.session_factory.begin() as session:
+        assert session.get(StoredDocument, file["documentId"]).status == "pending_delete"
+        session.add(StoredDocument(id="operational", scope_id=READER.scope_id, kind="excel", original_name="Keep.xlsx",
+                                  storage_key="keep.xlsx", sha256="0" * 64, size_bytes=4, status="pending_delete"))
+    app.state.storage.resolve("keep.xlsx").write_bytes(b"keep")
+    assert cleanup_deleted_artifacts(app.state.session_factory, app.state.storage) == 1
+    assert cleanup_deleted_artifacts(app.state.session_factory, app.state.storage) == 0
+    assert not path.exists()
+    assert app.state.storage.resolve("keep.xlsx").read_bytes() == b"keep"
+
+
+@pytest.mark.parametrize("tool_after_delete", [False, True])
+def test_chat_deleted_during_inference_cannot_recreate_messages_or_generate_files(system, monkeypatch, tool_after_delete):
+    app, client = system
+    conversation_id = client.post("/api/v1/agent/conversations").json()["id"]
+
+    def model(self, history, execute_tool, language="es"):
+        assert client.delete(f"/api/v1/agent/conversations/{conversation_id}").status_code == 204
+        if tool_after_delete:
+            execute_tool("describe_data", {"tableCode": ""}, "late-call")
+        return {"message": "Late answer", "evidence": []}
+
+    monkeypatch.setattr("app.modules.foundry.FoundryAgent.respond", model)
+    result = client.post(f"/api/v1/agent/conversations/{conversation_id}/messages", json={"message": "Question"})
+    assert result.status_code == 404
+    with app.state.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(AgentMessage)) == 0
+        assert session.scalar(select(func.count()).select_from(AgentArtifact)) == 0
 
 
 @pytest.mark.parametrize("language", ["es", "en"])

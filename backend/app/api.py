@@ -35,6 +35,7 @@ from app.modules.reporting.project_maps import catalog as project_maps_catalog, 
 from app.modules.foundry.data_queries import describe_data, query_data
 from app.modules.foundry.artifacts import create_excel, create_analysis_report
 from app.modules.foundry.knowledge import search_documentation
+from app.modules.foundry.conversations import cleanup_deleted_artifacts, delete_conversation, own_conversation
 from app.persistence.models import (
     AgentArtifact, AgentMessage, AgentMessageDetail, AuditEvent, Conversation, Issue, Job, OutboxMessage, Period,
     ProcessingFile, ProcessingTable, Run, StoredDocument,
@@ -513,13 +514,6 @@ def conversation(session: DB, principal: Reader, request: Request):
     return {"id": row.id}
 
 
-def own_conversation(session, principal, conversation_id):
-    row = session.get(Conversation, conversation_id)
-    if not row or row.scope_id != principal.scope_id or row.user_id != principal.id:
-        raise ApplicationError(404, "CONVERSATION_NOT_FOUND", "No se encontró la conversación")
-    return row
-
-
 @router.get("/agent/conversations", response_model=ConversationsResponse)
 def conversations(session: DB, principal: Reader, limit: int = Query(20, ge=1, le=50)):
     first = select(AgentMessage.content).where(AgentMessage.conversation_id == Conversation.id,
@@ -530,6 +524,18 @@ def conversations(session: DB, principal: Reader, limit: int = Query(20, ge=1, l
         .order_by(func.coalesce(last, Conversation.created_at).desc(), Conversation.id).limit(limit))
     return {"items": [{"id": row.id, "title": (title or "")[:100], "createdAt": row.created_at.isoformat() + "Z",
                        "lastMessageAt": (last_at or row.created_at).isoformat() + "Z"} for row, title, last_at in rows]}
+
+
+@router.delete("/agent/conversations/{conversation_id}", status_code=204)
+def remove_conversation(conversation_id: str, request: Request, session: DB, principal: Reader):
+    delete_conversation(session, principal, conversation_id)
+    try:
+        cleanup_deleted_artifacts(request.app.state.session_factory, request.app.state.storage)
+    except Exception:
+        # Deletion is already committed. The worker retries physical cleanup;
+        # a cleanup outage must not falsely report that messages still exist.
+        logging.getLogger("datastage.agent").warning("Limpieza de archivos de chat pendiente", exc_info=True)
+    return Response(status_code=204)
 
 
 @router.get("/agent/conversations/{conversation_id}/messages", response_model=ConversationHistoryResponse)
@@ -572,9 +578,10 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
                    .order_by(AgentMessage.created_at.desc(), AgentMessage.id.desc()).limit(20)))[::-1]
     history = [{"role": item.role, "content": item.content[:8000]} for item in history]
     history.append({"role": "user", "content": body.message})
-    def execute_tool(name, args, call_id):
+    def execute_tool_impl(name, args, call_id):
         if name in {"start_annual", "reprocess_run"} and not (body.allowActions and settings.allow_agent_commands):
             raise ApplicationError(403, "AGENT_ACTION_NOT_AUTHORIZED", "Esta conversación no tiene habilitadas acciones")
+        own_conversation(session, principal, conversation_id, lock=True)
         key = "agent:" + fingerprint({"conversation": conversation_id, "call": call_id})
         if name == "get_run":
             output = run_response(session, get_run(session, args["runId"], principal.scope_id))
@@ -646,8 +653,17 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
         audit(session, principal.scope_id, principal.id, "agent.tool", tool=name, callId=call_id)
         commit_or_conflict(session)
         return {"data": output, "evidence": [evidence]}
+    def execute_tool(name, args, call_id):
+        try:
+            return execute_tool_impl(name, args, call_id)
+        except BaseException:
+            # A rejected tool may be followed by another model round. Release
+            # its short conversation lock before going back to the network.
+            session.rollback()
+            raise
     from app.modules.foundry import FoundryAgent
     answer = FoundryAgent(settings).respond(history, execute_tool, language=body.language)
+    own_conversation(session, principal, conversation_id, lock=True)
     session.add(AgentMessage(conversation_id=conversation_id, role="user", content=body.message))
     reply = AgentMessage(id=str(uuid4()), conversation_id=conversation_id, role="assistant", content=answer["message"])
     session.add(reply)

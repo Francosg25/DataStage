@@ -4,6 +4,7 @@ import json
 import logging
 import signal
 import threading
+import time
 from datetime import timedelta
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
@@ -23,6 +24,7 @@ from app.modules.processing.service import (
     audit, create_annual, engine_options, get_or_create_period, json_text,
 )
 from app.modules.storage.filesystem import FileSystemStorage
+from app.modules.foundry.conversations import cleanup_deleted_artifacts
 from app.persistence import get_business_table, make_engine, persist_business_rows, session_factory
 from app.persistence.models import (
     Issue, Job, OutboxMessage, Period, ProcessingFile, ProcessingTable, Run, StoredDocument, utcnow,
@@ -514,8 +516,15 @@ def main():
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stopping.set())
     owner = str(uuid4())
+    next_chat_cleanup = 0.0
     while not stopping.is_set():
         try:
+            if time.monotonic() >= next_chat_cleanup:
+                next_chat_cleanup = time.monotonic() + 60
+                try:
+                    cleanup_deleted_artifacts(factory, store)
+                except Exception:
+                    log.warning("Limpieza de archivos de chat pendiente; se reintentará", exc_info=True)
             if not run_once(factory, settings, store, owner):
                 stopping.wait(settings.worker_poll_seconds)
         except OperationalError:

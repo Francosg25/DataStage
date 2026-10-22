@@ -1,0 +1,273 @@
+<div class="page-heading agent-heading">
+  <div>
+    <span class="eyebrow">{{ "MICROSOFT FOUNDRY" | t }}</span>
+    <h1>{{ "Tu asistente de datos" | t }}</h1>
+    <p>
+      {{ i18n.choose("Consulta tus datos y crea reportes y Excel desde esta
+      conversación.", "Explore your data and create reports and Excel files in
+      this conversation.") }}
+    </p>
+  </div>
+  <div class="agent-heading-actions">
+    <span class="subtle-tag"
+      >{{ (auth.config()?.foundryEnabled ? "Habilitado" : "Pendiente de
+      configuración") | t }}</span
+    >
+    <a routerLink="/foundry-guide" class="setup-link"
+      ><ds-icon name="settings" />{{ i18n.choose("Configuración", "Setup") }}</a
+    >
+  </div>
+</div>
+@if (!auth.config()?.foundryEnabled) {
+<section class="panel disabled-agent">
+  <div class="assistant-symbol"><ds-icon name="spark" /></div>
+  <h2>{{ "El asistente estará aquí." | t }}</h2>
+  <p>
+    {{ "La conexión con Microsoft Foundry aun no esta configurada en este
+    entorno." | t }}
+  </p>
+  <span class="note"
+    >{{ "Puedes procesar archivos y consultar tus resultados desde los demás
+    módulos." | t }}</span
+  >
+</section>
+} @else {
+<section
+  class="panel chat-panel"
+  [attr.aria-label]="i18n.choose('Chat de datos', 'Data chat')"
+>
+  <div class="chat-toolbar">
+    <label class="conversation-picker">
+      <span
+        ><ds-icon name="history" />{{ i18n.choose("Conversaciones",
+        "Conversations") }}</span
+      >
+      <select
+        [value]="conversationId() || ''"
+        (change)="openConversation($any($event.target).value)"
+        [disabled]="interacting() || !!downloading()"
+        [attr.aria-label]="i18n.choose('Elegir conversación', 'Choose a conversation')"
+      >
+        <option value="">
+          {{ i18n.choose("Nueva conversación", "New conversation") }}
+        </option>
+        @for (conversation of conversations(); track conversation.id) {
+        <option [value]="conversation.id">
+          {{ conversation.title || i18n.choose("Sin mensajes", "No messages") }}
+        </option>
+        }
+      </select>
+    </label>
+    <div class="chat-toolbar-actions">
+      <button
+        mat-stroked-button
+        type="button"
+        (click)="newConversation()"
+        [disabled]="interacting() || !!downloading()"
+      >
+        <ds-icon name="plus" />{{ i18n.choose("Nueva conversación", "New
+        conversation") }}
+      </button>
+      <button
+        mat-icon-button
+        type="button"
+        class="delete-conversation"
+        (click)="deleteConversation()"
+        [disabled]="!conversationId() || interacting() || !!downloading()"
+        [attr.aria-label]="i18n.choose('Eliminar conversación', 'Delete conversation')"
+        [title]="i18n.choose('Eliminar conversación', 'Delete conversation')"
+      >
+        <ds-icon name="trash" />
+      </button>
+    </div>
+  </div>
+  <div
+    class="chat-body"
+    #chatBody
+    aria-live="polite"
+    [attr.aria-busy]="interacting()"
+  >
+    <div class="chat-transcript">
+      @if (loadingHistory() || deleting()) {
+      <p class="history-note" role="status">
+        {{ deleting() ? i18n.choose("Eliminando conversación…", "Deleting
+        conversation…") : i18n.choose("Recuperando conversación…", "Loading
+        conversation…") }}
+      </p>
+      } @if (historyLimited()) {
+      <p class="history-note">
+        {{ i18n.choose("Mostrando los últimos 100 mensajes. El modelo recibe los
+        últimos 20 para esta consulta.", "Showing the latest 100 messages. The
+        model receives the latest 20 for this question.") }}
+      </p>
+      } @if (!messages().length && !busy() && !loadingHistory() && !deleting())
+      {
+      <div class="chat-welcome">
+        <div class="assistant-symbol"><ds-icon name="spark" /></div>
+        <h2>{{ "¿Qué quieres conocer de tus datos?" | t }}</h2>
+        <p>
+          {{ i18n.choose("Consulta, compara o crea un archivo. Empieza con una
+          idea.", "Explore, compare or create a file. Start with an idea.") }}
+        </p>
+        <div class="suggestion-grid">
+          @for (prompt of prompts; track prompt; let index = $index) {
+          <button
+            type="button"
+            class="suggestion-card"
+            (click)="usePrompt(prompt)"
+          >
+            <ds-icon
+              [name]="index === 0 ? 'calendar' : index === 1 ? 'history' : 'file'"
+            />
+            <span>{{ prompt | t }}</span><ds-icon name="arrow" />
+          </button>
+          }
+        </div>
+      </div>
+      } @for (message of messages(); track $index) {
+      <article
+        class="chat-message"
+        [class.user-message]="message.role === 'user'"
+      >
+        @if (message.role === "assistant") {
+        <div class="message-avatar"><ds-icon name="spark" /></div>
+        }
+        <div class="message-content">
+          <span class="chat-role"
+            >{{ (message.role === "user" ? "Tú" : "Asistente DataStage") | t
+            }}</span
+          >
+          @if (message.role === "assistant") {
+          <ds-assistant-text
+            [text]="message.text"
+            [artifactUrls]="artifactUrls(message)"
+          />
+          } @else {
+          <p>{{ message.text }}</p>
+          } @if (message.attachments?.length) {
+          <div class="chat-attachments">
+            @for (file of message.attachments; track file.documentId) {
+            <button
+              type="button"
+              class="chat-file"
+              (click)="download(file)"
+              [disabled]="!!downloading() || deleting()"
+              [attr.aria-label]="i18n.choose('Descargar ', 'Download ') + file.name"
+            >
+              <span class="file-type" [class.pdf-file]="file.format === 'pdf'"
+                ><ds-icon name="file"
+              /></span>
+              <span class="file-description"
+                ><strong>{{ filename(file.name) }}</strong
+                ><small
+                  >{{ file.format.toUpperCase() }} · {{ size(file.sizeBytes) }}
+                  · {{ downloading() === file.documentId ?
+                  i18n.choose("Descargando…", "Downloading…") :
+                  i18n.choose("Descargar", "Download") }}</small
+                ></span
+              >
+              <ds-icon name="download" />
+            </button>
+            }
+          </div>
+          } @if (message.evidence?.length || message.usage) {
+          <div class="message-details">
+            @if (message.evidence?.length) {
+            <details class="chat-evidence">
+              <summary>
+                {{ i18n.choose("Fuentes", "Sources") }} · {{
+                message.evidence!.length }}
+              </summary>
+              <ds-data-table [rows]="message.evidence || []" />
+            </details>
+            } @if (message.usage; as usage) {
+            <details class="chat-usage">
+              <summary>
+                {{ i18n.choose("Uso del modelo", "Model usage") }} · {{
+                usage.available === false ? i18n.choose("No disponible", "Not
+                available") : usage.totalTokens.toLocaleString() + " tokens" }}
+              </summary>
+              <p>
+                {{ i18n.choose("Entrada", "Input") }}: {{
+                usage.inputTokens.toLocaleString() }} · {{ i18n.choose("Salida",
+                "Output") }}: {{ usage.outputTokens.toLocaleString() }} · {{
+                i18n.choose("Llamadas", "Calls") }}: {{ usage.modelCalls }}.
+              </p>
+              <p>
+                {{ i18n.choose("Uso reportado por Azure para esta respuesta; los
+                costos se consultan en Azure Cost Management.", "Usage reported
+                by Azure for this response; check costs in Azure Cost
+                Management.") }}
+              </p>
+            </details>
+            }
+          </div>
+          }
+        </div>
+      </article>
+      } @if (pendingText()) {
+      <article class="chat-message user-message">
+        <div class="message-content">
+          <span class="chat-role">{{ "Tú" | t }}</span>
+          <p>{{ pendingText() }}</p>
+        </div>
+      </article>
+      } @if (busy()) {
+      <div class="assistant-working" role="status">
+        <span class="working-dots" aria-hidden="true"
+          ><i></i><i></i><i></i></span
+        >{{ i18n.choose("Consultando fuentes y preparando tu respuesta…",
+        "Checking sources and preparing your answer…") }}
+      </div>
+      <mat-progress-bar
+        mode="indeterminate"
+        [attr.aria-label]="'El asistente está consultando la información' | t"
+      />
+      }
+    </div>
+  </div>
+  <div class="chat-composer">
+    @if (error()) {
+    <div class="error-message" role="alert">{{ error() | t }}</div>
+    }
+    <form class="chat-input" (submit)="$event.preventDefault(); send()">
+      <textarea
+        [formControl]="message"
+        cdkTextareaAutosize
+        [cdkAutosizeMinRows]="2"
+        [cdkAutosizeMaxRows]="6"
+        rows="2"
+        maxlength="4000"
+        (keydown)="keydown($event)"
+        [readOnly]="deleting() || confirmingDelete()"
+        [attr.aria-label]="'Escribe tu consulta' | t"
+        [placeholder]="i18n.choose('Pregunta por tus datos o pide un archivo…', 'Ask about your data or request a file…')"
+      ></textarea>
+      <button
+        mat-flat-button
+        type="submit"
+        [disabled]="interacting() || message.invalid || !message.value.trim()"
+        [attr.aria-label]="'Enviar mensaje' | t"
+      >
+        <ds-icon name="arrow" />
+      </button>
+    </form>
+    <div class="composer-hint">
+      {{ i18n.choose("Enter para enviar · Mayús + Enter para una nueva línea",
+      "Enter to send · Shift + Enter for a new line") }}
+    </div>
+    @if (canAct()) {
+    <div class="chat-permission">
+      <mat-checkbox [formControl]="allowActions"
+        >{{ "Permitir que esta consulta inicie un consolidado o reproceso
+        autorizado" | t }}</mat-checkbox
+      ><small>{{ "Se aplica únicamente al siguiente mensaje." | t }}</small>
+    </div>
+    }
+    <div class="chat-disclaimer">
+      <ds-icon name="shield" />{{ i18n.choose("Consulta las fuentes antes de
+      tomar decisiones.", "Check the sources before making decisions.") }}
+    </div>
+  </div>
+</section>
+}

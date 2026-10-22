@@ -29,6 +29,19 @@ describe("contratos de la API", () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it("deletes the selected conversation through the authenticated API and encodes its identifier", async () => {
+    const promise = firstValueFrom(api.deleteConversation("chat/with space"));
+    await Promise.resolve();
+    const request = http.expectOne(
+      "/api/v1/agent/conversations/chat%2Fwith%20space",
+    );
+    expect(request.request.method).toBe("DELETE");
+    expect(request.request.headers.get("Authorization")).toBe(
+      "Bearer corporate-access-token",
+    );
+    request.flush(null, { status: 204, statusText: "No Content" });
+    expect(await promise).toBeNull();
+  });
   it("requests the lightweight monthly summary through the authenticated API", async () => {
     const promise = firstValueFrom(
       api.analyticsMonths({ source: "published", year: 2026, currency: "MXN" }),

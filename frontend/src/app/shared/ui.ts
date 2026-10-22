@@ -67,6 +67,8 @@ export class Icon {
           arrow: "M5 12h14 M13 6l6 6-6 6",
           download: "M12 3v12m-5-5 5 5 5-5 M4 16v5h16v-5",
           check: "m5 12 4 4 10-10",
+          plus: "M12 5v14 M5 12h14",
+          trash: "M3 6h18 M9 6V3h6v3 M5 6l1 15h12l1-15 M10 10v7 M14 10v7",
           menu: "M4 6h16 M4 12h16 M4 18h16",
           file: "M6 2h8l4 4v16H6z M14 2v5h4 M9 12h6 M9 16h6",
           shield: "M12 2 3 6v6c0 6 9 10 9 10s9-4 9-10V6z m-5 10 3 3 7-7",

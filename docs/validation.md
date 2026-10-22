@@ -71,3 +71,14 @@ Las pruebas específicas incluyen: sumas de 125 filas frente a una vista previa 
 Los seis fallos de la suite general se reprodujeron sin esta mejora, en un checkout aislado de `2f99ed9`: dos aserciones de exportación (`test_export_native_measures_dates_and_counts_preserves_identifiers_monthly_and_annual`, `test_numeric_export_keeps_invalid_and_overprecision_values_without_coercing_to_zero`), el conteo antiguo del catálogo de PN, dos subcasos de alias (`1616-5YY3237(ALT)` y `MATERIAL OVERHEAD`) y el reconocimiento de tokens del catálogo. La suite general no está totalmente aprobada. El exportador de ejecuciones y el diccionario privado no se modificaron en esta entrega.
 
 La [guía del asistente](assistant-corporate.md) define los pasos de actualización y aceptación contra datos conocidos. Quedan pendientes el nuevo modelo real, SQL Server y Entra/servidor de producción; la prueba SQLite no los sustituye.
+
+## Chat: eliminación de conversaciones y lectura — 22 de octubre de 2026
+
+- Backend afectado: 177 pruebas aprobadas y una omitida por no disponer de SQL Server de pruebas. Incluye informes reales XLSX/PDF con Foundry simulado, permisos, historial, API/worker, autenticación local, persistencia y cobertura mensual.
+- Las pruebas de borrado verifican autor y ámbito (también para administradores), aislamiento de otras conversaciones, conservación de datos fuente, auditoría sin contenido del chat, rollback de la transacción, descarga revocada, archivo bloqueado y reintento idempotente. Una conversación eliminada durante inferencia no se puede recrear por una respuesta o herramienta tardía.
+- Frontend completo: 127 pruebas aprobadas en 18 suites. Revisión final: 23 aprobadas en las tres suites de chat, formato y API, incluidas dos pruebas adicionales del DELETE autenticado y de los controles/confirmación en inglés.
+- Compilación de producción: correcta; bundle inicial de 1.03 MB. No se añadieron dependencias ni se cambiaron el modelo, sus instrucciones o los contratos de herramientas de Foundry.
+- OpenAPI: 50 rutas; comparación estructural que acredita que el único cambio de contrato es el nuevo DELETE de conversación. No se requiere una migración de esquema.
+- Ruff y `git diff --check`: aprobados.
+
+La comprobación del frontend cubre el DOM, cancelación/confirmación, errores, bloqueo de envíos duplicados, teclado, tablas y enlaces de archivos verificados. Queda pendiente revisar visualmente escritorio y móvil en el navegador corporativo: no había navegador instalado y la descarga del navegador de pruebas no pudo completarse. No se afirma una revisión visual real ni se modificaron políticas del equipo del usuario. SQL Server, Entra, concurrencia real de varias instancias y retención/borrado en Azure quedan pendientes del entorno corporativo. Estas pruebas no hacen inferencia real en Foundry ni modifican datos corporativos.

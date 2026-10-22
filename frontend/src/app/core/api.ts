@@ -226,6 +226,11 @@ export class Api {
       historyLimited: boolean;
     }>(`${this.base}/agent/conversations/${encodeURIComponent(id)}/messages`);
   }
+  deleteConversation(id: string) {
+    return this.http.delete<void>(
+      `${this.base}/agent/conversations/${encodeURIComponent(id)}`,
+    );
+  }
   agentArtifact(conversationId: string, documentId: string) {
     return this.http.get(
       `${this.base}/agent/conversations/${encodeURIComponent(conversationId)}/artifacts/${encodeURIComponent(documentId)}`,
