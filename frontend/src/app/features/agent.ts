@@ -15,6 +15,7 @@ import { ReactiveFormsModule, FormControl, Validators } from "@angular/forms";
 import { TextFieldModule } from "@angular/cdk/text-field";
 import { MatDialog, MatDialogModule } from "@angular/material/dialog";
 import { ConversationDeleteDialog } from "./conversation-delete-dialog";
+import { AgentMemoryDialog } from "./agent-memory-dialog";
 import { MatButtonModule } from "@angular/material/button";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { firstValueFrom } from "rxjs";
@@ -73,6 +74,7 @@ export class Agent {
   busy = signal(false);
   deleting = signal(false);
   confirmingDelete = signal(false);
+  managingMemory = signal(false);
   error = signal("");
   prompts = [
     "¿Qué periodos están disponibles?",
@@ -171,7 +173,8 @@ export class Agent {
       this.busy() ||
       this.loadingHistory() ||
       this.deleting() ||
-      this.confirmingDelete()
+      this.confirmingDelete() ||
+      this.managingMemory()
     );
   }
   artifactUrls(message: AgentChatMessage) {
@@ -235,6 +238,23 @@ export class Agent {
       this.deleting.set(false);
     }
   }
+  async openMemory(text = "") {
+    if (this.interacting() || this.downloading()) return;
+    this.managingMemory.set(true);
+    try {
+      await firstValueFrom(
+        this.dialog
+          .open(AgentMemoryDialog, {
+            data: text,
+            width: "640px",
+            maxWidth: "calc(100vw - 24px)",
+          })
+          .afterClosed(),
+      );
+    } finally {
+      this.managingMemory.set(false);
+    }
+  }
   canAct() {
     return (
       !!this.auth.config()?.allowAgentCommands &&
@@ -268,6 +288,7 @@ export class Agent {
           evidence: response.evidence,
           attachments: response.attachments,
           usage: response.usage,
+          memoryContextCount: response.memoryContextCount,
         },
       ]);
       this.message.reset();

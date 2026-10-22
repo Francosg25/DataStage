@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import BigInteger, CheckConstraint, DDL, DateTime, ForeignKey, Index, Integer, String, Unicode, UnicodeText, UniqueConstraint, event, inspect
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DDL, DateTime, ForeignKey, Index, Integer, String, Unicode, UnicodeText, UniqueConstraint, event, inspect
 from sqlalchemy.dialects.mssql import DATETIME2, NVARCHAR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -205,6 +205,28 @@ class AgentArtifact(Base):
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_conversations.id"))
     request_hash: Mapped[str] = mapped_column(String(64))
     manifest_json: Mapped[str] = mapped_column(LargeText, default="{}")
+
+
+class AgentMemoryProfile(Identity, Base):
+    __tablename__ = "agent_memory_profiles"
+    __table_args__ = (UniqueConstraint("scope_id", "user_id", name="uq_agent_memory_owner"),)
+    scope_id: Mapped[str] = mapped_column(Unicode(100))
+    user_id: Mapped[str] = mapped_column(Unicode(200))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class AgentMemory(Identity, Base):
+    __tablename__ = "agent_memories"
+    __table_args__ = (Index("ix_agent_memories_profile", "profile_id"),)
+    profile_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_memory_profiles.id"))
+    # API limits count Unicode code points; allow two UTF-16 units per point
+    # so non-BMP characters also fit SQL Server's NVARCHAR storage.
+    title: Mapped[str] = mapped_column(Unicode(160))
+    content: Mapped[str] = mapped_column(Unicode(1200))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
 
 # Errors and warnings expose separate read-only contracts backed by one indexed

@@ -110,6 +110,7 @@ export interface AgentReply {
   evidence: DataRow[];
   attachments?: AgentAttachment[];
   usage?: AgentUsage;
+  memoryContextCount?: number;
 }
 export interface AgentChatMessage {
   role: "user" | "assistant";
@@ -117,6 +118,21 @@ export interface AgentChatMessage {
   evidence?: DataRow[];
   attachments?: AgentAttachment[];
   usage?: AgentUsage;
+  memoryContextCount?: number;
+}
+export interface AgentMemoryItem {
+  id: string;
+  title: string;
+  content: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+export interface AgentMemoryProfile {
+  enabled: boolean;
+  version: number;
+  items: AgentMemoryItem[];
+  maxItems: number;
+  maxCharacters: number;
 }
 export interface AgentConversation {
   id: string;

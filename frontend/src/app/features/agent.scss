@@ -18,6 +18,47 @@
   color: #526d77;
   text-decoration: none;
 }
+.memory-manager ds-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.remember-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 0 0;
+  background: none;
+  border: 0;
+  color: #738d98;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.remember-message ds-icon {
+  width: 12px;
+  height: 12px;
+}
+.remember-message:hover:not(:disabled) {
+  color: #267e6a;
+}
+.remember-message:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.memory-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 5px 0;
+  color: #6b8b7e;
+}
+.memory-context ds-icon {
+  width: 12px;
+  height: 12px;
+}
 .setup-link:hover {
   color: #117a70;
 }

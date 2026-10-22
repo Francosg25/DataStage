@@ -29,6 +29,50 @@ describe("contratos de la API", () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it("loads, updates and clears only the authenticated user's memory with a version guard", async () => {
+    const profile = {
+      enabled: true,
+      version: 1,
+      maxItems: 12,
+      maxCharacters: 6000,
+      items: [
+        {
+          id: "note-1",
+          title: "Currency",
+          content: "USD",
+          createdAt: "2026-10-22",
+        },
+      ],
+    };
+    const loading = firstValueFrom(api.agentMemory());
+    await Promise.resolve();
+    const get = http.expectOne("/api/v1/agent/memory");
+    expect(get.request.headers.get("Authorization")).toBe(
+      "Bearer corporate-access-token",
+    );
+    get.flush(profile);
+    expect((await loading).items).toHaveLength(1);
+    const saving = firstValueFrom(api.saveAgentMemory(1, false, profile.items));
+    await Promise.resolve();
+    const patch = http.expectOne("/api/v1/agent/memory");
+    expect(patch.request.method).toBe("PATCH");
+    expect(patch.request.body).toEqual({
+      expectedVersion: 1,
+      enabled: false,
+      items: [{ id: "note-1", title: "Currency", content: "USD" }],
+    });
+    patch.flush({ ...profile, enabled: false, version: 2 });
+    expect((await saving).enabled).toBe(false);
+    const clearing = firstValueFrom(api.clearAgentMemory(2));
+    await Promise.resolve();
+    const deletion = http.expectOne("/api/v1/agent/memory?expectedVersion=2");
+    expect(deletion.request.method).toBe("DELETE");
+    expect(deletion.request.headers.get("Authorization")).toBe(
+      "Bearer corporate-access-token",
+    );
+    deletion.flush({ ...profile, enabled: false, items: [], version: 3 });
+    expect((await clearing).items).toEqual([]);
+  });
   it("deletes the selected conversation through the authenticated API and encodes its identifier", async () => {
     const promise = firstValueFrom(api.deleteConversation("chat/with space"));
     await Promise.resolve();

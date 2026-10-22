@@ -426,6 +426,29 @@ describe("eliminación de conversaciones", () => {
 });
 
 describe("lectura y escritura del chat", () => {
+  it("abre un recuerdo revisable y muestra cuánto contexto personal se incluyó en la respuesta", async () => {
+    const { component, fixture, dialog, message } = createAgent(false, false);
+    const closed = new Subject<undefined>();
+    const open = vi.spyOn(dialog, "open").mockReturnValue({
+      afterClosed: () => closed,
+    } as unknown as MatDialogRef<unknown>);
+    const reviewing = component.openMemory("Prefiero USD");
+    expect(open.mock.calls[0][1]).toMatchObject({ data: "Prefiero USD" });
+    expect(component.managingMemory()).toBe(true);
+    await component.send();
+    expect(message).not.toHaveBeenCalled();
+    closed.next(undefined);
+    closed.complete();
+    await reviewing;
+    message.mockReturnValue(
+      of({ message: "Reporte listo", evidence: [], memoryContextCount: 2 }),
+    );
+    await component.send();
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector(".memory-context").textContent,
+    ).toContain("Contexto personal · 2");
+  });
   it("presenta los controles y la confirmación en inglés sin enviar consultas al modelo", async () => {
     const { component, fixture, deleteConversation, message } = createAgent(
       false,

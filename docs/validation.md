@@ -82,3 +82,22 @@ La [guía del asistente](assistant-corporate.md) define los pasos de actualizaci
 - Ruff y `git diff --check`: aprobados.
 
 La comprobación del frontend cubre el DOM, cancelación/confirmación, errores, bloqueo de envíos duplicados, teclado, tablas y enlaces de archivos verificados. Queda pendiente revisar visualmente escritorio y móvil en el navegador corporativo: no había navegador instalado y la descarga del navegador de pruebas no pudo completarse. No se afirma una revisión visual real ni se modificaron políticas del equipo del usuario. SQL Server, Entra, concurrencia real de varias instancias y retención/borrado en Azure quedan pendientes del entorno corporativo. Estas pruebas no hacen inferencia real en Foundry ni modifican datos corporativos.
+
+## Memoria personal persistente — 22 de octubre de 2026
+
+La memoria se implementa en la base de DataStage, con edición explícita por autor/ámbito. No usa el Memory Store de Foundry, extracción automática de conversaciones ni entrenamiento continuo. La versión registrada del agente y sus herramientas permanecen iguales; el adaptador añade orientación de uso y, cuando hay notas activas, un bloque acotado de datos de usuario.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Backend afectado: memoria, Foundry, informes, API/worker, seguridad, autenticación local, cobertura y persistencia | 201 aprobadas; una integración SQL Server omitida |
+| Revisión final del contexto enviado a Foundry y memoria después de ajustar la orientación de uso | 63 aprobadas |
+| Frontend completo: chat, panel Memoria, Recordar, permisos, descargas y secciones existentes | 137 aprobadas en 19 suites |
+| Migración `20261022_0004` → `20261022_0005`, downgrade de prueba y paridad con metadata | Aprobadas en SQLite; 75 tablas; conversaciones previas conservadas |
+| DDL SQL Server | Compila todas las tablas/índices; los textos Unicode contemplan pares UTF-16 |
+| Frontend de producción | Compilación correcta; bundle inicial de 1.03 MB; sin dependencias nuevas |
+| Contrato HTTP | 51 rutas; sólo API de memoria y contador de notas incluidas añadidos |
+| Calidad | Ruff, Prettier y `git diff --check` aprobados |
+
+Se verificaron persistencia tras reiniciar y en otro chat, aislamiento por usuario y ámbito también para administradores, edición, desactivación sin borrado, eliminación con control de versión, rechazo de sobrescrituras desde pestañas antiguas, rollback, límites y Unicode. Las notas no se aceptan desde el cuerpo de mensajes ni habilitan herramientas prohibidas. Se auditan cantidades y versiones sin copiar el contenido; el historial conserva el número de notas incluidas, no una copia automática del bloque de memoria.
+
+En el DOM se verificaron la revisión de una nota propuesta, cancelación sin escrituras, guardado explícito, rechazo de mensajes largos sin truncarlos, confirmación de borrado, desactivación, conflictos y controles ES/EN. La confirmación de cómo el modelo real aplica preferencias, la revisión visual en el navegador corporativo y SQL Server/Entra reales quedan pendientes. No se hicieron llamadas de inferencia al proyecto corporativo ni cambios en infraestructura de producción. La función no certifica que el modelo siga siempre cada preferencia: requiere las pruebas de aceptación de la guía del asistente.

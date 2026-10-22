@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from app.api import router
 from app.supplier_api import router as supplier_router
+from app.memory_api import router as memory_router
 from app.core.config import Settings
 from app.core.body_limit import BodyLimitMiddleware
 from app.core.errors import ApplicationError
@@ -110,6 +111,7 @@ def create_app(settings=None):
             return JSONResponse(status_code=503, content={"status": "not_ready"})
     app.include_router(router)
     app.include_router(supplier_router)
+    app.include_router(memory_router)
     def openapi_schema():
         if app.openapi_schema is None:
             schema = get_openapi(title=app.title, version=app.version, routes=app.routes,

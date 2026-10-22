@@ -222,3 +222,7 @@ az account show --query '{subscription:name,tenant:tenantId}'
 ```
 
 `DefaultAzureCredential` puede reutilizar esa sesión. Se requieren los mismos permisos de Foundry del paso 2. El backend desplegado debe usar su propia identidad; la sesión `az login` de un desarrollador no es una credencial de producción.
+
+## Memoria personal entre conversaciones
+
+DataStage permite guardar, editar, desactivar y borrar preferencias personales desde **Memoria** y preparar una nota desde **Recordar**. Son notas explícitas por identidad y ámbito, almacenadas en SQLite/SQL Server, incluidas como contexto acotado en las siguientes consultas. No hay extracción automática de conversaciones ni entrenamiento continuo. No se añade el Memory Store de Foundry ni se cambian modelo o herramientas; no hace falta registrar otra versión por esta función. La migración aditiva `20261022_0005` se aplica antes del arranque en las bases gestionadas por Alembic. Consulta [uso, límites, actualización y retención](assistant-corporate.md#guardar-y-gestionar-memoria-personal).

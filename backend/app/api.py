@@ -36,6 +36,7 @@ from app.modules.foundry.data_queries import describe_data, query_data
 from app.modules.foundry.artifacts import create_excel, create_analysis_report
 from app.modules.foundry.knowledge import search_documentation
 from app.modules.foundry.conversations import cleanup_deleted_artifacts, delete_conversation, own_conversation
+from app.modules.foundry.memory import memory_context
 from app.persistence.models import (
     AgentArtifact, AgentMessage, AgentMessageDetail, AuditEvent, Conversation, Issue, Job, OutboxMessage, Period,
     ProcessingFile, ProcessingTable, Run, StoredDocument,
@@ -136,6 +137,7 @@ class AgentReplyResponse(StrictModel):
     evidence: list[dict] = Field(default_factory=list)
     attachments: list[AgentAttachmentResponse] = Field(default_factory=list)
     usage: AgentUsageResponse | None = None
+    memoryContextCount: int = 0
 
 class ConversationSummary(StrictModel):
     id: str
@@ -154,6 +156,7 @@ class AgentHistoryItem(StrictModel):
     evidence: list[dict] = Field(default_factory=list)
     attachments: list[AgentAttachmentResponse] = Field(default_factory=list)
     usage: AgentUsageResponse | None = None
+    memoryContextCount: int = 0
 
 class ConversationHistoryResponse(StrictModel):
     items: list[AgentHistoryItem]
@@ -578,6 +581,7 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
                    .order_by(AgentMessage.created_at.desc(), AgentMessage.id.desc()).limit(20)))[::-1]
     history = [{"role": item.role, "content": item.content[:8000]} for item in history]
     history.append({"role": "user", "content": body.message})
+    memories, memory_version = memory_context(session, principal)
     def execute_tool_impl(name, args, call_id):
         if name in {"start_annual", "reprocess_run"} and not (body.allowActions and settings.allow_agent_commands):
             raise ApplicationError(403, "AGENT_ACTION_NOT_AUTHORIZED", "Esta conversación no tiene habilitadas acciones")
@@ -662,15 +666,18 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
             session.rollback()
             raise
     from app.modules.foundry import FoundryAgent
-    answer = FoundryAgent(settings).respond(history, execute_tool, language=body.language)
+    personal = {"memories": memories} if memories else {}
+    answer = FoundryAgent(settings).respond(history, execute_tool, language=body.language, **personal)
+    answer["memoryContextCount"] = len(memories)
     own_conversation(session, principal, conversation_id, lock=True)
     session.add(AgentMessage(conversation_id=conversation_id, role="user", content=body.message))
     reply = AgentMessage(id=str(uuid4()), conversation_id=conversation_id, role="assistant", content=answer["message"])
     session.add(reply)
     session.flush()
     session.add(AgentMessageDetail(message_id=reply.id, metadata_json=json.dumps(
-        {key: answer[key] for key in ("evidence", "attachments", "usage") if key in answer}, ensure_ascii=False)))
-    audit(session, principal.scope_id, principal.id, "agent.message", conversationId=conversation_id)
+        {key: answer[key] for key in ("evidence", "attachments", "usage", "memoryContextCount") if key in answer}, ensure_ascii=False)))
+    audit(session, principal.scope_id, principal.id, "agent.message", conversationId=conversation_id,
+          memoryContextCount=len(memories), memoryVersion=memory_version)
     session.commit()
     return answer
 

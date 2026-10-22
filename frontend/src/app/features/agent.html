@@ -9,6 +9,17 @@
     </p>
   </div>
   <div class="agent-heading-actions">
+    @if (auth.config()?.foundryEnabled) {
+    <button
+      mat-stroked-button
+      type="button"
+      class="memory-manager"
+      (click)="openMemory()"
+      [disabled]="interacting() || !!downloading()"
+    >
+      <ds-icon name="bookmark" />{{ i18n.choose("Memoria", "Memory") }}
+    </button>
+    }
     <span class="subtle-tag"
       >{{ (auth.config()?.foundryEnabled ? "Habilitado" : "Pendiente de
       configuración") | t }}</span
@@ -144,6 +155,15 @@
           />
           } @else {
           <p>{{ message.text }}</p>
+          <button
+            type="button"
+            class="remember-message"
+            (click)="openMemory(message.text)"
+            [disabled]="interacting() || !!downloading()"
+            [title]="i18n.choose('Revisar y guardar este mensaje como memoria personal', 'Review and save this message as personal memory')"
+          >
+            <ds-icon name="bookmark" />{{ i18n.choose("Recordar", "Remember") }}
+          </button>
           } @if (message.attachments?.length) {
           <div class="chat-attachments">
             @for (file of message.attachments; track file.documentId) {
@@ -170,9 +190,17 @@
             </button>
             }
           </div>
-          } @if (message.evidence?.length || message.usage) {
+          } @if (message.evidence?.length || message.usage ||
+          message.memoryContextCount) {
           <div class="message-details">
-            @if (message.evidence?.length) {
+            @if (message.memoryContextCount) {
+            <span
+              class="memory-context"
+              [title]="i18n.choose('Se incluyeron estas memorias guardadas como contexto para esta respuesta.', 'Saved memories were included as context for this answer.')"
+              ><ds-icon name="bookmark" />{{ i18n.choose("Contexto personal",
+              "Personal context") }} · {{ message.memoryContextCount }}</span
+            >
+            } @if (message.evidence?.length) {
             <details class="chat-evidence">
               <summary>
                 {{ i18n.choose("Fuentes", "Sources") }} · {{

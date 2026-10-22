@@ -25,6 +25,8 @@ import {
   AgentReply,
   AgentChatMessage,
   AgentConversation,
+  AgentMemoryProfile,
+  AgentMemoryItem,
   ConsolidationRange,
   Identity,
   Page,
@@ -230,6 +232,25 @@ export class Api {
     return this.http.delete<void>(
       `${this.base}/agent/conversations/${encodeURIComponent(id)}`,
     );
+  }
+  agentMemory() {
+    return this.http.get<AgentMemoryProfile>(`${this.base}/agent/memory`);
+  }
+  saveAgentMemory(
+    expectedVersion: number,
+    enabled: boolean,
+    items: AgentMemoryItem[],
+  ) {
+    return this.http.patch<AgentMemoryProfile>(`${this.base}/agent/memory`, {
+      expectedVersion,
+      enabled,
+      items: items.map(({ id, title, content }) => ({ id, title, content })),
+    });
+  }
+  clearAgentMemory(expectedVersion: number) {
+    return this.http.delete<AgentMemoryProfile>(`${this.base}/agent/memory`, {
+      params: { expectedVersion },
+    });
   }
   agentArtifact(conversationId: string, documentId: string) {
     return this.http.get(

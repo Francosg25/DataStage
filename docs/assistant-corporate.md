@@ -52,22 +52,40 @@ Este borrado es de DataStage: no purga copias de respaldo ni las respuestas que 
 
 | Capacidad | Estado actual |
 | --- | --- |
-| Continuar la conversación abierta | Sí: la siguiente pregunta recibe los últimos 20 mensajes previos, hasta 8,000 caracteres por mensaje |
+| Continuar la conversación abierta | Sí: la pregunta recibe los últimos 20 mensajes previos, hasta 8,000 caracteres por mensaje |
 | Recuperar una conversación al volver a la página | Sí: se muestran hasta los últimos 100 mensajes guardados y sus archivos |
-| Recordar automáticamente otros chats del usuario | No: los chats son independientes; abrir uno nuevo no carga los anteriores |
-| Recordar preferencias personales entre conversaciones | No se ha implementado una memoria de preferencias |
+| Recordar preferencias entre conversaciones | Sí: las memorias personales que guardes y actives en el panel Memoria |
+| Recuperar automáticamente todos tus chats anteriores | No: no se importan conversaciones antiguas ni se extraen notas automáticamente |
 | Consultar información de meses nuevos | Sí, cuando se publique: las herramientas consultan las fuentes actuales del ámbito autorizado |
-| Entrenar o modificar el modelo con cada conversación | No: guardar contexto no es entrenar el modelo |
+| Entrenar o modificar el modelo con cada conversación | No: guardar contexto o preferencias no entrena el modelo |
 
-Por ejemplo, dentro del mismo chat puedes pedir «haz el mismo reporte para junio» después de uno de mayo. En una conversación nueva tendrás que indicar de nuevo el reporte y los filtros. Un proveedor corregido en el catálogo se encontrará al consultar ese catálogo actualizado; una corrección escrita sólo en un chat no modifica la regla de negocio ni el catálogo compartido.
+### Guardar y gestionar memoria personal
 
-Una futura memoria persistente debería guardar preferencias y definiciones confirmadas, aisladas por usuario/ámbito, con opciones para revisar, corregir y olvidar. Los conocimientos de negocio compartidos requieren validación y una fuente mantenida. No conviene convertir automáticamente cada respuesta o corrección del chat en una regla corporativa. Esta entrega no activa memoria entre chats ni entrenamiento continuo. [Microsoft distingue la persistencia de conversaciones del entrenamiento de modelos](https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy).
+1. Pulsa **Memoria** en la cabecera del asistente y después **Añadir memoria**. También puedes pulsar **Recordar** debajo de uno de tus mensajes para prellenar una nota revisable.
+2. Escribe un título y qué debe recordar. Ejemplo: **Mis reportes mensuales** / «Prefiero reportes en USD, con una hoja de detalle y otra de resumen por proveedor».
+3. Comprueba **Usar mis memorias en los chats** y pulsa **Guardar**. Añadir una nota marca esa opción en el borrador; nada se guarda hasta confirmar. Cancelar no escribe cambios. Un mensaje demasiado largo se conserva íntegro en el borrador y debe resumirse: no se trunca para guardarlo.
+4. Abre una conversación nueva. Las preferencias activas se incluyen como contexto en las siguientes preguntas, junto con las herramientas y las fuentes actuales. La pregunta explícita y el idioma elegido tienen prioridad. Si una preferencia entra en conflicto o resulta ambigua, el agente debe pedir aclaración.
+5. En el mismo panel puedes editar, quitar una nota, desactivar su uso sin borrarla o elegir **Borrar toda la memoria**, con confirmación. Borrar un chat conserva estas notas; borrar las notas conserva los chats.
 
-La interfaz conserva español e inglés, agrupa fuentes y consumo como detalles desplegables, muestra las descargas como tarjetas y elimina de la lectura los enlaces técnicos duplicados de archivos verificados. Enter envía; Mayús + Enter inserta una línea. Un campo vacío no se presenta como un error de validación.
+Se admiten hasta **12 notas por usuario y ámbito**, con títulos de 80 caracteres, contenido de 600 caracteres por nota y un límite conjunto de 6,000 caracteres. No se admiten títulos duplicados. Se incluye el conjunto activo completo y acotado; no se utiliza una base vectorial ni un buscador semántico. El indicador **Contexto personal** cuenta las notas incluidas en esa consulta; no garantiza que todas resultaran pertinentes ni que el modelo haya aplicado cada preferencia correctamente.
 
-Para instalar únicamente esta mejora del chat en una instalación que ya tiene las once herramientas: actualiza `feature/foundry-agent-setup` con el procedimiento Git habitual y reinicia API, worker y frontend con los comandos de siempre. No requiere instalar dependencias, migrar tablas ni ejecutar otra vez `--upgrade-local`; conserva la versión y el modelo ya configurados. El reinicio del worker activa los reintentos de limpieza de archivos bloqueados.
+Esta implementación utiliza la base de DataStage: SQLite en desarrollo y SQL Server en producción. No crea un Memory Store de Foundry ni necesita otro deployment, embeddings, permisos Azure o una versión nueva del agente. El Memory Store administrado de Foundry es una alternativa en versión preliminar y su documentación indica que no admite integración VNet; por eso no se añade como requisito al entorno privado actual. Referencia: [memoria de Foundry](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/what-is-memory).
 
-Generar un reporte no requiere habilitar las acciones de consolidación o reproceso. Esas acciones mantienen sus permisos y consentimiento por mensaje; permanecen deshabilitadas durante esta puesta en marcha.
+Las memorias se separan por la identidad y ámbito autenticados, incluso para administradores. La aplicación no acepta un usuario o ámbito enviado por el modelo o navegador para cambiar al propietario. Las escrituras y el borrado tienen control de versión: una pestaña antigua no puede sobrescribir una edición nueva o restaurar notas eliminadas silenciosamente. El evento `agent.memory.update` audita actor, cantidades y versión, sin copiar títulos ni contenido.
+
+Sólo el usuario guarda las notas desde la interfaz. Decir «recuerda esto» en el chat no las persiste por sí solo: utiliza **Recordar**, revisa y guarda. El agente recibe instrucciones para no afirmar que realizó una escritura de memoria. Las notas se envían como datos de usuario de menor confianza, nunca como instrucciones del sistema ni evidencia de cifras. Las reglas del backend, los permisos, monedas, tablas y validaciones se conservan. Una nota que diga «estos dos proveedores son iguales» no cambia el catálogo compartido ni crea una equivalencia oficial. Ese cambio requiere el flujo de negocio correspondiente.
+
+Guardar, editar o borrar notas no invoca el modelo. Incluir notas en una pregunta sí aumenta el contexto de entrada y puede aumentar tokens facturados. Las cifras reportadas siguen apareciendo en **Uso del modelo**. No se modifica el entrenamiento del modelo; [Microsoft distingue la persistencia del entrenamiento](https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy).
+
+El borrado o la desactivación se aplica al contexto personal de las siguientes consultas. No puede retirar información que una petición en curso ya envió a Foundry. Los mensajes anteriores pueden seguir conteniendo una preferencia que escribiste o una respuesta que la mencionó; para comprobar el efecto del borrado sin ese contexto, inicia un chat nuevo. No se copia automáticamente el bloque completo de notas al historial: sólo se registra cuántas se incluyeron y la versión del perfil en auditoría. Si el modelo cita una nota en su respuesta, ese texto sí forma parte del historial normal. La retención de Azure y los respaldos se gestiona por separado.
+
+### Instalar la mejora de memoria
+
+La migración aditiva **`20261022_0005`** crea `agent_memory_profiles` y `agent_memories`; no modifica columnas ni elimina conversaciones, archivos o datos de negocio. El esquema completo tiene 75 tablas. No se generan notas iniciales a partir de los chats existentes y la memoria empieza desactivada para cada usuario hasta que la active y guarde.
+
+Actualiza el código con los servicios detenidos. Si tu SQLite local **ya está gestionado por Alembic**, aplica `..\.venv\Scripts\python.exe -m alembic upgrade head` desde `backend` **antes de reiniciar la API**. Si tu SQLite local fue creado con `create_all` y no está gestionado por Alembic, el arranque habitual crea las dos tablas nuevas; no uses `stamp` ni borres la base. No mezcles una creación automática de tablas con una revisión Alembic anterior pendiente de actualizar. En producción TI aplica la migración mediante la identidad separada y concede al runtime los permisos de las dos tablas, según [Linux directo](linux-direct.md). La API de producción no crea ni migra tablas al arrancar.
+
+Reinicia API y frontend con los comandos habituales. El worker conserva su configuración. No se cambian dependencias, `.env`, autenticación, modelo, `INSTRUCTIONS` registrado ni las once herramientas. **No repitas `--upgrade-local` por esta función**: el contexto personal lo añade DataStage a cada petición, manteniendo la misma referencia del agente.
 
 ## Actualizar la instalación local y cambiar el modelo
 

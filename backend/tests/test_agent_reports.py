@@ -471,5 +471,5 @@ def test_artifact_migration_preserves_existing_conversations_and_documents(tmp_p
         assert connection.scalar(text("SELECT content FROM agent_messages WHERE id='m'")) == "Keep this history"
         assert connection.scalar(text("SELECT storage_key FROM stored_documents WHERE id='d'")) == "keep.xlsx"
         assert {"agent_artifacts", "agent_message_details"} <= set(inspect(connection).get_table_names())
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261022_0004"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261022_0005"
     engine.dispose()
