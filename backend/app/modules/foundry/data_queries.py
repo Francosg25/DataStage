@@ -3,7 +3,7 @@
 The model supplies a declarative specification, never SQL, Python or a connection.
 Aggregations run on the complete authorized selection, never on the preview.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 import json
@@ -44,6 +44,7 @@ def column_type(header):
 
 
 def describe_data(code):
+    from .relational_queries import column_info, relations_for
     if not code:
         return {"tables": [{"tableCode": key, "name": TABLE_NAMES.get(key, key),
                             "grain": GRAINS.get(key, "fila de la tabla de origen")}
@@ -52,19 +53,21 @@ def describe_data(code):
                 "rules": ["Un consolidado anual no prueba que estén todos sus meses.",
                           "count_rows cuenta filas; usa count_distinct PedimentoCompleto para pedimentos.",
                           "510, 557 y 702 son niveles distintos; 505 y 551 tampoco se suman entre sí.",
-                          "Cada hoja usa una tabla; no se hacen uniones implícitas."]}
+                          "Los cruces usan relaciones verificadas del catálogo: consulta describe_data para la tabla base.",
+                          "Elige la tabla de mayor detalle como base. No se unen facturas con partidas sin una relación verificable."]}
     if code not in BUSINESS_HEADERS:
         fail("agent_table_unknown", "La tabla no está en el catálogo autorizado.")
     return {"tableCode": code, "name": TABLE_NAMES.get(code, code),
             "grain": GRAINS.get(code, "fila de la tabla de origen"),
-            "columns": [{"name": header, "type": column_type(header),
-                         "unit": "USD" if header == "ValorDolares" else
-                                 "MonedaFacturacion" if header == "ValorMonedaExtranjera" else
-                                 "unidad de la fuente; sin conversión" if normalize_header(header) in MONEY_HEADERS else ""}
+            "columns": [{"name": header, "qualifiedName": f"{code}.{header}", "type": column_type(header),
+                         "unit": column_info(code, header).unit}
                         for header in META_HEADERS + BUSINESS_HEADERS[code]],
             "filters": "eq/ne/contains; rangos numéricos y fechas ISO; is_empty/not_empty. Todos se combinan con AND.",
             "aggregation": "columns vacío; groupBy y metrics. count_rows usa column vacío. No se omiten valores numéricos inválidos.",
             "periods": "Nombres exactos del inventario mensual publicado; máximo 24.",
+            "relationships": relations_for(code),
+            "calculations": "add/subtract/multiply/divide/percent_of/percent_change por fila; alias reutilizable. Sin dato o división por cero: null, nunca cero inventado.",
+            "joinRules": "Usa columnas calificadas (501.TipoCambio). Los cruces conservan como máximo una fila por fila base. Duplicados o llaves incompletas se rechazan. No sumes importes repetidos de una tabla de menor detalle.",
             "extensionColumns": "Las columnas no promovidas al catálogo requieren una incorporación explícita."}
 
 
@@ -96,19 +99,31 @@ class QueryResult:
     scanned_rows: int
     matched_rows: int
     specification: dict
+    diagnostics: dict = field(default_factory=dict)
+    units: list[str] = field(default_factory=list)
 
     def preview(self, limit):
         def value(item):
             return item.isoformat() if isinstance(item, datetime) else float(item) if isinstance(item, Decimal) else item
-        return {"headers": self.headers, "types": self.types,
+        result = {"headers": self.headers, "types": self.types,
                 "items": [dict(zip(self.headers, [value(item) for item in row])) for row in self.rows[:limit]],
                 "totalResultRows": len(self.rows), "matchedSourceRows": self.matched_rows,
                 "scannedSourceRows": self.scanned_rows, "previewLimited": len(self.rows) > limit,
                 "complete": True, "sources": self.sources, "query": self.specification}
+        if self.diagnostics:
+            result["diagnostics"] = self.diagnostics
+        if self.units:
+            result["units"] = dict(zip(self.headers, self.units))
+        return result
 
 
 def query_data(session, scope, specification):
     query = DataQuery.model_validate(specification)
+    references = [*query.columns, *query.groupBy, *(item.column for item in query.filters),
+                  *(item.column for item in query.metrics), *(item.column for item in query.orderBy)]
+    if query.joins or query.calculations or any(name.startswith(f"{query.tableCode}.") for name in references):
+        from .relational_queries import query_related
+        return query_related(session, scope, query)
     code = query.tableCode
     table = BUSINESS_TABLES.get(code)
     if table is None:

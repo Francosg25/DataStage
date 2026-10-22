@@ -10,6 +10,8 @@ El chat consulta los datos publicados del usuario, calcula resultados verificabl
 | ¿Qué proveedores facturaron más en mayo? | Consulta 505 con sumas USD por proveedor, calculadas sobre toda la selección |
 | Crea un Excel de mayo y junio de 2025 con pedimento, patente, aduana y fecha de pago | Hoja de detalle 501 con las columnas solicitadas |
 | Añade otra hoja con el total de facturas y valor en dólares por proveedor | Segunda hoja 505 agregada; 505 y 501 mantienen su propio nivel |
+| Cruza las partidas 551 con el RFC y tipo de cambio del pedimento 501, calcula su valor en MXN y crea un Excel | Una hoja combinada por partida, con relación verificada, columna calculada y fuentes |
+| Desglosa los pagos 557 por país de origen de la partida 551 y convierte los importes a USD con 501 | Consulta de tres tablas, conservando el nivel del pago y validando el tipo de cambio |
 | Genera un PDF con los KPI de septiembre de 2026 en USD | Informe de análisis con las gráficas y fuentes del dashboard |
 | Compara importaciones, exportaciones, IGI e IVA de dos meses | Cálculos de análisis existentes, con moneda, formas de pago y cobertura explícitas |
 | ¿Qué significa FP21? | Explicación apoyada en extractos de las guías aprobadas disponibles |
@@ -18,17 +20,53 @@ Los ejemplos requieren los periodos y tablas indicados. Si faltan, el asistente 
 
 ## Datos, cálculos y Excel
 
-- `describe_data` enumera las 26 tablas registradas y, para una tabla, sus columnas, tipos y unidades. No revela tablas de identidad, configuración, conversaciones o credenciales.
-- `query_data` recibe una especificación cerrada: tabla, periodos, columnas, filtros AND, agrupaciones, métricas y orden. Los identificadores de tabla y columna se resuelven contra el catálogo; no se acepta SQL, código, rutas o identidades del modelo.
+- `describe_data` enumera las 26 tablas registradas y, para una tabla, sus columnas, tipos, unidades y relaciones permitidas. Cada campo incluye su nombre calificado, por ejemplo `501.TipoCambio`. No revela tablas de identidad, configuración, conversaciones o credenciales.
+- `query_data` recibe una especificación cerrada: tabla base, periodos, columnas, cruces, cálculos, filtros AND, agrupaciones, métricas y orden. Los identificadores de tabla y columna se resuelven contra el catálogo; no se acepta SQL, código, rutas o identidades del modelo.
 - Las versiones se seleccionan una sola vez, con ámbito del usuario, estado publicado y pertenencia mensual. Se exige cobertura de la tabla en cada periodo solicitado. Una tabla ausente no se convierte en un cero.
-- Los cálculos se realizan sobre todas las filas seleccionadas, hasta 50,000 filas de origen por consulta y 24 meses. Si se excede el límite se rechaza la consulta; no se presentan totales parciales. Los filtros se aplican dentro de esa selección acotada: si un mes por sí solo supera el límite, reducir sólo el texto del filtro no elimina ese límite.
+- Los cálculos se realizan sobre todas las filas seleccionadas, hasta 50,000 filas de origen por consulta y 24 meses. En un cruce, el límite suma las filas leídas de todas sus tablas. Si se excede se rechaza la consulta; no se presentan totales parciales. Los filtros se aplican dentro de esa selección acotada: si un mes por sí solo supera el límite, reducir sólo el texto del filtro no elimina ese límite.
 - La vista previa del chat contiene como máximo 100 resultados. Los campos `matchedSourceRows`, `totalResultRows`, `previewLimited` y `complete` distinguen filas de origen, resultados y muestra.
 - Se admiten conteo de filas, conteo distinto, suma, promedio, mínimo y máximo. Una suma de dinero no omite valores numéricos inválidos. El total en moneda extranjera exige agrupar o filtrar la moneda. Para conversiones fiscales y métricas oficiales se utiliza `get_analytics`, que comparte la lógica del dashboard.
-- Cada hoja utiliza una sola tabla de origen. No se realizan cruces arbitrarios entre 505/551 o entre 510/557/702 que multipliquen o sumen niveles distintos. Los cruces nuevos requieren una relación de negocio implementada y validada.
-- El Excel contiene hasta cinco hojas solicitadas y una hoja adicional de fuentes: consulta, periodos, ejecución, versión y número de filas. Se exportan los resultados completos; no sólo la vista previa del modelo.
+- Cada hoja puede combinar una tabla base y hasta dos relaciones verificadas. Se conserva como máximo una fila por fila base; no se realizan cruces arbitrarios entre 505/551 o entre 510/557/702 que multipliquen o sumen niveles distintos. Consulta las reglas siguientes.
+- El Excel contiene hasta cinco hojas solicitadas y una hoja adicional de fuentes: consulta, tablas, periodos, ejecución, versión, filas, unidades y diagnóstico del cruce. Se exportan los resultados completos; no sólo la vista previa del modelo.
 - El libro tiene un límite conjunto de 500,000 celdas y 20 MiB. No se truncan resultados para cumplirlo. Los valores que no caben en una celda se rechazan.
 - Los importes y medidas válidos son celdas numéricas; las fechas válidas son fechas Excel. Los identificadores como pedimento, factura, patente y fracción conservan texto y ceros iniciales. Los códigos de catálogo numéricos se escriben como números con su formato de ceros. Los valores inválidos o con más precisión de la que Excel conserva se mantienen como texto y se contabilizan en la hoja de fuentes.
 - El contenido proveniente de proveedores y documentos se escribe como texto literal: no se convierte en fórmula, enlace o programa ejecutable.
+
+### Cruces y columnas calculadas
+
+La tabla base determina qué representa una fila. Para analizar pagos por partida se parte de **557**, se añade la descripción de **551** y, si se necesita, información del pedimento **501**. Para analizar mercancías se parte de **551** y se añade **501**. Invertir ese orden para repartir un importe de pedimento entre partidas no es una asignación válida por sí sola.
+
+| Relación disponible | Claves verificadas dentro de la misma ejecución mensual |
+| --- | --- |
+| Tabla con claves de pedimento → 501 | Patente + Pedimento + SeccionAduanera |
+| Tabla con claves completas de partida → 551 | Patente + Pedimento + SeccionAduanera + Fraccion + SecuenciaFraccion |
+
+`describe_data` devuelve las relaciones concretas de cada tabla base. No permite unirse consigo misma ni elegir llaves arbitrarias. Las fuentes se fijan a las versiones mensuales activas del ámbito autenticado: dos pedimentos iguales en meses, versiones o ámbitos distintos no se mezclan. No es un cruce entre periodos.
+
+- **`left`** conserva las filas base sin coincidencia, con campos relacionados vacíos. **`inner`** las excluye; el diagnóstico indica cuántas no encontraron correspondencia. Una tabla ausente en un mes se informa como falta de cobertura, no como una tabla vacía.
+- La tabla relacionada debe contener una sola fila por clave. Si tiene duplicados o si alguna clave del conjunto leído está incompleta, se rechaza la consulta con una explicación. No se elige una fila al azar ni se omite silenciosamente. Esta validación precede al filtrado del resultado.
+- Los campos relacionados usan `tabla.Campo`. Los nombres sin prefijo se refieren sólo a la tabla base. Los alias de cálculo deben ser únicos y pueden utilizarse en cálculos posteriores, filtros, agrupaciones y métricas.
+- `calculations` permite hasta ocho cálculos numéricos por fila: `add`, `subtract`, `multiply`, `divide`, `percent_of` (`izquierda / derecha × 100`) y `percent_change` (`(izquierda − derecha) / abs(derecha) × 100`). El operando derecho es una columna o una constante decimal explícita. Después se filtra y agrupa. No se admiten fórmulas Excel, SQL ni programas del modelo.
+- Se comprueban las unidades monetarias conocidas. Ejemplos: `551.ValorDolares × 501.TipoCambio` produce MXN; `557.ImportePago / 501.TipoCambio` produce USD. El tipo de cambio debe ser positivo. No se suman USD y MXN. La moneda de facturación se separa mediante filtro o agrupación también en importes calculados.
+- Los resultados calculados se redondean a **15 dígitos significativos**, compatibles con la precisión numérica de Excel. Los valores originales no se reescriben. Si falta un operando o el denominador es cero, el cálculo queda vacío (`null`) y se cuenta en el diagnóstico. Un total que depende de valores ausentes queda no disponible, en vez de sumar sólo la parte conocida.
+- Si una medida de la tabla relacionada se repite en varias filas base, no se permite sumarla ni promediarla, tampoco ocultando la repetición en otra agrupación o cálculo. Por ejemplo, no se suman los fletes completos de un pedimento una vez por cada partida. El tipo de cambio sí puede aplicarse a cada importe base. Los porcentajes y tipos de cambio no se suman.
+
+Los diagnósticos incluyen coincidencias, ausencias, claves relacionadas repetidas en el detalle y cálculos no disponibles o con denominador cero. Que una relación sea muchos a uno permite enriquecer el detalle, pero no convierte un importe de pedimento en un importe por partida. Facturas 505 y partidas 551 siguen requiriendo una relación de negocio adicional para combinarlas de forma fiable. Para KPI fiscales y comparaciones mensuales oficiales se conserva `get_analytics`.
+
+### Activar los cruces en tu agente existente
+
+Esta mejora no añade dependencias, tablas de base de datos ni endpoints. Sí cambia la definición de las herramientas y las instrucciones registradas en Foundry. Después de actualizar el código y detener la API, ejecuta **una vez** desde `backend`, en tu red corporativa:
+
+```cmd
+..\.venv\Scripts\python.exe -m app.modules.foundry.setup --upgrade-local
+..\.venv\Scripts\python.exe -m app.modules.foundry.setup --check
+```
+
+Sin `--model`, se conserva el deployment configurado. El primer comando registra y comprueba una nueva versión del mismo agente, respalda `.env` y actualiza su versión local; conserva el estado de habilitación y el resto de la configuración. No lo repitas si ya terminó correctamente. Si la sesión ha expirado, usa `--login` con el mismo intérprete y reintenta el paso fallido. `--check` por sí solo no añade capacidades a una versión anterior.
+
+Reinicia la API con tu comando habitual y abre una conversación nueva para que no arrastre una respuesta anterior que afirmara que no podía cruzar tablas. No hace falta cambiar el frontend ni el worker por esta mejora. La migración de memoria, si todavía está pendiente en tu instalación, se gestiona por separado con las instrucciones posteriores. En producción se registra y fija la versión con la identidad autorizada; no se usa un inicio de sesión personal interactivo.
+
+Prueba con un mes publicado y sus tablas disponibles: «Genera un Excel de mayo de 2025 con las partidas 551, fracción y valor en dólares; añade RFC y tipo de cambio de 501, calcula valor en MXN y una segunda hoja con el total por fracción. Indica si alguna partida no pudo cruzarse». Contrasta los resultados con las fuentes y revisa la hoja **Fuentes**. La prueba automatizada es local y simulada; esta pregunta real sí invoca Foundry.
 
 ## Conversación, archivos y permisos
 

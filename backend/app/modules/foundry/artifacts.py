@@ -81,11 +81,19 @@ def create_excel(session, storage, principal, conversation_id, specification, la
         if any(len(str(value)) > EXCEL_MAX_TEXT for row in [result.headers, *result.rows] for value in row):
             raise ApplicationError(413, "agent_cell_too_large", "Un valor excede el tamaño de celda de Excel; no se ha truncado.")
         queries.append(result)
-        sheets.append({"name": name, "tableCode": result.specification["tableCode"], "rows": len(result.rows),
+        table_codes = [result.specification["tableCode"], *(join["tableCode"] for join in result.specification.get("joins", []))]
+        sheets.append({"name": name, "tableCode": result.specification["tableCode"], "tableCodes": table_codes, "rows": len(result.rows),
                        "matchedSourceRows": result.matched_rows, "scannedSourceRows": result.scanned_rows,
-                       "query": result.specification, "sources": result.sources})
+                       "query": result.specification, "sources": result.sources,
+                       "diagnostics": result.diagnostics, "columnUnits": dict(zip(result.headers, result.units))})
+    sources = {}
+    for sheet in sheets:
+        for source in sheet["sources"]:
+            previous = sources.get(source["runId"], {})
+            tables = set(previous.get("tables", [])) | set(sheet["tableCodes"])
+            sources[source["runId"]] = source | {"tables": sorted(tables)}
     manifest = {"title": specification["title"], "language": language, "complete": True, "sheets": sheets,
-                "sources": list({source["runId"]: source for query in queries for source in query.sources}.values())}
+                "sources": list(sources.values())}
     stream = BytesIO()
     preserved_as_text = 0
     with xlsxwriter.Workbook(stream, {"in_memory": True, "strings_to_formulas": False, "strings_to_urls": False}) as book:
@@ -132,7 +140,7 @@ def create_excel(session, storage, principal, conversation_id, specification, la
         row_index = 1
         for sheet in sheets:
             for source in sheet["sources"]:
-                row = [sheet["name"], sheet["tableCode"], source["period"], source["runId"], source["version"],
+                row = [sheet["name"], " + ".join(sheet["tableCodes"]), source["period"], source["runId"], source["version"],
                        sheet["rows"], json.dumps(sheet["query"], ensure_ascii=False)]
                 for column, value in enumerate(row):
                     if isinstance(value, int):
@@ -143,6 +151,12 @@ def create_excel(session, storage, principal, conversation_id, specification, la
         source_page.set_column(0, 5, 25)
         source_page.set_column(6, 6, 70)
         source_page.write_string(row_index + 1, 0, f"Values preserved as text (invalid date/number or Excel precision): {preserved_as_text}")
+        for sheet in sheets:
+            if sheet["diagnostics"]:
+                row_index += 1
+                source_page.write_string(row_index + 2, 0, sheet["name"], text)
+                source_page.write_string(row_index + 2, 1, json.dumps(sheet["diagnostics"], ensure_ascii=False), text)
+                source_page.write_string(row_index + 2, 2, json.dumps(sheet["columnUnits"], ensure_ascii=False), text)
     return store_artifact(session, storage, principal, conversation_id, stream.getvalue(), ".xlsx", specification["title"], manifest)
 
 

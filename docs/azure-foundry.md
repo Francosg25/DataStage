@@ -144,9 +144,9 @@ Revisa que cada respuesta incluya evidencia y que sus cifras coincidan con el da
 | `compare_periods` | Comparación de conteos y cobertura operativa | No |
 | `search_documentation` | Extractos de la documentación local aprobada incluida en el backend | No |
 | `request_report` | Información del reporte Excel existente | No |
-| `describe_data` | Catálogo autorizado de tablas, columnas, tipos y unidades | No |
-| `query_data` | Filtros, conteos, sumas, promedios, agrupaciones y orden; totales sobre la selección completa | No |
-| `create_excel` | Excel personalizado de hasta cinco hojas, con tipos reales y hoja de fuentes | Crea una descarga privada; no cambia datos operativos |
+| `describe_data` | Catálogo autorizado de tablas, columnas, tipos, unidades y relaciones | No |
+| `query_data` | Cruces muchos a uno verificados, cálculos por fila, filtros y agregaciones completas | No |
+| `create_excel` | Excel de hasta cinco hojas con cruces, cálculos, tipos reales y fuentes | Crea una descarga privada; no cambia datos operativos |
 | `create_analysis_report` | PDF de KPI y gráficas del dashboard con moneda y filtros explícitos | Crea una descarga privada; no cambia datos operativos |
 | `start_annual` | Crea una consolidación anual | Sí, requiere `Operator` o `Admin` |
 | `reprocess_run` | Crea una nueva versión con motivo y versión esperada | Sí, requiere `Reprocessor` o `Admin` |
@@ -157,7 +157,9 @@ Revisa que cada respuesta incluya evidencia y que sus cifras coincidan con el da
 
 Ejecutar DataStage en la laptop no convierte el modelo en local: las preguntas del chat y una llamada real a `FoundryAgent.respond` invocan Azure y pueden consumir tokens de entrada y salida, incluidas las llamadas sucesivas para resolver herramientas. `--configure-local`, `--login`, `--check` y las pruebas con proveedor simulado no ejecutan inferencia del modelo. Un código HTTP de error por sí solo no determina si hubo procesamiento facturable. El consumo y el importe se verifican con las métricas y Cost Management de Azure. Referencia: [costos de Foundry](https://learn.microsoft.com/en-us/azure/foundry/concepts/manage-costs).
 
-`create_excel` genera archivos personalizados reales: el modelo propone una especificación de columnas, filtros y agrupaciones; Python consulta las versiones mensuales autorizadas y construye el XLSX completo. `request_report` sigue localizando el reporte original de una ejecución. Las nuevas descargas se muestran como botones del chat y sólo están disponibles para su autor. Consulta [capacidades, límites, actualización y prueba de aceptación](assistant-corporate.md).
+`create_excel` genera archivos personalizados reales: el modelo propone una especificación de columnas, relaciones autorizadas, cálculos numéricos, filtros y agrupaciones; Python consulta las versiones mensuales autorizadas y construye el XLSX completo. El catálogo admite enriquecer el detalle con 501 por pedimento y con 551 por clave completa de partida, sin multiplicar filas ni sumar medidas repetidas de un nivel distinto. No admite relaciones arbitrarias entre facturas y partidas. El límite de 50,000 filas suma todas las tablas leídas. La hoja de fuentes incluye unidades, versiones y diagnóstico de coincidencias y valores ausentes. `request_report` sigue localizando el reporte original de una ejecución. Las nuevas descargas se muestran como botones del chat y sólo están disponibles para su autor.
+
+Para activar los cruces en una instalación local ya configurada, actualiza el código, detén la API y ejecuta desde `backend` `..\.venv\Scripts\python.exe -m app.modules.foundry.setup --upgrade-local`, después `..\.venv\Scripts\python.exe -m app.modules.foundry.setup --check` y reinicia la API. Se conserva el modelo configurado y se registra una nueva versión de las once herramientas con las instrucciones actualizadas. No repitas una actualización correcta: cada ejecución crea otra versión. Consulta [relaciones, cálculos, límites y prueba de aceptación](assistant-corporate.md#cruces-y-columnas-calculadas). Esta mejora no añade una migración; las migraciones anteriores siguen siendo necesarias si todavía están pendientes.
 
 El modelo se basa en redes neuronales profundas (deep learning) ya entrenadas. La integración añade recuperación de datos y herramientas; no entrena un modelo propio ni aprende automáticamente de las conversaciones. La calidad depende también de la cobertura real, las reglas de negocio y la validación contra datos conocidos.
 

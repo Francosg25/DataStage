@@ -72,6 +72,19 @@ class DataOrder(ToolArguments):
     direction: Literal["asc", "desc"]
 
 
+class DataJoin(ToolArguments):
+    tableCode: Annotated[str, Field(min_length=1, max_length=30, pattern=r"^[a-z0-9_]+$")]
+    kind: Literal["left", "inner"]
+
+
+class DataCalculation(ToolArguments):
+    left: ColumnName
+    operator: Literal["add", "subtract", "multiply", "divide", "percent_of", "percent_change"]
+    right: Annotated[str, Field(min_length=1, max_length=100, description="Columna o constante decimal sin separadores.")]
+    rightIsColumn: bool
+    alias: Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[\w ÁÉÍÓÚÜÑáéíóúüñ-]+$")]
+
+
 class DataQuery(ToolArguments):
     tableCode: Annotated[str, Field(min_length=1, max_length=30, pattern=r"^[a-z0-9_]+$")]
     periods: Annotated[list[PeriodName], Field(min_length=1, max_length=24)]
@@ -80,6 +93,8 @@ class DataQuery(ToolArguments):
     groupBy: Annotated[list[ColumnName], Field(max_length=4)]
     metrics: Annotated[list[DataMetric], Field(max_length=6)]
     orderBy: Annotated[list[DataOrder], Field(max_length=3)]
+    joins: Annotated[list[DataJoin], Field(max_length=2, description="Cruces many-to-one del catálogo; [] sin cruces. Usa prefijos 501.Campo en columnas relacionadas.")] = Field(default_factory=list)
+    calculations: Annotated[list[DataCalculation], Field(max_length=8, description="Cálculos numéricos por fila, en orden; después se filtran/agrupan. [] sin cálculos. Sin código ni SQL.")] = Field(default_factory=list)
 
 
 class QueryData(ToolArguments):
@@ -135,9 +150,9 @@ DESCRIPTIONS = {
     "compare_periods": "Compara conteos y cobertura de dos periodos autorizados.",
     "search_documentation": "Busca documentación local aprobada y devuelve extractos con sus fuentes.",
     "request_report": "Obtiene el reporte existente de una ejecución autorizada, sin modificar datos.",
-    "describe_data": "Descubre tablas aprobadas y sus columnas, tipos, unidades y límites. Úsala antes de preparar consultas o Excel; tableCode vacío lista tablas.",
-    "query_data": "Consulta una tabla mensual publicada con filtros, orden, conteos distintos, sumas y agrupaciones calculadas por Python sobre TODAS las filas del rango autorizado. Sólo la vista previa se limita; complete y totals describen cobertura. Sin SQL ni cruces que dupliquen importes.",
-    "create_excel": "Genera un Excel descargable real de hasta cinco hojas con columnas, filtros y/o agrupaciones elegidos. Exporta el resultado completo de cada consulta, con números y fechas reales y trazabilidad. No depende de muestras ni modifica los datos fuente.",
+    "describe_data": "Descubre tablas, columnas, tipos, unidades y relaciones many-to-one autorizadas. Úsala antes de consultar o crear Excel; tableCode vacío lista tablas. Elige como base la tabla de mayor detalle.",
+    "query_data": "Consulta datos mensuales publicados: columnas de una o varias tablas mediante joins del catálogo, cálculos por fila, filtros, agrupaciones y orden. Usa 501.Campo para campos relacionados; joins/calculations vacíos si no se usan. Resultados completos con vista previa limitada. Rechaza cruces ambiguos e importes duplicados. Sin SQL ni código.",
+    "create_excel": "Genera Excel real de hasta cinco hojas con consultas completas: cruces autorizados, columnas calculadas, filtros y agrupaciones. Números y fechas nativos, fuentes y diagnóstico de relaciones. Exporta todas las filas autorizadas, no muestras; no modifica las fuentes.",
     "create_analysis_report": "Genera un informe PDF descargable con los KPI, gráficos y fuentes del análisis del periodo y filtros solicitados. La moneda es explícita y el idioma lo determina la aplicación.",
     "start_annual": "Solicita consolidación anual sólo si el usuario autorizó acciones y tiene permiso.",
     "reprocess_run": "Solicita reproceso con motivo y versión esperada, sujeto a autorización del backend.",
@@ -145,12 +160,25 @@ DESCRIPTIONS = {
 
 
 def tool_definitions(allow_commands: bool = False) -> list[dict]:
+    def close_schema(value):
+        if isinstance(value, dict):
+            value.pop("default", None)
+            if value.get("type") == "object":
+                value["additionalProperties"] = False
+                value["required"] = list(value.get("properties", {}))
+            for child in value.values():
+                close_schema(child)
+        elif isinstance(value, list):
+            for child in value:
+                close_schema(child)
+
     result = []
     for name, model in TOOL_MODELS.items():
         if name in COMMAND_TOOLS and not allow_commands:
             continue
         schema = model.model_json_schema()
         schema.pop("title", None)
+        close_schema(schema)
         result.append({
             "type": "function", "name": name, "description": DESCRIPTIONS[name],
             "parameters": schema, "strict": True,

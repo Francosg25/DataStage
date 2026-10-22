@@ -120,3 +120,40 @@ tiene un navegador instalado. No se cambiaron cálculos, API, base, dependencias
 ni configuración Foundry; estas pruebas no hacen inferencia real ni certifican
 SQL Server/Entra o un despliegue productivo. La correspondencia de hojas y las
 reglas de conversión se documentan en `docs/analytics.md`.
+
+## Asistente: cruces de tablas y cálculos personalizados — 22 de octubre de 2026
+
+Implementado sobre `0c293c9` en `feature/foundry-agent-setup`. Se amplían las
+especificaciones de `query_data` y `create_excel` y las instrucciones registradas;
+se conservan once herramientas, el modelo configurado y las fuentes de negocio.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Backend afectado: cruces, reportes, Foundry, autenticación/configuración local, cobertura, memoria, seguridad, API/worker y persistencia | **233 aprobadas; 1 omitida** por falta de SQL Server de pruebas |
+| Ruff en todos los Python modificados y `git diff --check` | Correctos |
+| Excel combinado real con datos sintéticos | 125 filas completas, resumen calculado, números y fechas nativos, texto literal, fuentes y diagnóstico verificados con openpyxl |
+| Esquema y dependencias | Sin migraciones ni dependencias nuevas; contrato HTTP conservado |
+| Configuración Foundry | Registro/validación de la definición actual probados con Azure simulado; es necesario registrar una nueva versión con `--upgrade-local` |
+
+Se comprueban relaciones de 551 con 501 y de 557 con 551/501, aislamiento por
+ámbito, mes y ejecución activa frente a versiones retiradas, claves compuestas,
+filas sin coincidencia, rechazo de claves incompletas o duplicadas y ausencia de
+totales inflados al repetir importes de una tabla de menor detalle. El control
+de repeticiones se aplica al conjunto filtrado completo, también entre grupos
+distintos y en columnas calculadas. Se permite reutilizar el tipo de cambio por
+importe base, pero se rechazan tipos de cambio iguales a cero o negativos.
+
+Las pruebas cubren seis operadores numéricos, cálculos encadenados, filtros,
+agrupación y orden, precisión calculada de 15 dígitos, división por cero y datos
+ausentes sin inventar ceros ni totales parciales, monedas incompatibles, límite
+combinado de filas, columnas/alias desconocidos y rechazo de SQL, fórmulas o
+código como expresiones. La evidencia del chat y el manifiesto del Excel
+conservan las tablas y diagnósticos; el manifiesto une las fuentes de todas las
+hojas del libro. Los esquemas de herramientas siguen cerrados y estrictos.
+
+No se ejecutó inferencia ni se modificó el proyecto corporativo. Quedan pendientes
+el registro de la nueva versión y una pregunta de aceptación con las fuentes
+reales en la red corporativa, además de SQL Server/Entra y el servidor reales.
+No se modificó el frontend ni se repitió su suite por este cambio de backend.
+Los seis fallos generales preexistentes registrados anteriormente no quedan
+resueltos ni se declara una aprobación de toda la suite del repositorio.

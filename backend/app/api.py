@@ -639,6 +639,8 @@ def agent_message(conversation_id: str, body: MessageRequest, request: Request, 
         if name == "query_data":
             evidence.update(source="published", query=output["query"], sources=output["sources"],
                             matchedSourceRows=output["matchedSourceRows"], complete=output["complete"])
+            if output.get("diagnostics"):
+                evidence["diagnostics"] = output["diagnostics"]
         if name in {"create_excel", "create_analysis_report"}:
             evidence.update(documentId=output["attachment"]["documentId"], sources=output["manifest"]["sources"],
                             downloadUrl=output["attachment"]["downloadUrl"])
