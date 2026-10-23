@@ -68,22 +68,6 @@ Reinicia la API con tu comando habitual y abre una conversación nueva para que 
 
 Prueba con un mes publicado y sus tablas disponibles: «Genera un Excel de mayo de 2025 con las partidas 551, fracción y valor en dólares; añade RFC y tipo de cambio de 501, calcula valor en MXN y una segunda hoja con el total por fracción. Indica si alguna partida no pudo cruzarse». Contrasta los resultados con las fuentes y revisa la hoja **Fuentes**. La prueba automatizada es local y simulada; esta pregunta real sí invoca Foundry.
 
-## Prueba de voz en el chat
-
-Esta prueba utiliza **las voces locales del navegador/equipo** mediante Web Speech API, con `localService=true`. No configura Azure Speech, cambia el modelo ni envía el texto a un sintetizador remoto. La calidad y disponibilidad dependen de las voces que el navegador exponga para el idioma de la interfaz (español o inglés).
-
-1. Abre el asistente y pulsa **Probar voz**. Se lee una frase fija; no se consulta Foundry ni se consumen tokens por esta prueba.
-2. Pulsa **Escuchar** debajo de una respuesta existente. **Detener** cancela la lectura. Volver a escuchar no vuelve a generar la respuesta.
-3. Si quieres, activa **Leer respuestas nuevas**. Sólo las respuestas que lleguen después se leerán automáticamente. Abrir un historial no lo reproduce. La opción empieza desactivada cada vez que abres la página y se desactiva al cambiar de idioma.
-
-La lectura usa texto sencillo, nombres de columnas al leer tablas y fragmentos cortos para respuestas largas. Los enlaces técnicos no se abren y los bloques de código se anuncian como disponibles en pantalla. Se mantiene el texto completo del chat; no se generan ni guardan archivos de audio ni se solicita acceso al micrófono.
-
-Si falta una voz local del idioma, el chat lo indica y no recurre a una voz remota. Si el navegador impide la reproducción automática, pulsa **Escuchar** para iniciarla manualmente. La lectura se detiene al cambiar/eliminar la conversación, enviar otra pregunta o salir de la sección. Las preguntas nuevas mantienen su consumo habitual de Foundry; escucharlas no añade llamadas al modelo.
-
-**Actualización:** basta actualizar el frontend y reiniciar `npm.cmd start` en desarrollo, o publicar su nueva compilación en Linux. Esta prueba no añade dependencias, migraciones ni herramientas de Foundry; no ejecutes `--upgrade-local` sólo por la voz. Si aún no instalaste la ampliación de adjuntos, sigue por separado sus pasos de instalación indicados abajo.
-
-Referencia técnica: [SpeechSynthesisVoice.localService](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesisVoice/localService). La reproducción real en Windows/Edge/Chrome corporativo se valida en el equipo del usuario; las pruebas automáticas simulan la API de voz.
-
 ## Adjuntos y generación de archivos
 
 El **clip** junto al cuadro de texto permite adjuntar archivos antes de enviar la pregunta. Si hace falta se crea una conversación; cargar y leer un archivo no invoca el modelo. Escribe qué necesitas y pulsa enviar. Los archivos aparecen sobre el cuadro de texto, con nombre, tamaño, estado de lectura y botón para retirarlos. También se recuperan al abrir el historial. Las preguntas reales y los fragmentos que consulte el modelo sí forman parte de su consumo de entrada.

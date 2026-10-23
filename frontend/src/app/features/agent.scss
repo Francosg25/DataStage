@@ -1,52 +1,6 @@
 :host {
   display: block;
 }
-.voice-toolbar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 8px 24px;
-  background: #f6f9fa;
-  border-bottom: 1px solid #e1eaec;
-}
-.voice-hint {
-  flex: 1 1 260px;
-  color: #617b85;
-  font-size: 11px;
-}
-.voice-test,
-.read-message {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid #cddde1;
-  border-radius: 8px;
-  background: #fff;
-  padding: 6px 10px;
-  font: inherit;
-  font-size: 12px;
-  color: #345d68;
-  cursor: pointer;
-}
-.read-message {
-  margin-top: 10px;
-}
-.voice-test ds-icon,
-.read-message ds-icon {
-  width: 15px;
-  height: 15px;
-}
-.voice-test[aria-pressed="true"],
-.read-message[aria-pressed="true"] {
-  background: #e7f4f2;
-  border-color: #6baba1;
-}
-.voice-test:disabled,
-.read-message:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
 .attachment-input {
   display: none;
 }

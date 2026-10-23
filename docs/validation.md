@@ -206,29 +206,3 @@ de producción. No hay OCR ni visión de imágenes adjuntas; PDF/Word/PowerPoint
 se leen como texto y tablas según los límites de la guía. Los seis fallos
 generales preexistentes documentados arriba no se han corregido ni se declara
 aprobada toda la suite del repositorio.
-
-## Prueba de lectura en voz alta — 23 de octubre de 2026
-
-Sobre `3522af2`, se añade reproducción opcional con voces locales del navegador,
-sin configurar Azure Speech ni cambiar el agente, sus herramientas, el backend
-o la base. Incluye una frase fija para probar sin inferencia, lectura manual de
-respuestas guardadas, detención y lectura de respuestas nuevas activada por el
-usuario. Las voces remotas y las de otro idioma no se utilizan como respaldo.
-
-- Frontend completo: **156 pruebas aprobadas en 21 suites**. Las nueve nuevas
-  comprueban selección de voz local, disponibilidad asíncrona, ausencia de voz,
-  bloqueo de reproducción, lectura íntegra por fragmentos, tablas, cancelación,
-  callbacks tardíos y destrucción del componente. El DOM verifica prueba y
-  lectura sin llamadas al agente, controles ES/EN y activación explícita de la
-  lectura de respuestas nuevas.
-- Angular de producción compila correctamente. Prettier y `git diff --check`
-  correctos; sin nuevas dependencias ni migraciones.
-- No se hizo inferencia real ni se solicitó acceso al micrófono. No se guardan
-  archivos de audio y no se activó ningún servicio Azure adicional.
-
-La disponibilidad, el sonido real y la pronunciación quedan pendientes del
-navegador y las voces instaladas en el Windows corporativo. La API de voz se
-simula en las pruebas; no se afirma una comprobación acústica real. En una
-ejecución preliminar falló de forma intermitente la prueba de exportación PNG
-por un mock de Chart sin `canvas`; la ejecución completa final pasó las 156.
-No se modificó el código ni las reglas de las gráficas para esta prueba de voz.
