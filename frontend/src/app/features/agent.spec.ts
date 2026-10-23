@@ -93,6 +93,81 @@ afterEach(() => {
 });
 
 describe("envío del formulario del asistente", () => {
+  it("prueba y escucha una respuesta guardada sin volver a llamar al agente, y permite detenerla", () => {
+    class Utterance {
+      constructor(readonly text: string) {}
+    }
+    const synthesis = Object.assign(new EventTarget(), {
+      getVoices: () => [{ name: "Local", lang: "es-MX", localService: true }],
+      speak: vi.fn(),
+      cancel: vi.fn(),
+    });
+    vi.stubGlobal("speechSynthesis", synthesis);
+    vi.stubGlobal("SpeechSynthesisUtterance", Utterance);
+    const { component, fixture, message, conversation } = createAgent(
+      false,
+      false,
+    );
+    expect(component.autoRead()).toBe(false);
+    const test: HTMLButtonElement =
+      fixture.nativeElement.querySelector(".voice-test");
+    test.click();
+    fixture.detectChanges();
+    expect(synthesis.speak.mock.calls[0][0].text).toContain("prueba de voz");
+    expect(test.textContent).toContain("Detener prueba");
+    test.click();
+    expect(synthesis.cancel).toHaveBeenCalledOnce();
+    component.messages.set([
+      { role: "assistant", text: "Total: 100.25 USD", evidence: [] },
+    ]);
+    fixture.detectChanges();
+    const listen: HTMLButtonElement =
+      fixture.nativeElement.querySelector(".read-message");
+    expect(listen.type).toBe("button");
+    listen.click();
+    fixture.detectChanges();
+    expect(listen.textContent).toContain("Detener");
+    expect(message).not.toHaveBeenCalled();
+    expect(conversation).not.toHaveBeenCalled();
+    component.newConversation();
+    expect(synthesis.cancel).toHaveBeenCalledTimes(2);
+    expect(component.speech.active()).toBeNull();
+  });
+  it("sólo lee respuestas nuevas si se activa y mantiene los controles en inglés", async () => {
+    class Utterance {
+      constructor(readonly text: string) {}
+    }
+    const synthesis = Object.assign(new EventTarget(), {
+      getVoices: () => [{ name: "Local", lang: "en-US", localService: true }],
+      speak: vi.fn(),
+      cancel: vi.fn(),
+    });
+    vi.stubGlobal("speechSynthesis", synthesis);
+    vi.stubGlobal("SpeechSynthesisUtterance", Utterance);
+    const { component, fixture, message } = createAgent(false, false);
+    component.i18n.set("en");
+    fixture.detectChanges();
+    message.mockReturnValue(of({ message: "Result: 100 USD", evidence: [] }));
+    expect(
+      fixture.nativeElement.querySelector(".voice-test").textContent,
+    ).toContain("Test voice");
+    await component.send();
+    expect(synthesis.speak).not.toHaveBeenCalled();
+    const checkbox: HTMLInputElement =
+      fixture.nativeElement.querySelector(".auto-read input");
+    checkbox.click();
+    fixture.detectChanges();
+    expect(component.autoRead()).toBe(true);
+    component.message.setValue("Read the next answer");
+    await component.send();
+    expect(synthesis.speak).toHaveBeenCalledOnce();
+    expect(synthesis.speak.mock.calls[0][0].lang).toBe("en-US");
+    expect(message).toHaveBeenCalledTimes(2);
+    component.i18n.set("es");
+    fixture.detectChanges();
+    expect(component.autoRead()).toBe(false);
+    expect(synthesis.cancel).toHaveBeenCalledOnce();
+  });
   it("adjunta desde el clip, conserva el texto, muestra el archivo y permite retirarlo", async () => {
     const {
       component,

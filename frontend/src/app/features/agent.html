@@ -92,6 +92,28 @@
       </button>
     </div>
   </div>
+  <div class="voice-toolbar">
+    <mat-checkbox
+      class="auto-read"
+      [checked]="autoRead()"
+      [disabled]="!speech.available(i18n.locale())"
+      (change)="setAutoRead($event.checked)"
+      >{{ i18n.choose("Leer respuestas nuevas", "Read new answers aloud")
+      }}</mat-checkbox
+    >
+    <button
+      type="button"
+      class="voice-test"
+      (click)="tryVoice()"
+      [disabled]="!speech.supported()"
+      [attr.aria-pressed]="speech.active() === 'sample'"
+    >
+      <ds-icon [name]="speech.active() === 'sample' ? 'stop' : 'volume'" />
+      {{ speech.active() === "sample" ? i18n.choose("Detener prueba", "Stop
+      test") : i18n.choose("Probar voz", "Test voice") }}
+    </button>
+    <span class="voice-hint" role="status">{{ voiceHint() }}</span>
+  </div>
   <div
     class="chat-body"
     #chatBody
@@ -153,6 +175,19 @@
             [text]="message.text"
             [artifactUrls]="artifactUrls(message)"
           />
+          <button
+            type="button"
+            class="read-message"
+            (click)="readMessage(message, $index)"
+            [disabled]="!speech.supported() || loadingHistory() || deleting()"
+            [attr.aria-pressed]="speech.active() === 'message-' + $index"
+          >
+            <ds-icon
+              [name]="speech.active() === 'message-' + $index ? 'stop' : 'volume'"
+            />
+            {{ speech.active() === "message-" + $index ? i18n.choose("Detener",
+            "Stop") : i18n.choose("Escuchar", "Listen") }}
+          </button>
           } @else {
           <p>{{ message.text }}</p>
           @if (message.sourceFiles?.length) {

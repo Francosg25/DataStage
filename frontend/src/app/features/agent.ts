@@ -7,6 +7,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
   viewChild,
 } from "@angular/core";
 import { DOCUMENT } from "@angular/common";
@@ -31,11 +32,13 @@ import {
 } from "../core/models";
 import { Icon, DataTable } from "../shared/ui";
 import { AssistantText } from "../shared/assistant-text";
+import { AssistantSpeech } from "../shared/assistant-speech";
 import { saveSupplierDownload } from "../shared/supplier-download";
 import { ActivatedRoute, RouterLink } from "@angular/router";
 import { I18n } from "../core/i18n";
 @Component({
   selector: "ds-agent",
+  providers: [AssistantSpeech],
   styleUrl: "./agent.scss",
   imports: [
     TranslatePipe,
@@ -60,6 +63,8 @@ export class Agent {
   destroy = inject(DestroyRef);
   private document = inject(DOCUMENT);
   private dialog = inject(MatDialog);
+  readonly speech = inject(AssistantSpeech);
+  readonly autoRead = signal(false);
   private chatBody = viewChild<ElementRef<HTMLDivElement>>("chatBody");
   message = new FormControl("", {
     nonNullable: true,
@@ -91,6 +96,13 @@ export class Agent {
     this.message.setValue(this.i18n.t(prompt));
   }
   constructor() {
+    effect(() => {
+      this.i18n.locale();
+      untracked(() => {
+        this.speech.stop();
+        this.autoRead.set(false);
+      });
+    });
     const prompt = this.route?.snapshot.queryParamMap.get("prompt");
     if (prompt) this.message.setValue(prompt.slice(0, 4000));
     if (this.auth.config()?.foundryEnabled) {
@@ -125,6 +137,7 @@ export class Agent {
   }
   newConversation() {
     if (this.interacting()) return;
+    this.speech.stop();
     this.conversationId.set(undefined);
     this.messages.set([]);
     this.sourceFiles.set([]);
@@ -135,6 +148,7 @@ export class Agent {
   }
   async openConversation(id: string) {
     if (this.interacting()) return;
+    this.speech.stop();
     if (!id) {
       this.newConversation();
       return;
@@ -320,6 +334,70 @@ export class Agent {
   filename(name: string) {
     return name.replace(/_/g, " ");
   }
+  setAutoRead(enabled: boolean) {
+    this.autoRead.set(enabled && this.speech.available(this.i18n.locale()));
+    if (!this.autoRead()) this.speech.stop();
+  }
+  tryVoice() {
+    if (this.speech.active() === "sample") this.speech.stop();
+    else
+      this.speech.read(
+        this.i18n.choose(
+          "Hola, esta es una prueba de voz de DataStage.",
+          "Hello, this is a DataStage voice test.",
+        ),
+        "sample",
+        this.i18n.locale(),
+      );
+  }
+  readMessage(message: AgentChatMessage, index: number) {
+    const key = `message-${index}`;
+    if (this.speech.active() === key) this.speech.stop();
+    else
+      this.speech.read(
+        message.text,
+        key,
+        this.i18n.locale(),
+        this.artifactUrls(message),
+      );
+  }
+  voiceHint() {
+    const error = this.speech.error();
+    if (error === "unsupported" || !this.speech.supported())
+      return this.i18n.choose(
+        "Este navegador no permite reproducir voz.",
+        "This browser does not support voice playback.",
+      );
+    if (error === "blocked")
+      return this.i18n.choose(
+        "Pulsa Escuchar para iniciar la voz desde el navegador.",
+        "Click Listen to start voice playback in your browser.",
+      );
+    if (error === "failed")
+      return this.i18n.choose(
+        "No se pudo reproducir la voz. Puedes volver a intentarlo.",
+        "Voice playback failed. You can try again.",
+      );
+    if (error === "empty")
+      return this.i18n.choose(
+        "Esta respuesta no contiene texto para leer.",
+        "This answer has no text to read aloud.",
+      );
+    if (!this.speech.available(this.i18n.locale()))
+      return this.i18n.choose(
+        "No hay una voz local disponible para español. Pulsa Probar voz para comprobarlo de nuevo.",
+        "No local English voice is available. Click Test voice to check again.",
+      );
+    return this.speech.active()
+      ? this.i18n.choose(
+          "Reproduciendo con la voz de este equipo.",
+          "Playing with this device’s voice.",
+        )
+      : this.i18n.choose(
+          "Usa la voz de este equipo. La lectura automática está desactivada al abrir la página.",
+          "Uses this device’s voice. Automatic reading is off when you open the page.",
+        );
+  }
   keydown(event: KeyboardEvent) {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
@@ -333,6 +411,7 @@ export class Agent {
       this.conversations().find((item) => item.id === id)?.title ||
       this.i18n.choose("Esta conversación", "This conversation");
     this.confirmingDelete.set(true);
+    this.speech.stop();
     let confirmed = false;
     try {
       confirmed = await firstValueFrom(
@@ -404,6 +483,7 @@ export class Agent {
     if (!text || this.interacting() || !this.auth.config()?.foundryEnabled)
       return;
     const allowActions = this.canAct() && this.allowActions.value;
+    this.speech.stop();
     this.busy.set(true);
     this.pendingText.set(text);
     this.message.disable({ emitEvent: false });
@@ -430,6 +510,11 @@ export class Agent {
         },
       ]);
       this.message.reset();
+      if (this.autoRead())
+        this.readMessage(
+          this.messages()[this.messages().length - 1],
+          this.messages().length - 1,
+        );
       this.api
         .conversations()
         .pipe(takeUntilDestroyed(this.destroy))
